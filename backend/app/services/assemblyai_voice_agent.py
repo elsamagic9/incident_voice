@@ -64,6 +64,7 @@ class AssemblyAIVoiceAgentSession:
         self.is_connected = False
         self.staged_action: Optional[Dict[str, Any]] = None
         self.awaiting_confirmation: bool = False
+        self.history: List[Dict[str, str]] = []
 
     async def connect(self) -> bool:
         """Connects to AssemblyAI Voice Agent API WebSocket and sends session.update."""
@@ -72,8 +73,10 @@ class AssemblyAIVoiceAgentSession:
             self.is_connected = False
             return False
 
+        auth_key = self.api_key.strip()
+        auth_header = auth_key if auth_key.startswith("Bearer ") else f"Bearer {auth_key}"
         headers = {
-            "Authorization": self.api_key.strip()
+            "Authorization": auth_header
         }
 
         try:
@@ -164,27 +167,36 @@ class AssemblyAIVoiceAgentSession:
         msg_type = data.get("type") or data.get("event")
 
         # Session lifecycle events
-        if msg_type in ["session.created", "session.updated", "SessionBegins"]:
+        if msg_type in ["session.created", "session.updated", "session.ready", "SessionBegins"]:
             self.session_id = data.get("session_id") or data.get("session", {}).get("id")
-            logger.info(f"Voice Agent session initialized: {self.session_id}")
+            logger.info(f"AssemblyAI Voice Agent session ready/initialized: {self.session_id}")
 
-        # User transcription events
-        elif msg_type in ["transcript", "user.transcript", "turn"]:
-            transcript = data.get("transcript") or data.get("text", "")
-            end_of_turn = data.get("end_of_turn", False)
+        # User transcription events (final & interim deltas)
+        elif msg_type in ["transcript.user", "transcript.user.delta", "transcript", "user.transcript", "turn"]:
+            transcript = data.get("transcript") or data.get("text") or data.get("delta", "")
+            end_of_turn = data.get("end_of_turn", msg_type in ["transcript.user", "turn"])
             confidence = data.get("confidence")
-            if transcript.strip() and self.on_user_turn:
-                await self._call_cb(self.on_user_turn, transcript, end_of_turn, confidence)
+            if transcript.strip():
+                if end_of_turn:
+                    self.history.append({"speaker": "user", "transcript": transcript})
+                    cluster_state.add_event("voice", f"Engineer: \"{transcript}\"")
+                if self.on_user_turn:
+                    await self._call_cb(self.on_user_turn, transcript, end_of_turn, confidence)
 
-        # Agent spoken text events
-        elif msg_type in ["agent.transcript", "response.audio_transcript.delta", "agent_turn"]:
+        # Agent spoken text events (final & interim deltas)
+        elif msg_type in ["transcript.agent", "transcript.agent.delta", "agent.transcript", "response.audio_transcript.delta", "agent_turn"]:
             agent_text = data.get("transcript") or data.get("delta") or data.get("text", "")
-            if agent_text and self.on_agent_turn:
-                await self._call_cb(self.on_agent_turn, agent_text, data.get("end_of_turn", True))
+            end_of_turn = data.get("end_of_turn", msg_type in ["transcript.agent", "agent_turn"])
+            if agent_text:
+                if end_of_turn:
+                    self.history.append({"speaker": "agent", "transcript": agent_text})
+                    cluster_state.add_event("voice", f"IncidentVoice: \"{agent_text}\"")
+                if self.on_agent_turn:
+                    await self._call_cb(self.on_agent_turn, agent_text, end_of_turn)
 
         # Agent audio chunks
-        elif msg_type in ["audio", "response.audio.delta"]:
-            audio_b64 = data.get("data") or data.get("delta")
+        elif msg_type in ["output.audio", "output.audio.delta", "audio", "response.audio.delta"]:
+            audio_b64 = data.get("data") or data.get("delta") or data.get("audio", "")
             if audio_b64 and self.on_audio_chunk:
                 await self._call_cb(self.on_audio_chunk, audio_b64)
 
@@ -266,7 +278,7 @@ class AssemblyAIVoiceAgentSession:
         if tool_name == "generate_postmortem":
             from app.services.lemur_service import lemur_service
             postmortem_data = await lemur_service.generate_postmortem(
-                transcript_history=[],
+                transcript_history=self.history,
                 timeline_events=cluster_state.incident.timeline_events,
                 incident_id=cluster_state.incident.id
             )
@@ -329,7 +341,12 @@ class AssemblyAIVoiceAgentSession:
         """Streams 16kHz PCM audio chunk to AssemblyAI Voice Agent API."""
         if self.ws and self._running:
             try:
-                await self.ws.send(pcm_bytes)
+                import base64
+                payload = {
+                    "type": "input.audio",
+                    "audio": base64.b64encode(pcm_bytes).decode("utf-8")
+                }
+                await self.ws.send(json.dumps(payload))
             except Exception as e:
                 logger.error(f"Failed to stream audio chunk to Voice Agent API: {e}")
 

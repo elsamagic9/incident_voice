@@ -47,14 +47,18 @@ class InfrastructureBridge:
     def inspect_container_logs(self, container_name: str, lines: int = 8) -> Dict[str, Any]:
         if not self.is_docker_available():
             return {"error": "Docker engine not reachable."}
+        import re
+        sanitized = re.sub(r'[^a-zA-Z0-9_\-]', '', container_name)
+        if not sanitized or sanitized.startswith("-"):
+            return {"error": "Invalid container identifier."}
         try:
             res = subprocess.run(
-                ["docker", "logs", "--tail", str(lines), container_name],
+                ["docker", "logs", "--tail", str(lines), sanitized],
                 capture_output=True, text=True, timeout=4
             )
             logs = res.stdout.strip().split("\n") if res.stdout.strip() else res.stderr.strip().split("\n")
             return {
-                "container": container_name,
+                "container": sanitized,
                 "exit_code": res.returncode,
                 "lines": [l for l in logs if l.strip()]
             }
@@ -64,19 +68,23 @@ class InfrastructureBridge:
     def restart_container(self, container_name: str) -> Dict[str, Any]:
         if not self.is_docker_available():
             return {"error": "Docker engine not reachable."}
+        import re
+        sanitized = re.sub(r'[^a-zA-Z0-9_\-]', '', container_name)
+        if not sanitized or sanitized.startswith("-"):
+            return {"error": "Invalid container identifier."}
         try:
             start_t = time.time()
             res = subprocess.run(
-                ["docker", "restart", container_name],
+                ["docker", "restart", sanitized],
                 capture_output=True, text=True, timeout=10
             )
             duration = time.time() - start_t
             if res.returncode == 0:
                 return {
                     "success": True,
-                    "container": container_name,
+                    "container": sanitized,
                     "duration_seconds": round(duration, 2),
-                    "message": f"Container '{container_name}' successfully restarted in {round(duration, 2)}s."
+                    "message": f"Container '{sanitized}' successfully restarted in {round(duration, 2)}s."
                 }
             return {"success": False, "error": res.stderr.strip()}
         except Exception as e:

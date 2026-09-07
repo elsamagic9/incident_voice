@@ -306,6 +306,8 @@ async def voice_agent_websocket(websocket: WebSocket):
     # Initialize active engine
     await init_engine(active_engine)
 
+    offline_warning_sent = False
+
     try:
         while True:
             message = await websocket.receive()
@@ -318,8 +320,20 @@ async def voice_agent_websocket(websocket: WebSocket):
                 if active_engine == "voice_agent_api" and voice_agent_session:
                     if is_session_connected:
                         await voice_agent_session.send_audio(pcm_data)
+                    elif not offline_warning_sent:
+                        offline_warning_sent = True
+                        await send_json_safe({
+                            "type": "system",
+                            "message": "AssemblyAI Voice Agent API is offline (No API key set). Use text command input or set ASSEMBLYAI_API_KEY."
+                        })
                 elif aai_v3_session and is_session_connected:
                     await aai_v3_session.send_audio(pcm_data)
+                elif not offline_warning_sent:
+                    offline_warning_sent = True
+                    await send_json_safe({
+                        "type": "system",
+                        "message": "AssemblyAI Streaming STT is offline (No API key set). Use text command input or set ASSEMBLYAI_API_KEY."
+                    })
 
             # Text / JSON control message
             elif "text" in message and message["text"]:
