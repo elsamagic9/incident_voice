@@ -127,4 +127,30 @@ class InfrastructureBridge:
             logger.error(f"Error fetching processes: {e}")
             return []
 
+    def get_unified_cluster_health(self) -> Dict[str, Any]:
+        """
+        Unified enterprise health check combining Kubernetes, Docker, and Host telemetry.
+        """
+        from app.tools.k8s_adapter import k8s_adapter
+        docker_ok = self.is_docker_available()
+        k8s_ok = k8s_adapter.is_live_cluster_connected()
+
+        if k8s_ok and docker_ok:
+            provider = "Hybrid (K8s + Docker)"
+        elif k8s_ok:
+            provider = "Kubernetes (Native)"
+        elif docker_ok:
+            provider = "Docker Host Daemon"
+        else:
+            provider = "Kubernetes (Virtual Mesh)"
+
+        return {
+            "orchestration_provider": provider,
+            "docker_available": docker_ok,
+            "kubernetes_cluster": k8s_adapter.get_cluster_status(),
+            "docker_containers_active": len(self.list_running_containers()) if docker_ok else 0,
+            "host_telemetry": self.get_host_telemetry()
+        }
+
 infra_bridge = InfrastructureBridge()
+

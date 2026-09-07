@@ -248,21 +248,39 @@ class AssemblyAIVoiceAgentSession:
             service_name = arguments.get("service_name", "payment-service")
             if action in ["restart_pod", "flush_cache", "rollback_release", "restart"]:
                 if not self.awaiting_confirmation:
+                    from app.core.auth_rbac import security_manager
+                    from app.services.audit_ledger import audit_ledger
+
+                    challenge_code = security_manager.generate_phonetic_challenge()
                     # Stage action and require confirmation
                     self.staged_action = {
                         "action": action,
                         "service_name": service_name,
                         "params": arguments,
+                        "challenge_code": challenge_code,
                         "staged_at": time.time()
                     }
                     self.awaiting_confirmation = True
+
+                    audit_ledger.record_event(
+                        event_type="STAGED_MUTATION",
+                        actor=security_manager.session_operator,
+                        role=security_manager.current_role.value,
+                        action=action,
+                        details={
+                            "service_name": service_name,
+                            "challenge_code": challenge_code,
+                            "engine": "AssemblyAI Voice Agent API (Path 1)"
+                        }
+                    )
 
                     staged_payload = {
                         "status": "staged",
                         "awaiting_confirmation": True,
                         "action": action,
                         "service_name": service_name,
-                        "message": f"Remediation staged: {action} on {service_name}. Requires user authorization."
+                        "challenge_code": challenge_code,
+                        "message": f"Remediation staged: {action} on {service_name}. Role: SRE Commander. To authorize, verify with security challenge '{challenge_code}' or click Authorize."
                     }
 
                     if self.on_remediation_staged:

@@ -53,6 +53,16 @@ class AgentOrchestrator:
         params = self.staged_action.get("params", {})
         count = params.get("count", 5)
 
+        from app.core.auth_rbac import security_manager
+        from app.services.audit_ledger import audit_ledger
+        audit_ledger.record_event(
+            event_type="MUTATION_AUTHORIZED",
+            actor=security_manager.session_operator,
+            role=security_manager.current_role.value,
+            action=action,
+            details={"service_name": service_name, "authorized_via": "vocal_challenge_or_ui"}
+        )
+
         res = execute_remediation(action, service_name, count=count)
         executed_tool = {
             "tool_name": "execute_remediation",
@@ -79,6 +89,19 @@ class AgentOrchestrator:
 
     def cancel_staged_remediation(self) -> str:
         """Cancels any currently staged remediation."""
+        from app.core.auth_rbac import security_manager
+        from app.services.audit_ledger import audit_ledger
+
+        action_name = self.staged_action.get("action") if self.staged_action else "unknown"
+        security_manager.clear_challenge()
+        audit_ledger.record_event(
+            event_type="MUTATION_CANCELLED",
+            actor=security_manager.session_operator,
+            role=security_manager.current_role.value,
+            action=action_name,
+            details={"reason": "Operator cancelled remediation"}
+        )
+
         self.staged_action = None
         self.awaiting_confirmation = False
         spoken_text = "Remediation cancelled. No changes were applied to the cluster."
@@ -87,11 +110,23 @@ class AgentOrchestrator:
         return spoken_text
 
     def _stage_remediation(self, action: str, service_name: str, params: Dict[str, Any]) -> Tuple[str, Dict[str, Any]]:
-        """Stages a destructive remediation and prompts for confirmation."""
+        """Stages a destructive remediation and prompts for confirmation with phonetic challenge."""
+        from app.core.auth_rbac import security_manager
+        from app.services.audit_ledger import audit_ledger
+
+        # 1. RBAC authorization gate
+        if not security_manager.is_action_permitted(action):
+            spoken_err = f"Permission denied: Action '{action}' requires SRE Commander role. Access denied."
+            return spoken_err, {"status": "denied", "error": "Insufficient RBAC role"}
+
+        # 2. Dynamic Military/Aviation Phonetic Challenge Code
+        challenge_code = security_manager.generate_phonetic_challenge()
+
         self.staged_action = {
             "action": action,
             "service_name": service_name,
             "params": params,
+            "challenge_code": challenge_code,
             "staged_at": time.time()
         }
         self.awaiting_confirmation = True
@@ -105,12 +140,27 @@ class AgentOrchestrator:
         else:
             action_label = action.replace("_", " ").title()
 
-        spoken_prompt = f"Remediation staged: {action_label} of {service_name}. Say 'Confirm' or click Authorize to execute."
+        spoken_prompt = f"Remediation staged: {action_label} of {service_name}. Role verified: SRE Commander. Say 'Confirm' or click Authorize to execute. Security challenge: '{challenge_code}'."
+
+        # 3. Cryptographic Audit Ledger record
+        audit_ledger.record_event(
+            event_type="STAGED_MUTATION",
+            actor=security_manager.session_operator,
+            role=security_manager.current_role.value,
+            action=action,
+            details={
+                "service_name": service_name,
+                "challenge_code": challenge_code,
+                "params": params
+            }
+        )
+
         staged_result = {
             "status": "staged",
             "awaiting_confirmation": True,
             "action": action,
             "service_name": service_name,
+            "challenge_code": challenge_code,
             "message": spoken_prompt
         }
         return spoken_prompt, staged_result
@@ -143,10 +193,12 @@ class AgentOrchestrator:
                 self.staged_action = None
                 self.awaiting_confirmation = False
             else:
+                from app.core.auth_rbac import security_manager
+                is_authorized, _ = security_manager.verify_vocal_authorization(lower)
                 confirm_words = ["confirm", "authorize", "execute", "yes", "proceed", "go ahead", "do it", "approved", "confirmed"]
                 cancel_words = ["cancel", "abort", "no", "stop", "dismiss", "negative", "don't"]
 
-                if any(w in lower for w in confirm_words):
+                if is_authorized or any(w in lower for w in confirm_words):
                     spoken_text, tools = self.confirm_staged_remediation()
                     try:
                         from app.services.blackbox_service import blackbox_service

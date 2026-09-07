@@ -19,6 +19,8 @@ export const App: React.FC = () => {
     activeEngine,
     stagedRemediation,
     dockerActive,
+    rbacRole,
+    clusterProvider,
     isRecording,
     turns,
     currentInterimTranscript,
@@ -80,6 +82,8 @@ export const App: React.FC = () => {
         latency={latency}
         activeEngine={activeEngine}
         dockerActive={dockerActive}
+        rbacRole={rbacRole}
+        clusterProvider={clusterProvider}
         onSelectEngine={selectEngine}
         onReset={resetIncident}
       />
@@ -111,8 +115,20 @@ export const App: React.FC = () => {
                 </div>
                 <p className="text-xs text-amber-200 mt-1 font-mono">
                   Remediation staged: <strong className="text-white underline">{stagedRemediation.action}</strong> on <strong className="text-white underline">{stagedRemediation.service_name}</strong>.
-                  Say &ldquo;Confirm&rdquo; or click Authorize to execute.
                 </p>
+                {stagedRemediation.challenge_code ? (
+                  <div className="mt-1.5 flex items-center gap-2 flex-wrap">
+                    <span className="text-[11px] font-bold text-amber-300">Vocal Challenge:</span>
+                    <span className="px-2 py-0.5 rounded bg-amber-900/90 text-amber-100 border border-amber-500 font-mono font-bold text-xs tracking-wider shadow-inner">
+                      {stagedRemediation.challenge_code}
+                    </span>
+                    <span className="text-[10px] text-amber-300/80">(Speak military code or click Authorize)</span>
+                  </div>
+                ) : (
+                  <p className="text-[11px] text-amber-300/80 mt-0.5 font-mono">
+                    Say &ldquo;Confirm&rdquo; or click Authorize to execute.
+                  </p>
+                )}
               </div>
             </div>
 

@@ -99,3 +99,32 @@ async def get_blackbox_audio():
             "Cache-Control": "no-cache"
         }
     )
+
+# =============================================================================
+# Enterprise 9.5/10: SOC-2 Audit Ledger & Kubernetes Endpoints
+# =============================================================================
+@router.get("/audit-ledger")
+async def get_audit_ledger():
+    from app.services.audit_ledger import audit_ledger
+    return audit_ledger.export_audit_manifest()
+
+@router.get("/k8s/cluster")
+async def get_k8s_cluster():
+    from app.tools.k8s_adapter import k8s_adapter
+    return {
+        "status": k8s_adapter.get_cluster_status(),
+        "pods": k8s_adapter.list_pods()
+    }
+
+@router.get("/security/status")
+async def get_security_status():
+    from app.core.auth_rbac import security_manager
+    return {
+        "role": security_manager.current_role.value,
+        "operator": security_manager.session_operator,
+        "active_challenge": security_manager.active_challenge,
+        "ttl_seconds": security_manager.challenge_ttl_seconds,
+        "permissions": security_manager.get_current_permissions(),
+        "zero_trust_mode": True
+    }
+

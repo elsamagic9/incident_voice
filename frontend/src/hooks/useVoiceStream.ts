@@ -25,6 +25,8 @@ export function useVoiceStream() {
   const [topology, setTopology] = useState<ServiceTopology | null>(null);
   const [activeRunbook, setActiveRunbook] = useState<ActiveRunbookSession | null>(null);
   const [postMortem, setPostMortem] = useState<PostMortemData | null>(null);
+  const [rbacRole, setRbacRole] = useState<string>('SRE_COMMANDER');
+  const [clusterProvider, setClusterProvider] = useState<string>('Hybrid (K8s + Docker)');
   const [audioLevel, setAudioLevel] = useState<number>(0);
   const [latency, setLatency] = useState<LatencyStats>({
     stt_ms: 120,
@@ -186,6 +188,8 @@ export function useVoiceStream() {
             if (data.docker_active !== undefined) setDockerActive(data.docker_active);
             if (data.topology) setTopology(data.topology);
             if (data.active_runbook !== undefined) setActiveRunbook(data.active_runbook);
+            if (data.rbac_role) setRbacRole(data.rbac_role);
+            if (data.cluster_provider) setClusterProvider(data.cluster_provider);
             break;
 
           case 'runbook_sync':
@@ -459,6 +463,8 @@ export function useVoiceStream() {
     activeEngine,
     stagedRemediation,
     dockerActive,
+    rbacRole,
+    clusterProvider,
     isRecording,
     turns,
     currentInterimTranscript,

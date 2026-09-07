@@ -10,6 +10,8 @@ interface Props {
   latency: LatencyStats;
   activeEngine: VoiceEngine;
   dockerActive?: boolean;
+  rbacRole?: string;
+  clusterProvider?: string;
   onSelectEngine: (engine: VoiceEngine) => void;
   onReset: () => void;
 }
@@ -21,6 +23,8 @@ export const MissionControlHeader: React.FC<Props> = ({
   latency,
   activeEngine,
   dockerActive = false,
+  rbacRole = 'SRE_COMMANDER',
+  clusterProvider = 'Hybrid (K8s + Docker)',
   onSelectEngine,
   onReset
 }) => {
@@ -112,6 +116,12 @@ export const MissionControlHeader: React.FC<Props> = ({
                     <Cpu className="w-3 h-3 text-cyan-400" /> Cloud Sandbox Active
                   </span>
                 )}
+                <span className="text-[10px] px-1.5 py-0.5 bg-indigo-950/90 text-indigo-300 rounded border border-indigo-800 font-mono flex items-center gap-1" title={`Orchestration Mesh: ${clusterProvider}`}>
+                  <Boxes className="w-3 h-3 text-indigo-400" /> {clusterProvider}
+                </span>
+                <span className="text-[10px] px-1.5 py-0.5 bg-amber-950/90 text-amber-300 rounded border border-amber-800 font-mono flex items-center gap-1" title={`Role-Based Access Control: ${rbacRole}`}>
+                  <ShieldAlert className="w-3 h-3 text-amber-400" /> RBAC: {rbacRole}
+                </span>
               </div>
               <p className="text-xs text-slate-400 hidden sm:block">Autonomous Voice SRE & Incident Commander</p>
             </div>

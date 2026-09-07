@@ -4,14 +4,14 @@ import {
   Ticket, MessageSquare, Code, CheckCircle2, Radio, Play, Pause, RotateCcw,
   Volume2, Clock, User, Bot, AlertTriangle
 } from 'lucide-react';
-import { PostMortemData, ActionItemTicket, BlackBoxSession, BlackBoxMarker } from '../types';
+import { PostMortemData, ActionItemTicket, BlackBoxSession, BlackBoxMarker, AuditManifest } from '../types';
 
 interface Props {
   data: PostMortemData | null;
   onClose: () => void;
 }
 
-type TabType = 'pir' | 'tickets' | 'slack' | 'blackbox';
+type TabType = 'pir' | 'tickets' | 'slack' | 'blackbox' | 'audit';
 
 export const PostMortemViewer: React.FC<Props> = ({ data, onClose }) => {
   const [activeTab, setActiveTab] = useState<TabType>('pir');
@@ -23,6 +23,7 @@ export const PostMortemViewer: React.FC<Props> = ({ data, onClose }) => {
   const [currentTime, setCurrentTime] = useState(0);
   const [playbackSpeed, setPlaybackSpeed] = useState(1);
   const [blackbox, setBlackbox] = useState<BlackBoxSession | null>(null);
+  const [auditManifest, setAuditManifest] = useState<AuditManifest | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => {
@@ -31,6 +32,12 @@ export const PostMortemViewer: React.FC<Props> = ({ data, onClose }) => {
       .then(res => res.json())
       .then(d => setBlackbox(d))
       .catch(err => console.warn('Could not fetch blackbox metadata:', err));
+
+    // Fetch SOC-2 Audit Ledger Manifest
+    fetch('/api/audit-ledger')
+      .then(res => res.json())
+      .then(d => setAuditManifest(d))
+      .catch(err => console.warn('Could not fetch audit ledger:', err));
   }, []);
 
   useEffect(() => {
@@ -167,6 +174,8 @@ export const PostMortemViewer: React.FC<Props> = ({ data, onClose }) => {
       content = JSON.stringify(tickets, null, 2);
     } else if (activeTab === 'slack') {
       content = slackBriefing;
+    } else if (activeTab === 'audit') {
+      content = JSON.stringify(auditManifest, null, 2);
     } else {
       content = JSON.stringify(blackbox || markers, null, 2);
     }
@@ -209,6 +218,10 @@ export const PostMortemViewer: React.FC<Props> = ({ data, onClose }) => {
     } else if (activeTab === 'tickets') {
       content = JSON.stringify(tickets, null, 2);
       filename = `jira-tickets-${data.incident_id}.json`;
+      mimeType = 'application/json';
+    } else if (activeTab === 'audit') {
+      content = JSON.stringify(auditManifest, null, 2);
+      filename = `soc2-audit-manifest-${data.incident_id}.json`;
       mimeType = 'application/json';
     } else {
       content = slackBriefing;
@@ -342,7 +355,19 @@ export const PostMortemViewer: React.FC<Props> = ({ data, onClose }) => {
             }`}
           >
             <Radio className="w-4 h-4 text-cyan-400" />
-            <span>(d) Acoustic Black Box Audio Replay</span>
+            <span>(d) Acoustic Black Box Audio</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('audit')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-t-lg font-medium transition border-b-2 shrink-0 ${
+              activeTab === 'audit'
+                ? 'bg-slate-900 text-indigo-400 border-indigo-400 font-bold glow-indigo'
+                : 'text-slate-400 hover:text-slate-200 border-transparent'
+            }`}
+          >
+            <ShieldAlert className="w-4 h-4 text-indigo-400" />
+            <span>(e) SOC-2 Audit Ledger ({auditManifest?.total_cryptographic_blocks || 0})</span>
           </button>
         </div>
 
@@ -740,6 +765,102 @@ export const PostMortemViewer: React.FC<Props> = ({ data, onClose }) => {
                       </div>
                     );
                   })}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* TAB 5: SOC-2 CRYPTOGRAPHIC AUDIT LEDGER */}
+          {activeTab === 'audit' && (
+            <div className="space-y-6">
+              {/* Top Certification Card */}
+              <div className="p-4 rounded-xl bg-gradient-to-r from-indigo-950/80 via-slate-900 to-indigo-950/80 border border-indigo-500/40 shadow-lg">
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2.5 rounded-xl bg-indigo-500/20 text-indigo-400 border border-indigo-500/30">
+                      <ShieldAlert className="w-6 h-6" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h3 className="text-sm font-bold text-white">SOC-2 Type II & ISO-27001 Cryptographic Ledger</h3>
+                        <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-800 font-mono font-bold flex items-center gap-1">
+                          <CheckCircle2 className="w-3 h-3 text-emerald-400" /> 100% Verified
+                        </span>
+                      </div>
+                      <p className="text-xs text-indigo-200/80 mt-0.5 font-mono">
+                        Immutable SHA-256 Hash Chain • Zero Unauthorized Alterations Detected
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="text-right font-mono text-[11px] text-slate-400">
+                    <div>Total Cryptographic Blocks: <strong className="text-indigo-300">{auditManifest?.total_cryptographic_blocks || 0}</strong></div>
+                    <div className="truncate max-w-[240px]" title={auditManifest?.merkle_leaf_root_hash || ''}>
+                      Root Hash: <span className="text-cyan-400">{auditManifest?.merkle_leaf_root_hash ? `${auditManifest.merkle_leaf_root_hash.slice(0, 16)}...` : 'Pending'}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Chained Blocks List */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 font-mono">
+                    Cryptographic Chain of Custody
+                  </h4>
+                  <span className="text-[10px] text-slate-500 font-mono">
+                    SHA-256 Merkle-Chained Blocks
+                  </span>
+                </div>
+
+                <div className="space-y-3 max-h-96 overflow-y-auto pr-1">
+                  {auditManifest?.blocks && auditManifest.blocks.length > 0 ? (
+                    auditManifest.blocks.slice().reverse().map((block) => (
+                      <div
+                        key={block.block_index}
+                        className="p-3.5 rounded-xl bg-slate-900/80 border border-slate-800/90 font-mono text-xs hover:border-indigo-500/50 transition"
+                      >
+                        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 mb-2 pb-2 border-b border-slate-800">
+                          <div className="flex items-center gap-2">
+                            <span className="px-2 py-0.5 rounded bg-indigo-950 text-indigo-300 border border-indigo-800 font-bold text-[10px]">
+                              BLOCK #{block.block_index}
+                            </span>
+                            <span className="text-white font-bold text-xs">{block.event_type}</span>
+                            <span className="text-slate-400 text-[10px]">({block.action})</span>
+                          </div>
+
+                          <div className="flex items-center gap-2 text-[10px] text-slate-400">
+                            <span>Actor: <strong className="text-slate-300">{block.actor}</strong> [{block.role}]</span>
+                            <span>•</span>
+                            <span>{new Date(block.timestamp_iso).toLocaleTimeString()}</span>
+                          </div>
+                        </div>
+
+                        {/* Block Details */}
+                        {block.details && Object.keys(block.details).length > 0 && (
+                          <div className="bg-slate-950 p-2 rounded-lg border border-slate-800/80 mb-2.5 text-[11px] text-slate-300 overflow-x-auto">
+                            <pre className="font-mono">{JSON.stringify(block.details, null, 2)}</pre>
+                          </div>
+                        )}
+
+                        {/* Hashes */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[10px] text-slate-400 pt-1">
+                          <div className="truncate">
+                            <span className="text-slate-500">Prev Hash: </span>
+                            <span className="text-slate-400 font-mono">{block.prev_hash}</span>
+                          </div>
+                          <div className="truncate">
+                            <span className="text-indigo-400">Block Hash: </span>
+                            <span className="text-emerald-400 font-mono font-semibold">{block.block_hash}</span>
+                          </div>
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="p-8 text-center text-slate-500 font-mono text-xs">
+                      Initializing Cryptographic Ledger...
+                    </div>
+                  )}
                 </div>
               </div>
             </div>

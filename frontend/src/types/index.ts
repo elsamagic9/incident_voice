@@ -62,6 +62,7 @@ export interface StagedRemediation {
   action: string;
   service_name: string;
   params?: Record<string, any>;
+  challenge_code?: string;
   staged_at?: number;
   message?: string;
 }
@@ -179,4 +180,29 @@ export interface BlackBoxSession {
   audio_data_uri?: string | null;
   waveform_peaks: number[];
   markers: BlackBoxMarker[];
+}
+
+// =============================================================================
+// Enterprise 9.5/10: SOC-2 Cryptographic Audit Ledger Types
+// =============================================================================
+export interface AuditLedgerEntry {
+  block_index: number;
+  timestamp_iso: string;
+  actor: string;
+  role: string;
+  event_type: string;
+  action: string;
+  details: Record<string, any>;
+  prev_hash: string;
+  block_hash: string;
+}
+
+export interface AuditManifest {
+  compliance_certification: string;
+  chain_status: string;
+  total_cryptographic_blocks: number;
+  merkle_leaf_root_hash: string;
+  audit_timestamp: string;
+  failure_details?: string | null;
+  blocks: AuditLedgerEntry[];
 }

@@ -122,8 +122,11 @@ def query_telemetry(service_name: str) -> Dict[str, Any]:
 def execute_remediation(action: str, service_name: str, count: int = 4) -> Dict[str, Any]:
     """
     Executes a governed remediation action on a service.
-    If a real Docker container exists, restarts the actual Docker container!
+    Supports both real Docker container restarts and Kubernetes deployment rollouts.
     """
+    from app.services.audit_ledger import audit_ledger
+    from app.tools.k8s_adapter import k8s_adapter
+
     action = action.lower().strip()
     service_name = service_name.lower().strip()
     if service_name not in cluster_state.services:
@@ -139,7 +142,8 @@ def execute_remediation(action: str, service_name: str, count: int = 4) -> Dict[
 
     # If action is restart, check if real container is active and restart it
     real_restarted = None
-    if action in ["restart_pod", "restart"]:
+    k8s_rollout = None
+    if action in ["restart_pod", "restart", "k8s_rollout_restart"]:
         normalized_target = service_name.replace("-service", "").replace("_service", "").replace("-core", "")
         real_containers = infra_bridge.list_running_containers()
         for c in real_containers:
@@ -148,9 +152,28 @@ def execute_remediation(action: str, service_name: str, count: int = 4) -> Dict[
                 real_restarted = infra_bridge.restart_container(c["name"])
                 break
 
+        # Also trigger Kubernetes deployment rollout restart
+        k8s_rollout = k8s_adapter.rollout_restart_deployment(service_name)
+
     result = cluster_state.apply_remediation(action, service_name, params)
     if real_restarted and real_restarted.get("success"):
         result["real_docker_restart"] = real_restarted
+    if k8s_rollout and k8s_rollout.get("success"):
+        result["k8s_rollout"] = k8s_rollout
+
+    # Log to cryptographic audit ledger
+    audit_ledger.record_event(
+        event_type="INFRASTRUCTURE_MUTATION_EXECUTED",
+        actor="Commander-01 (Lead SRE)",
+        role="SRE_COMMANDER",
+        action=action,
+        details={
+            "service_name": service_name,
+            "remediation_status": result.get("status", "applied"),
+            "real_docker_restart": bool(real_restarted and real_restarted.get("success")),
+            "k8s_rollout": bool(k8s_rollout and k8s_rollout.get("success"))
+        }
+    )
 
     return result
 
@@ -211,6 +234,21 @@ def get_service_topology() -> Dict[str, Any]:
     from app.core.topology import get_service_topology as _get_topo
     return _get_topo()
 
+def k8s_rollout_restart(deployment_name: str, namespace: str = "production") -> Dict[str, Any]:
+    """Rollout restarts a Kubernetes deployment."""
+    from app.tools.k8s_adapter import k8s_adapter
+    return k8s_adapter.rollout_restart_deployment(deployment_name, namespace)
+
+def k8s_list_pods(namespace: str = "production") -> Dict[str, Any]:
+    """Lists pods in a Kubernetes namespace."""
+    from app.tools.k8s_adapter import k8s_adapter
+    return {"pods": k8s_adapter.list_pods(namespace)}
+
+def k8s_cordon_node(node_name: str) -> Dict[str, Any]:
+    """Cordons a Kubernetes worker node."""
+    from app.tools.k8s_adapter import k8s_adapter
+    return k8s_adapter.cordon_node(node_name)
+
 # Mapping of function names to implementations
 SRE_TOOL_MAP = {
     "get_cluster_health": get_cluster_health,
@@ -224,5 +262,8 @@ SRE_TOOL_MAP = {
     "start_runbook": start_runbook,
     "advance_runbook": advance_runbook,
     "abort_runbook": abort_runbook,
-    "get_service_topology": get_service_topology
+    "get_service_topology": get_service_topology,
+    "k8s_rollout_restart": k8s_rollout_restart,
+    "k8s_list_pods": k8s_list_pods,
+    "k8s_cordon_node": k8s_cordon_node
 }

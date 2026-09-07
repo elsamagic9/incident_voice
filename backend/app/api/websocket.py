@@ -41,13 +41,23 @@ async def voice_agent_websocket(websocket: WebSocket):
             pass
 
     def get_cluster_sync_payload():
+        from app.core.auth_rbac import security_manager
+        from app.tools.k8s_adapter import k8s_adapter
+        from app.services.audit_ledger import audit_ledger
+
+        cluster_info = infra_bridge.get_unified_cluster_health()
         return {
             "type": "cluster_sync",
             "incident": cluster_state.incident.model_dump(),
             "services": {k: v.model_dump() for k, v in cluster_state.services.items()},
             "docker_active": infra_bridge.is_docker_available(),
             "topology": get_service_topology(),
-            "active_runbook": runbook_engine.get_active_session()
+            "active_runbook": runbook_engine.get_active_session(),
+            "rbac_role": security_manager.current_role.value,
+            "session_operator": security_manager.session_operator,
+            "cluster_provider": cluster_info.get("orchestration_provider", "Hybrid (K8s + Docker)"),
+            "k8s_cluster": k8s_adapter.get_cluster_status(),
+            "audit_blocks_count": len(audit_ledger.blocks)
         }
 
     # Send initial cluster and incident state
