@@ -1,0 +1,29 @@
+version: '3.8'
+
+services:
+  incident-payment:
+    container_name: incident-payment
+    build: ./payment-service
+    ports:
+      - "8081:8080"
+    restart: unless-stopped
+    environment:
+      - SERVICE_NAME=payment-core
+
+  incident-redis:
+    container_name: incident-redis
+    image: redis:alpine
+    ports:
+      - "6380:6379"
+    restart: unless-stopped
+
+  incident-order-db:
+    container_name: incident-order-db
+    image: postgres:15-alpine
+    ports:
+      - "5433:5432"
+    environment:
+      POSTGRES_USER: sre_user
+      POSTGRES_PASSWORD: secure_password
+      POSTGRES_DB: orders
+    restart: unless-stopped
