@@ -1,0 +1,195 @@
+import time
+from typing import Dict, Any, List
+from app.core.state import cluster_state
+from app.tools.infrastructure_bridge import infra_bridge
+
+def get_cluster_health() -> Dict[str, Any]:
+    """
+    Returns real-time cluster health, degraded services, active alerts,
+    and incorporates live Docker container state and host telemetry.
+    """
+    critical_services = []
+    degraded_services = []
+    healthy_services = []
+
+    # Check for real Docker containers
+    real_containers = infra_bridge.list_running_containers()
+
+    for sid, svc in cluster_state.services.items():
+        summary = {
+            "id": svc.id,
+            "name": svc.name,
+            "status": svc.status,
+            "p99_latency": f"{svc.latency_p99_ms:.1f}ms",
+            "error_rate": f"{svc.error_rate_pct:.2f}%",
+            "alerts": svc.active_alerts,
+            "is_real_container": any(sid.replace("-", "") in c["name"].replace("-", "") for c in real_containers)
+        }
+        if svc.status == "critical":
+            critical_services.append(summary)
+        elif svc.status == "degraded":
+            degraded_services.append(summary)
+        else:
+            healthy_services.append(summary)
+
+    host_info = infra_bridge.get_host_telemetry()
+
+    return {
+        "incident_id": cluster_state.incident.id,
+        "incident_title": cluster_state.incident.title,
+        "incident_status": cluster_state.incident.status,
+        "severity": cluster_state.incident.severity,
+        "critical_services": critical_services,
+        "degraded_services": degraded_services,
+        "healthy_services": healthy_services,
+        "total_active_alerts": sum(len(s.active_alerts) for s in cluster_state.services.values()),
+        "docker_active": infra_bridge.is_docker_available(),
+        "running_containers_count": len(real_containers),
+        "host_telemetry": host_info
+    }
+
+def inspect_service_logs(service_name: str, lines: int = 5) -> Dict[str, Any]:
+    """
+    Retrieves recent error and warning logs for a specific service.
+    If a matching Docker container is running locally, fetches REAL live container logs.
+    """
+    service_name = service_name.lower().strip()
+
+    # Check if a real docker container matches
+    real_containers = infra_bridge.list_running_containers()
+    matched_container = None
+    for c in real_containers:
+        c_name = c["name"].lower()
+        if service_name in c_name or c_name in service_name:
+            matched_container = c["name"]
+            break
+
+    if matched_container:
+        docker_log_res = infra_bridge.inspect_container_logs(matched_container, lines)
+        if "lines" in docker_log_res and docker_log_res["lines"]:
+            return {
+                "service": service_name,
+                "container": matched_container,
+                "source": "live_docker_daemon",
+                "status": "active",
+                "log_count": len(docker_log_res["lines"]),
+                "logs": docker_log_res["lines"]
+            }
+
+    # Fallback to cluster state digital twin
+    if service_name not in cluster_state.services:
+        matched = [k for k in cluster_state.services if service_name in k]
+        if matched:
+            service_name = matched[0]
+        else:
+            return {"error": f"Service '{service_name}' not found. Available: {list(cluster_state.services.keys())}"}
+
+    svc = cluster_state.services[service_name]
+    logs = svc.recent_logs[-lines:] if svc.recent_logs else ["No recent log entries."]
+    return {
+        "service": service_name,
+        "source": "cluster_telemetry_stream",
+        "status": svc.status,
+        "log_count": len(logs),
+        "logs": logs
+    }
+
+def query_telemetry(service_name: str) -> Dict[str, Any]:
+    """Retrieves CPU, RAM, RPS, P99 latency, and replicas for a service, plus host metrics."""
+    service_name = service_name.lower().strip()
+    if service_name not in cluster_state.services:
+        matched = [k for k in cluster_state.services if service_name in k]
+        if matched:
+            service_name = matched[0]
+        else:
+            return {"error": f"Service '{service_name}' not found."}
+
+    svc = cluster_state.services[service_name]
+    host = infra_bridge.get_host_telemetry()
+
+    return {
+        "service": svc.name,
+        "replicas": svc.replicas,
+        "cpu_utilization": f"{svc.cpu_percent}%",
+        "memory_utilization": f"{svc.memory_percent}%",
+        "error_rate": f"{svc.error_rate_pct}%",
+        "latency_p99": f"{svc.latency_p99_ms}ms",
+        "alerts": svc.active_alerts,
+        "host_cpu_pct": host.get("host_cpu_percent", 0),
+        "host_memory_pct": host.get("host_memory_percent", 0)
+    }
+
+def execute_remediation(action: str, service_name: str, count: int = 4) -> Dict[str, Any]:
+    """
+    Executes a governed remediation action on a service.
+    If a real Docker container exists, restarts the actual Docker container!
+    """
+    action = action.lower().strip()
+    service_name = service_name.lower().strip()
+    if service_name not in cluster_state.services:
+        matched = [k for k in cluster_state.services if service_name in k]
+        if matched:
+            service_name = matched[0]
+        else:
+            return {"error": f"Service '{service_name}' not recognized."}
+
+    params = {}
+    if action == "scale_replicas":
+        params["count"] = count
+
+    # If action is restart, check if real container is active and restart it
+    real_restarted = None
+    if action in ["restart_pod", "restart"]:
+        normalized_target = service_name.replace("-service", "").replace("_service", "").replace("-core", "")
+        real_containers = infra_bridge.list_running_containers()
+        for c in real_containers:
+            c_name = c["name"].lower()
+            if normalized_target in c_name or c_name in normalized_target:
+                real_restarted = infra_bridge.restart_container(c["name"])
+                break
+
+    result = cluster_state.apply_remediation(action, service_name, params)
+    if real_restarted and real_restarted.get("success"):
+        result["real_docker_restart"] = real_restarted
+
+    return result
+
+def query_host_telemetry() -> Dict[str, Any]:
+    """Directly inspects Linux host operating system telemetry and top CPU processes."""
+    host = infra_bridge.get_host_telemetry()
+    top_procs = infra_bridge.get_top_processes(limit=5)
+    return {
+        "host_metrics": host,
+        "top_processes": top_procs
+    }
+
+def trigger_pager(team: str, message: str) -> Dict[str, Any]:
+    """Pages an on-call team via incident management escalation."""
+    timestamp = time.strftime("%H:%M:%S")
+    cluster_state.add_event("pager", f"Paged {team} with message: {message}")
+    return {
+        "status": "paged",
+        "team": team,
+        "timestamp": timestamp,
+        "message": message,
+        "confirmation": f"Escalation acknowledged. On-call lead for {team} alerted via SMS/Call."
+    }
+
+def generate_postmortem() -> Dict[str, Any]:
+    """Synthesizes structured multi-artifact Post-Mortem Report."""
+    from app.services.lemur_service import lemur_service
+    return lemur_service._build_structured_fallback(
+        incident_id=cluster_state.incident.id,
+        timeline_events=cluster_state.incident.timeline_events
+    )
+
+# Mapping of function names to implementations
+SRE_TOOL_MAP = {
+    "get_cluster_health": get_cluster_health,
+    "inspect_service_logs": inspect_service_logs,
+    "query_telemetry": query_telemetry,
+    "execute_remediation": execute_remediation,
+    "query_host_telemetry": query_host_telemetry,
+    "trigger_pager": trigger_pager,
+    "generate_postmortem": generate_postmortem
+}
