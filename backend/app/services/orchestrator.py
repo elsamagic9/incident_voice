@@ -124,15 +124,21 @@ class AgentOrchestrator:
 
         # 1. Handle confirmation / cancellation of staged remediation
         if self.awaiting_confirmation and self.staged_action:
-            confirm_words = ["confirm", "authorize", "execute", "yes", "proceed", "go ahead", "do it", "approved", "confirmed"]
-            cancel_words = ["cancel", "abort", "no", "stop", "dismiss", "negative", "don't"]
+            staged_at = self.staged_action.get("staged_at", 0)
+            if time.time() - staged_at > 30.0:
+                logger.info("Staged remediation timed out after 30s. Disengaging lock.")
+                self.staged_action = None
+                self.awaiting_confirmation = False
+            else:
+                confirm_words = ["confirm", "authorize", "execute", "yes", "proceed", "go ahead", "do it", "approved", "confirmed"]
+                cancel_words = ["cancel", "abort", "no", "stop", "dismiss", "negative", "don't"]
 
-            if any(w in lower for w in confirm_words):
-                spoken_text, tools = self.confirm_staged_remediation()
-                return spoken_text, tools, None
-            elif any(w in lower for w in cancel_words):
-                spoken_text = self.cancel_staged_remediation()
-                return spoken_text, [], None
+                if any(w in lower for w in confirm_words):
+                    spoken_text, tools = self.confirm_staged_remediation()
+                    return spoken_text, tools, None
+                elif any(w in lower for w in cancel_words):
+                    spoken_text = self.cancel_staged_remediation()
+                    return spoken_text, [], None
 
         # 2. Check for Post-Mortem trigger
         if any(k in lower for k in ["post-mortem", "postmortem", "wrap up", "incident resolved", "generate report", "incident review"]):

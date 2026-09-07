@@ -59,12 +59,22 @@ export function useVoiceStream() {
 
   // Connect WebSocket
   useEffect(() => {
+    const customWsBase = (import.meta as any).env?.VITE_WS_URL;
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const host = window.location.host;
-    const wsUrl = `${protocol}//${host}/ws/agent?engine=${activeEngine}`;
+    const wsUrl = customWsBase
+      ? `${customWsBase}${customWsBase.includes('?') ? '&' : '?'}engine=${activeEngine}`
+      : `${protocol}//${host}/ws/agent?engine=${activeEngine}`;
 
     const ws = new WebSocket(wsUrl);
     socketRef.current = ws;
+
+    // Heartbeat ping every 25s to keep cloud load balancers (Render/Fly.io) alive
+    const pingInterval = setInterval(() => {
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: 'ping' }));
+      }
+    }, 25000);
 
     ws.onopen = () => {
       console.log('Voice Agent WebSocket connected with engine:', activeEngine);
@@ -76,6 +86,7 @@ export function useVoiceStream() {
       console.log('Voice Agent WebSocket disconnected.');
       setIsConnected(false);
       setAgentStatus('idle');
+      clearInterval(pingInterval);
     };
 
     ws.onerror = (err) => {
@@ -205,6 +216,7 @@ export function useVoiceStream() {
     };
 
     return () => {
+      clearInterval(pingInterval);
       ws.close();
     };
   }, [enqueueBase64Chunk, stopPlayback, playSoundEffect]);

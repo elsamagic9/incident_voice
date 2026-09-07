@@ -104,12 +104,12 @@ export const MissionControlHeader: React.FC<Props> = ({
                   </span>
                 )}
                 {dockerActive ? (
-                  <span className="text-[10px] px-1.5 py-0.2 bg-emerald-950 text-emerald-300 rounded border border-emerald-800 font-mono flex items-center gap-1">
-                    <Boxes className="w-3 h-3 text-emerald-400" /> Docker Live
+                  <span className="text-[10px] px-1.5 py-0.5 bg-emerald-950 text-emerald-300 rounded border border-emerald-800 font-mono flex items-center gap-1" title="Connected to live Docker daemon on host machine">
+                    <Boxes className="w-3 h-3 text-emerald-400" /> Docker Live (Host)
                   </span>
                 ) : (
-                  <span className="text-[10px] px-1.5 py-0.2 bg-slate-900 text-slate-400 rounded border border-slate-800 font-mono flex items-center gap-1">
-                    <Cpu className="w-3 h-3" /> Host Telemetry
+                  <span className="text-[10px] px-1.5 py-0.5 bg-cyan-950/80 text-cyan-300 rounded border border-cyan-800/80 font-mono flex items-center gap-1" title="Running in Cloud Sandbox mode with stateful digital twin. Real Docker host socket active in local CLI mode.">
+                    <Cpu className="w-3 h-3 text-cyan-400" /> Cloud Sandbox Active
                   </span>
                 )}
               </div>

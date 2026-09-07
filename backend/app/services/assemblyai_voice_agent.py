@@ -350,6 +350,13 @@ class AssemblyAIVoiceAgentSession:
         if not self.staged_action:
             return None
 
+        # Expire if older than 30s
+        if time.time() - self.staged_action.get("staged_at", 0) > 30.0:
+            logger.info("Voice Agent staged action expired after 30 seconds.")
+            self.staged_action = None
+            self.awaiting_confirmation = False
+            return None
+
         action = self.staged_action["action"]
         service_name = self.staged_action["service_name"]
         params = self.staged_action.get("params", {})

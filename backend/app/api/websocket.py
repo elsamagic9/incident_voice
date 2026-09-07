@@ -327,6 +327,10 @@ async def voice_agent_websocket(websocket: WebSocket):
                     data = json.loads(message["text"])
                     msg_type = data.get("type")
 
+                    if msg_type == "ping":
+                        await send_json_safe({"type": "pong"})
+                        continue
+
                     if msg_type == "barge_in":
                         if current_tts_task and not current_tts_task.done():
                             current_tts_task.cancel()

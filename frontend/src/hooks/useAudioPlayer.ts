@@ -1,5 +1,13 @@
-import { useRef, useCallback } from 'react';
+import { useRef, useCallback, useEffect } from 'react';
 
+/**
+ * High-performance Web Audio playback hook.
+ * Reliably handles:
+ *  1. Raw PCM16 audio chunks (from AssemblyAI Voice Agent API)
+ *  2. Containerized MP3 / WAV audio chunks (from Edge-TTS / Neural TTS)
+ *  3. Instant barge-in cancellation and queue flushing
+ *  4. Browser autoplay policy auto-resume on first interaction
+ */
 export function useAudioPlayer() {
   const audioContextRef = useRef<AudioContext | null>(null);
   const audioQueueRef = useRef<ArrayBuffer[]>([]);
@@ -12,10 +20,58 @@ export function useAudioPlayer() {
       audioContextRef.current = new AudioCtx();
     }
     if (audioContextRef.current.state === 'suspended') {
-      audioContextRef.current.resume();
+      audioContextRef.current.resume().catch(() => {});
     }
     return audioContextRef.current;
   }, []);
+
+  // Browser Autoplay Policy listener: auto-resume AudioContext on first user touch/click/key
+  useEffect(() => {
+    const handleFirstGesture = () => {
+      if (audioContextRef.current && audioContextRef.current.state === 'suspended') {
+        audioContextRef.current.resume().catch(() => {});
+      }
+    };
+    window.addEventListener('pointerdown', handleFirstGesture, { passive: true });
+    window.addEventListener('keydown', handleFirstGesture, { passive: true });
+    return () => {
+      window.removeEventListener('pointerdown', handleFirstGesture);
+      window.removeEventListener('keydown', handleFirstGesture);
+    };
+  }, []);
+
+  /**
+   * Converts raw linear PCM16 ArrayBuffer into a playable AudioBuffer.
+   */
+  const pcm16ToAudioBuffer = (ctx: AudioContext, arrayBuffer: ArrayBuffer, sampleRate = 16000): AudioBuffer => {
+    const int16Array = new Int16Array(arrayBuffer);
+    const audioBuffer = ctx.createBuffer(1, int16Array.length, sampleRate);
+    const channelData = audioBuffer.getChannelData(0);
+    for (let i = 0; i < int16Array.length; i++) {
+      channelData[i] = int16Array[i] / 32768.0;
+    }
+    return audioBuffer;
+  };
+
+  /**
+   * Determines if the buffer contains containerized audio headers (RIFF/WAV or MP3 sync/ID3).
+   */
+  const isContainerizedAudio = (bytes: Uint8Array): boolean => {
+    if (bytes.length < 4) return false;
+    // RIFF (WAV) header
+    if (bytes[0] === 0x52 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x46) {
+      return true;
+    }
+    // ID3 (MP3) header
+    if (bytes[0] === 0x49 && bytes[1] === 0x44 && bytes[2] === 0x33) {
+      return true;
+    }
+    // MP3 Frame Sync: 11 bits set (0xFF followed by 0xEx)
+    if (bytes[0] === 0xff && (bytes[1] & 0xe0) === 0xe0) {
+      return true;
+    }
+    return false;
+  };
 
   const playNextChunk = useCallback(async () => {
     if (audioQueueRef.current.length === 0) {
@@ -26,9 +82,33 @@ export function useAudioPlayer() {
     isPlayingRef.current = true;
     const ctx = getAudioContext();
     const arrayBuffer = audioQueueRef.current.shift()!;
+    const bytes = new Uint8Array(arrayBuffer);
+
+    let audioBuffer: AudioBuffer | null = null;
 
     try {
-      const audioBuffer = await ctx.decodeAudioData(arrayBuffer);
+      if (isContainerizedAudio(bytes)) {
+        // Decode containerized MP3 or WAV
+        audioBuffer = await ctx.decodeAudioData(arrayBuffer);
+      } else {
+        // Raw linear PCM16 from Voice Agent API
+        audioBuffer = pcm16ToAudioBuffer(ctx, arrayBuffer, 16000);
+      }
+    } catch (err) {
+      // Fallback attempt: if decodeAudioData failed, try PCM16 interpretation
+      try {
+        audioBuffer = pcm16ToAudioBuffer(ctx, arrayBuffer, 16000);
+      } catch (fallbackErr) {
+        audioBuffer = null;
+      }
+    }
+
+    if (!audioBuffer) {
+      playNextChunk();
+      return;
+    }
+
+    try {
       const source = ctx.createBufferSource();
       source.buffer = audioBuffer;
       source.connect(ctx.destination);
@@ -40,7 +120,6 @@ export function useAudioPlayer() {
 
       source.start(0);
     } catch (err) {
-      // Decode error or abort
       playNextChunk();
     }
   }, [getAudioContext]);

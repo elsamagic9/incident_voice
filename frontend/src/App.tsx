@@ -135,7 +135,7 @@ export const App: React.FC = () => {
         {/* 2-Column War-Room Split */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 flex-1 items-stretch">
           {/* Left Column: Live Transcript HUD */}
-          <div className="lg:col-span-5 h-[620px]">
+          <div className="lg:col-span-5 min-h-[440px] lg:h-[620px]">
             <LiveTranscriptHUD
               turns={turns}
               interimTranscript={currentInterimTranscript}
