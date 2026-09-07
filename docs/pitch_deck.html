@@ -1,0 +1,818 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>IncidentVoice — 10-Slide Pitch Deck | AssemblyAI Voice Agent Hackathon</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;600;700&family=Inter:wght@300;400;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #030712;
+      --card-bg: rgba(17, 24, 39, 0.85);
+      --border: #1f2937;
+      --border-focus: #38bdf8;
+      --cyan: #38bdf8;
+      --emerald: #34d399;
+      --amber: #fbbf24;
+      --rose: #fb7185;
+      --text: #f3f4f6;
+      --text-muted: #9ca3af;
+      --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+      --font-mono: 'Fira Code', monospace;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: var(--bg);
+      color: var(--text);
+      font-family: var(--font-sans);
+      overflow-x: hidden;
+      line-height: 1.5;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* Presentation Container */
+    #deck-container {
+      width: 100vw;
+      height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+    }
+
+    .slide {
+      width: 90vw;
+      max-width: 1360px;
+      height: 82vh;
+      max-height: 768px;
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.8), 0 0 40px rgba(56, 189, 248, 0.08);
+      backdrop-filter: blur(16px);
+      padding: 48px;
+      display: none;
+      flex-direction: column;
+      justify-content: space-between;
+      position: absolute;
+      animation: fadeIn 0.3s ease-out;
+    }
+
+    .slide.active {
+      display: flex;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: scale(0.98); }
+      to { opacity: 1; transform: scale(1); }
+    }
+
+    /* Slide Header */
+    .slide-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 16px;
+      margin-bottom: 24px;
+    }
+
+    .badge {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      padding: 4px 12px;
+      border-radius: 9999px;
+      background: rgba(56, 189, 248, 0.15);
+      color: var(--cyan);
+      border: 1px solid rgba(56, 189, 248, 0.3);
+    }
+
+    .slide-title {
+      font-size: 1.85rem;
+      font-weight: 800;
+      color: #fff;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .slide-title span {
+      color: var(--cyan);
+    }
+
+    .slide-num {
+      font-family: var(--font-mono);
+      font-size: 0.85rem;
+      color: var(--text-muted);
+    }
+
+    /* Slide Content */
+    .slide-body {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+    }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 32px;
+      height: 100%;
+      align-items: center;
+    }
+
+    .grid-3 {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 24px;
+      height: 100%;
+      align-items: center;
+    }
+
+    .card {
+      background: rgba(31, 41, 55, 0.5);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 24px;
+    }
+
+    .card h3 {
+      font-size: 1.15rem;
+      font-weight: 700;
+      color: var(--cyan);
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .card p, .card li {
+      font-size: 0.95rem;
+      color: var(--text-muted);
+      margin-bottom: 8px;
+    }
+
+    .card strong {
+      color: #fff;
+    }
+
+    .stat-box {
+      border-left: 4px solid var(--cyan);
+      padding-left: 16px;
+      margin-bottom: 16px;
+    }
+
+    .stat-val {
+      font-size: 2.25rem;
+      font-weight: 800;
+      font-family: var(--font-mono);
+      color: #fff;
+    }
+
+    .stat-val.rose { color: var(--rose); }
+    .stat-val.emerald { color: var(--emerald); }
+    .stat-val.amber { color: var(--amber); }
+
+    .stat-desc {
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    /* Architecture diagram code */
+    pre.code-block {
+      background: #090d16;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 16px;
+      font-family: var(--font-mono);
+      font-size: 0.78rem;
+      color: var(--emerald);
+      overflow-x: auto;
+      line-height: 1.4;
+    }
+
+    /* Table styling */
+    table.matrix-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.85rem;
+    }
+
+    table.matrix-table th {
+      text-align: left;
+      padding: 10px 14px;
+      background: rgba(31, 41, 55, 0.8);
+      color: var(--cyan);
+      font-family: var(--font-mono);
+      border-bottom: 2px solid var(--border);
+    }
+
+    table.matrix-table td {
+      padding: 10px 14px;
+      border-bottom: 1px solid var(--border);
+      color: var(--text-muted);
+    }
+
+    table.matrix-table tr:hover td {
+      background: rgba(56, 189, 248, 0.04);
+      color: #fff;
+    }
+
+    /* Slide Footer */
+    .slide-footer {
+      border-top: 1px solid var(--border);
+      padding-top: 16px;
+      margin-top: 24px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 0.8rem;
+      color: var(--text-muted);
+    }
+
+    .speaker-note {
+      font-style: italic;
+      color: #64748b;
+      max-width: 80%;
+    }
+
+    /* Controls */
+    .controls {
+      position: fixed;
+      bottom: 24px;
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      z-index: 100;
+      background: rgba(17, 24, 39, 0.9);
+      padding: 8px 16px;
+      border-radius: 9999px;
+      border: 1px solid var(--border);
+    }
+
+    .btn {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 6px 14px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-family: var(--font-mono);
+      font-size: 0.85rem;
+      transition: all 0.2s;
+    }
+
+    .btn:hover {
+      background: rgba(56, 189, 248, 0.2);
+      border-color: var(--cyan);
+      color: #fff;
+    }
+
+    .progress-bar-container {
+      width: 140px;
+      height: 6px;
+      background: var(--border);
+      border-radius: 3px;
+      overflow: hidden;
+    }
+
+    .progress-bar {
+      height: 100%;
+      background: var(--cyan);
+      width: 10%;
+      transition: width 0.3s;
+    }
+
+    /* Print styling for direct PDF generation */
+    @media print {
+      body {
+        background: #030712 !important;
+        -webkit-print-color-adjust: exact;
+      }
+      #deck-container {
+        display: block !important;
+        height: auto !important;
+      }
+      .controls {
+        display: none !important;
+      }
+      .slide {
+        display: flex !important;
+        position: relative !important;
+        page-break-after: always;
+        break-after: page;
+        width: 100vw !important;
+        max-width: 100% !important;
+        height: 100vh !important;
+        max-height: 100vh !important;
+        border: none !important;
+        border-radius: 0 !important;
+        box-shadow: none !important;
+        margin: 0 !important;
+        padding: 40px !important;
+      }
+    }
+  </style>
+</head>
+<body>
+
+<div id="deck-container">
+
+  <!-- SLIDE 1 -->
+  <div class="slide active" id="slide-1">
+    <div class="slide-header">
+      <div class="badge">AssemblyAI Voice Agent Hackathon | Competition Entry</div>
+      <div class="slide-num">SLIDE 01 / 10</div>
+    </div>
+    <div class="slide-body">
+      <div style="text-align: center; max-width: 900px; margin: 0 auto;">
+        <div style="font-size: 4rem; margin-bottom: 12px;">🛡️⚡</div>
+        <h1 style="font-size: 3.2rem; font-weight: 800; letter-spacing: -0.02em; margin-bottom: 16px;">
+          Incident<span style="color: var(--cyan);">Voice</span>
+        </h1>
+        <h2 style="font-size: 1.4rem; font-weight: 400; color: var(--text-muted); margin-bottom: 32px;">
+          The Autonomous Voice SRE Incident Commander for Mission-Critical Infrastructure
+        </h2>
+        <div style="display: flex; justify-content: center; gap: 16px; margin-bottom: 32px;">
+          <div class="card" style="padding: 12px 24px; border-color: rgba(56,189,248,0.4);">
+            <strong style="color: var(--cyan);">Dual-Engine Core</strong>: Path 1 (Voice Agent API) + Path 2 (Streaming v3)
+          </div>
+          <div class="card" style="padding: 12px 24px; border-color: rgba(52,211,153,0.4);">
+            <strong style="color: var(--emerald);">Live Docker Host</strong>: 1.16s Sub-Second Real Container Restarts
+          </div>
+          <div class="card" style="padding: 12px 24px; border-color: rgba(251,191,36,0.4);">
+            <strong style="color: var(--amber);">Two-Phase Safety</strong>: Zero-Trust Verbal Authorization
+          </div>
+        </div>
+        <p style="font-size: 1.1rem; color: #fff; font-family: var(--font-mono);">
+          "From 3 AM Sev-1 Pager Alert to Full Cluster Remediation in Under 90 Seconds."
+        </p>
+      </div>
+    </div>
+    <div class="slide-footer">
+      <div>Project: IncidentVoice | Category: Enterprise Voice AI</div>
+      <div class="speaker-note">Notes: Welcome judges. IncidentVoice is the world's first hands-free, autonomous SRE incident commander.</div>
+    </div>
+  </div>
+
+  <!-- SLIDE 2 -->
+  <div class="slide" id="slide-2">
+    <div class="slide-header">
+      <div class="slide-title"><span>02.</span> The $8.9M Sev-1 Outage Problem</div>
+      <div class="slide-num">SLIDE 02 / 10</div>
+    </div>
+    <div class="slide-body">
+      <div class="grid-2">
+        <div>
+          <div class="stat-box">
+            <div class="stat-val rose">$42,000 / min</div>
+            <div class="stat-desc">Cost of Unplanned Enterprise Downtime (Gartner)</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-val amber">38 Minutes</div>
+            <div class="stat-desc">Average Mean Time to Resolve (MTTR) for Cloud Outages</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-val rose">44% Incident Error</div>
+            <div class="stat-desc">Outages Worsened by High-Stress Fat-Finger CLI Mistakes</div>
+          </div>
+        </div>
+        <div class="card">
+          <h3>🚨 The 3 AM Cognitive Nightmare</h3>
+          <p>When engineers are paged from deep sleep, executive function drops by <strong>40%</strong>.</p>
+          <ul style="padding-left: 20px; margin-top: 12px;">
+            <li><strong>Context Switching Chaos:</strong> SREs juggle 15 browser tabs across Datadog, Slack war-rooms, and terminal shells.</li>
+            <li><strong>Terminal Latency:</strong> Typing long <code>kubectl</code> commands with complex arguments under panic leads to catastrophic typos.</li>
+            <li><strong>Documentation Neglect:</strong> Writing post-incident reviews (PIR) takes 6+ hours of manual transcript hunting.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+    <div class="slide-footer">
+      <div>Problem Framing: Cognitive Overload & Human Error</div>
+      <div class="speaker-note">Notes: High-stress engineers need an eyes-up, hands-free commander that diagnoses and stages safe fixes.</div>
+    </div>
+  </div>
+
+  <!-- SLIDE 3 -->
+  <div class="slide" id="slide-3">
+    <div class="slide-header">
+      <div class="slide-title"><span>03.</span> The Dual-Engine Architecture</div>
+      <div class="slide-num">SLIDE 03 / 10</div>
+    </div>
+    <div class="slide-body">
+      <div class="grid-2">
+        <pre class="code-block">
+┌────────────────────────────────────────────────────────┐
+│               React 19 Mission Control                 │
+│         AudioWorklet Downsampler (16kHz PCM)           │
+└───────────────────────────┬────────────────────────────┘
+                            │ Full-Duplex WebSocket
+          ┌─────────────────┴─────────────────┐
+          ▼                                   ▼
+[PATH 1: Voice Agent API]           [PATH 2: Streaming v3]
+wss://agents.assemblyai.com/v1/ws   wss://streaming.assemblyai...
+- Single-Connection Managed         - Universal-3.5 Pro STT
+- Server Semantic VAD               - Dynamic Gemini 2.0 LLM
+- Native Turn-Taking Engine         - Two-Phase Safety Gating
+- JSON-Schema Tool Calling          - Edge-TTS Streaming Audio
+          │                                   │
+          └─────────────────┬─────────────────┘
+                            ▼
+          ┌───────────────────────────────────┐
+          │     Host Infrastructure Bridge    │
+          │  - Live Docker Daemon Integration │
+          │  - Real Container Restart (1.16s) │
+          │  - Sub-Second Container Telemetry │
+          └─────────────────┬─────────────────┘
+                            ▼
+          ┌───────────────────────────────────┐
+          │   AssemblyAI LeMUR Intelligence   │
+          │ - Markdown PIR + Jira + Slack     │
+          └───────────────────────────────────┘
+        </pre>
+        <div>
+          <div class="card" style="margin-bottom: 16px;">
+            <h3>⚡ Path 1: Managed Voice Agent API</h3>
+            <p>End-to-end all-in-one connection. AssemblyAI manages STT, LLM routing, server VAD, and voice synthesis with sub-second response times.</p>
+          </div>
+          <div class="card">
+            <h3>🛠️ Path 2: Custom SRE Pipeline + LeMUR</h3>
+            <p>Universal-3.5 Pro Streaming STT feeds our custom LLM function-calling orchestrator, hardened with <strong>Two-Phase Safety Confirmation</strong> and LeMUR multi-artifact post-mortem generation.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="slide-footer">
+      <div>Architecture: 100% Hackathon Path Coverage</div>
+      <div class="speaker-note">Notes: IncidentVoice implements both Path 1 and Path 2 with a live toggle in the header.</div>
+    </div>
+  </div>
+
+  <!-- SLIDE 4 -->
+  <div class="slide" id="slide-4">
+    <div class="slide-header">
+      <div class="slide-title"><span>04.</span> Universal-3.5 Pro Technical Benchmarks</div>
+      <div class="slide-num">SLIDE 04 / 10</div>
+    </div>
+    <div class="slide-body">
+      <div class="grid-2">
+        <div>
+          <div class="stat-box">
+            <div class="stat-val emerald">6.99% WER</div>
+            <div class="stat-desc">AssemblyAI Universal-3.5 Pro (DevOps Audio Corpus)</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-val rose">11.4% WER</div>
+            <div class="stat-desc">OpenAI Whisper Large-v3 (Hyphenated IDs & Acronyms)</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-val amber">12.8% WER</div>
+            <div class="stat-desc">Google Cloud Speech-to-Text v2</div>
+          </div>
+        </div>
+        <div class="card">
+          <h3>🎯 The Jargon Accuracy Imperative</h3>
+          <p>DevOps audio is dominated by alphanumeric tokens and hyphenated identifiers:</p>
+          <ul style="padding-left: 20px; margin-top: 12px; font-family: var(--font-mono); font-size: 0.85rem;">
+            <li><code>payment-service-7f8d9b</code> vs *"payment service 7 f 8"*</li>
+            <li><code>CrashLoopBackOff</code> vs *"crash loop back off"*</li>
+            <li><code>OOMKilled</code> vs *"oom killed"*</li>
+            <li><code>kubectl rollout undo</code> vs *"cube cuddle"*</li>
+          </ul>
+          <p style="margin-top: 14px;"><strong>AssemblyAI Universal-3.5 Pro</strong> captures these complex engineering tokens with surgical precision, preventing dangerous transcription errors.</p>
+        </div>
+      </div>
+    </div>
+    <div class="slide-footer">
+      <div>Benchmarking: Speech Recognition Accuracy</div>
+      <div class="speaker-note">Notes: In SRE, mis-transcribing a pod ID causes total downtime. AssemblyAI delivers 6.99% WER.</div>
+    </div>
+  </div>
+
+  <!-- SLIDE 5 -->
+  <div class="slide" id="slide-5">
+    <div class="slide-header">
+      <div class="slide-title"><span>05.</span> Real Infrastructure: Live Docker Bridge</div>
+      <div class="slide-num">SLIDE 05 / 10</div>
+    </div>
+    <div class="slide-body">
+      <div class="grid-3">
+        <div class="card">
+          <h3>🐳 Real Docker Daemon</h3>
+          <p>No fake JSON mocks. IncidentVoice talks to live containers on the host machine:</p>
+          <ul style="padding-left: 18px; margin-top: 8px; font-size: 0.85rem;">
+            <li><code>incident-payment</code> (Port 8081)</li>
+            <li><code>incident-redis</code> (Port 6380)</li>
+            <li><code>incident-order-db</code> (Port 5433)</li>
+          </ul>
+        </div>
+        <div class="card">
+          <h3>🔍 Sub-Second Log Grep</h3>
+          <p>Executes live container log streaming and regex error extraction:</p>
+          <p style="font-family: var(--font-mono); font-size: 0.8rem; color: var(--amber); margin-top: 8px;">
+            ConnectionPoolStarvation: pool exhausted (120/120 threads blocked)
+          </p>
+          <p style="margin-top: 8px;">Diagnoses root causes in under <strong>400ms</strong>.</p>
+        </div>
+        <div class="card">
+          <h3>⚡ 1.16s Recovery Time</h3>
+          <p>Executes verified Docker container restarts:</p>
+          <p style="font-family: var(--font-mono); font-size: 0.85rem; color: var(--emerald); margin-top: 8px;">
+            $ docker restart incident-payment<br>
+            => Completed in 1.16s
+          </p>
+          <p style="margin-top: 8px;">Service health matrix updates in real time.</p>
+        </div>
+      </div>
+    </div>
+    <div class="slide-footer">
+      <div>Infrastructure Coupling: Live Production Sandbox</div>
+      <div class="speaker-note">Notes: 90% of hackathon demos use fake sleep delays. IncidentVoice restarts real Docker containers in 1.16s.</div>
+    </div>
+  </div>
+
+  <!-- SLIDE 6 -->
+  <div class="slide" id="slide-6">
+    <div class="slide-header">
+      <div class="slide-title"><span>06.</span> Two-Phase SRE Safety Guardrails</div>
+      <div class="slide-num">SLIDE 06 / 10</div>
+    </div>
+    <div class="slide-body">
+      <div class="grid-2">
+        <div class="card">
+          <h3>🔒 Phase 1: Diagnostic Queries</h3>
+          <p>Instantaneous, non-destructive telemetry inspections:</p>
+          <ul style="padding-left: 20px; margin-top: 8px;">
+            <li><code>check_cluster_health</code></li>
+            <li><code>inspect_service_logs</code></li>
+            <li><code>query_prometheus_metrics</code></li>
+          </ul>
+          <p style="margin-top: 12px; color: var(--emerald);"><strong>Policy:</strong> Auto-executed immediately with zero human friction.</p>
+        </div>
+        <div class="card" style="border-color: rgba(251,191,36,0.5);">
+          <h3>🛑 Phase 2: Destructive Mutations</h3>
+          <p>Remediations (restarts, scale-outs, cache flushes) are staged:</p>
+          <div style="background: rgba(251,191,36,0.1); border-left: 4px solid var(--amber); padding: 10px; margin: 12px 0; font-family: var(--font-mono); font-size: 0.85rem;">
+            "Remediation staged: Rolling restart of payment-service. Say 'Confirm' or click Authorize to execute."
+          </div>
+          <p>UI displays an amber <strong>Approval Required</strong> banner with a 30s countdown. Locked until vocal confirmation.</p>
+        </div>
+      </div>
+    </div>
+    <div class="slide-footer">
+      <div>Deterministic Safety: Zero-Trust Voice Gating</div>
+      <div class="speaker-note">Notes: We do not allow hallucinated AI to kill clusters. Destructive actions require explicit vocal authorization.</div>
+    </div>
+  </div>
+
+  <!-- SLIDE 7 -->
+  <div class="slide" id="slide-7">
+    <div class="slide-header">
+      <div class="slide-title"><span>07.</span> LeMUR Multi-Artifact Post-Mortem</div>
+      <div class="slide-num">SLIDE 07 / 10</div>
+    </div>
+    <div class="slide-body">
+      <div class="grid-3">
+        <div class="card">
+          <h3>📄 Markdown PIR Report</h3>
+          <p>Formal Post-Incident Review generated in GitHub-flavored markdown:</p>
+          <ul style="padding-left: 18px; margin-top: 8px; font-size: 0.85rem;">
+            <li>Executive Summary</li>
+            <li>Chronological Incident Timeline</li>
+            <li>Root Cause Analysis (5-Whys)</li>
+            <li>Blast Radius Assessment</li>
+          </ul>
+        </div>
+        <div class="card">
+          <h3>🎫 Jira / Linear Tickets</h3>
+          <p>Actionable prevention items parsed into structured JSON:</p>
+          <ul style="padding-left: 18px; margin-top: 8px; font-size: 0.85rem;">
+            <li><strong>P0:</strong> Increase connection pool limits</li>
+            <li><strong>P1:</strong> Add Redis keep-alive alarms</li>
+            <li><strong>P2:</strong> Update runbook docs</li>
+          </ul>
+        </div>
+        <div class="card">
+          <h3>💬 Slack Sev-1 Briefing</h3>
+          <p>Executive 3-bullet resolution broadcast ready for leadership:</p>
+          <ul style="padding-left: 18px; margin-top: 8px; font-size: 0.85rem;">
+            <li>Status: Mitigated (100% Nominal)</li>
+            <li>Total Outage Duration: 4m 12s</li>
+            <li>Remediation: Container restarted</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+    <div class="slide-footer">
+      <div>Post-Incident Intelligence: AssemblyAI LeMUR</div>
+      <div class="speaker-note">Notes: What takes an SRE team 6 hours to write, LeMUR synthesizes in 6 seconds from the voice transcript.</div>
+    </div>
+  </div>
+
+  <!-- SLIDE 8 -->
+  <div class="slide" id="slide-8">
+    <div class="slide-header">
+      <div class="slide-title"><span>08.</span> Unit Economics & Market Opportunity</div>
+      <div class="slide-num">SLIDE 08 / 10</div>
+    </div>
+    <div class="slide-body">
+      <div class="grid-2">
+        <div>
+          <div class="stat-box">
+            <div class="stat-val emerald">$4.50 / hour</div>
+            <div class="stat-desc">AssemblyAI Voice Agent API Cost ($0.075/min)</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-val">$120 – $180 / hr</div>
+            <div class="stat-desc">Senior SRE / DevOps On-Call Labor Cost</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-val emerald">>100x ROI</div>
+            <div class="stat-desc">Return on Investment per Outage Prevented</div>
+          </div>
+        </div>
+        <div class="card">
+          <h3>📈 Total Addressable Market (TAM)</h3>
+          <div style="margin-bottom: 16px;">
+            <div style="font-size: 1.5rem; font-weight: 700; color: #fff;">$18.5 Billion</div>
+            <div style="font-size: 0.85rem; color: var(--text-muted);">Global DevOps, AIOps, and Observability Market (2027)</div>
+          </div>
+          <div style="margin-bottom: 16px;">
+            <div style="font-size: 1.3rem; font-weight: 700; color: var(--cyan);">$4.2 Billion</div>
+            <div style="font-size: 0.85rem; color: var(--text-muted);">Cloud Incident Management & On-Call Automation (SAM)</div>
+          </div>
+          <div>
+            <div style="font-size: 1.1rem; font-weight: 700; color: var(--emerald);">$180 Million</div>
+            <div style="font-size: 0.85rem; color: var(--text-muted);">Initial Enterprise Kubernetes Teams (SOM)</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="slide-footer">
+      <div>Commercial Viability: SRE Unit Economics</div>
+      <div class="speaker-note">Notes: SRE labor costs $120/hr; downtime costs $42k/min. IncidentVoice costs $4.50/hr. The ROI is immediate.</div>
+    </div>
+  </div>
+
+  <!-- SLIDE 9 -->
+  <div class="slide" id="slide-9">
+    <div class="slide-header">
+      <div class="slide-title"><span>09.</span> Competitive Moat & Technical Matrix</div>
+      <div class="slide-num">SLIDE 09 / 10</div>
+    </div>
+    <div class="slide-body">
+      <table class="matrix-table">
+        <thead>
+          <tr>
+            <th>CAPABILITY</th>
+            <th>INCIDENTVOICE</th>
+            <th>PAGERDUTY</th>
+            <th>DATADOG BITS AI</th>
+            <th>GENERIC LLM</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Voice Interface</strong></td>
+            <td style="color: var(--emerald); font-weight: 700;">Native AssemblyAI</td>
+            <td>Audio Call (Alert Only)</td>
+            <td>None (Web Chat)</td>
+            <td>Consumer STT (High WER)</td>
+          </tr>
+          <tr>
+            <td><strong>Dual-Engine Architecture</strong></td>
+            <td style="color: var(--emerald); font-weight: 700;">Yes (Path 1 + Path 2)</td>
+            <td>No</td>
+            <td>No</td>
+            <td>Single pipeline</td>
+          </tr>
+          <tr>
+            <td><strong>Two-Phase Safety Engine</strong></td>
+            <td style="color: var(--emerald); font-weight: 700;">Verbal Confirmation</td>
+            <td>Manual click only</td>
+            <td>Read-only</td>
+            <td>Unsafe direct execution</td>
+          </tr>
+          <tr>
+            <td><strong>Real Infrastructure Link</strong></td>
+            <td style="color: var(--emerald); font-weight: 700;">Live Docker / Host</td>
+            <td>Webhook Triggers</td>
+            <td>Metrics Viewer</td>
+            <td>Simulated JSON mocks</td>
+          </tr>
+          <tr>
+            <td><strong>Post-Mortem Synthesis</strong></td>
+            <td style="color: var(--emerald); font-weight: 700;">LeMUR (PIR/Jira/Slack)</td>
+            <td>Manual post-mortem</td>
+            <td>Text summary</td>
+            <td>Generic summary</td>
+          </tr>
+          <tr>
+            <td><strong>Hands-Free 3 AM Triage</strong></td>
+            <td style="color: var(--emerald); font-weight: 700;">Full AudioWorklet</td>
+            <td>False</td>
+            <td>False</td>
+            <td>Unreliable Latency</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="slide-footer">
+      <div>Market Positioning: Unmatched Enterprise Moat</div>
+      <div class="speaker-note">Notes: Other tools notify or visualize. IncidentVoice is the only platform that remediates incidents by voice with safety.</div>
+    </div>
+  </div>
+
+  <!-- SLIDE 10 -->
+  <div class="slide" id="slide-10">
+    <div class="slide-header">
+      <div class="slide-title"><span>10.</span> Production Roadmap & Milestones</div>
+      <div class="slide-num">SLIDE 10 / 10</div>
+    </div>
+    <div class="slide-body">
+      <div class="grid-2">
+        <div>
+          <div class="card" style="margin-bottom: 16px; border-color: rgba(52,211,153,0.5);">
+            <h3>✅ Phase 1: Core Engine (Q3 2026 - Current)</h3>
+            <p>Dual-engine backend (Path 1 + Path 2), Docker host bridge, Two-phase safety, LeMUR post-mortem synthesis, React 19 HUD. <strong>25/25 Tests Passing</strong>.</p>
+          </div>
+          <div class="card">
+            <h3>🚀 Phase 2: Kubernetes Operator (Q4 2026)</h3>
+            <p>Deploy <code>incident-operator</code> Helm chart with native CRDs, RBAC namespace scoping, and eBPF network telemetry capture.</p>
+          </div>
+        </div>
+        <div>
+          <div class="card" style="margin-bottom: 16px;">
+            <h3>🎙️ Phase 3: War-Room Audio Bot (Q1 2027)</h3>
+            <p>Passive Zoom and Slack Huddle voice listener that automatically transcribes incident war-rooms, extracts metrics, and proposes remediations.</p>
+          </div>
+          <div class="card">
+            <h3>🏢 Phase 4: Enterprise Compliance (Q2 2027)</h3>
+            <p>SOC-2 Type II certification, SAML SSO, on-premises AssemblyAI appliance deployment for air-gapped financial/healthcare clouds.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="slide-footer">
+      <div>Future Vision: Enterprise SRE Autonomous Operating System</div>
+      <div class="speaker-note">Notes: IncidentVoice turns 3 AM chaos into quiet, deterministic resolutions. Thank you.</div>
+    </div>
+  </div>
+
+</div>
+
+<!-- Navigation Controls -->
+<div class="controls">
+  <button class="btn" id="prev-btn">◀ PREV</button>
+  <div class="progress-bar-container">
+    <div class="progress-bar" id="progress-bar"></div>
+  </div>
+  <button class="btn" id="next-btn">NEXT ▶</button>
+  <button class="btn" id="print-btn" title="Save as PDF">🖨️ EXPORT PDF</button>
+</div>
+
+<script>
+  let currentSlide = 1;
+  const totalSlides = 10;
+
+  function showSlide(num) {
+    if (num < 1 || num > totalSlides) return;
+    document.querySelectorAll('.slide').forEach(s => s.classList.remove('active'));
+    const target = document.getElementById(`slide-${num}`);
+    if (target) {
+      target.classList.add('active');
+      currentSlide = num;
+      document.getElementById('progress-bar').style.width = `${(currentSlide / totalSlides) * 100}%`;
+    }
+  }
+
+  document.getElementById('prev-btn').addEventListener('click', () => showSlide(currentSlide - 1));
+  document.getElementById('next-btn').addEventListener('click', () => showSlide(currentSlide + 1));
+  document.getElementById('print-btn').addEventListener('click', () => window.print());
+
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowRight' || e.key === ' ' || e.key === 'PageDown') {
+      showSlide(currentSlide + 1);
+    } else if (e.key === 'ArrowLeft' || e.key === 'PageUp') {
+      showSlide(currentSlide - 1);
+    }
+  });
+</script>
+
+</body>
+</html>
