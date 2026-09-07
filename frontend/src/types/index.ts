@@ -81,3 +81,102 @@ export interface PostMortemData {
   action_items_tickets?: ActionItemTicket[];
   slack_briefing?: string;
 }
+
+// =============================================================================
+// Feature 1: SRE Runbook Workflow Engine Types
+// =============================================================================
+export interface RunbookStep {
+  step_number: number;
+  title: string;
+  description: string;
+  command_hint: string;
+  target_service: string;
+  action?: string | null;
+  action_args?: Record<string, any>;
+  verification_metric?: string | null;
+  status: 'pending' | 'in_progress' | 'completed' | 'failed' | 'skipped';
+  verification_result?: string | null;
+}
+
+export interface RunbookDefinition {
+  id: string;
+  title: string;
+  category: string;
+  severity: string;
+  estimated_minutes: number;
+  description: string;
+  steps: RunbookStep[];
+}
+
+export interface ActiveRunbookSession {
+  runbook_id: string;
+  title: string;
+  current_step_index: number;
+  total_steps: number;
+  started_at: number;
+  completed_at?: number | null;
+  status: 'active' | 'completed' | 'aborted';
+  steps: RunbookStep[];
+}
+
+// =============================================================================
+// Feature 2: Service Dependency Graph / Topology Map Types
+// =============================================================================
+export interface TopologyNode {
+  id: string;
+  name: string;
+  type: 'client' | 'gateway' | 'service' | 'database' | 'cache';
+  status: 'healthy' | 'degraded' | 'critical';
+  rps: number;
+  latency_p99_ms: number;
+  cpu_percent: number;
+  memory_percent: number;
+  error_rate_pct: number;
+  is_blast_radius: boolean;
+  is_bottleneck: boolean;
+  active_alerts: string[];
+  x: number;
+  y: number;
+}
+
+export interface TopologyEdge {
+  id: string;
+  source: string;
+  target: string;
+  rps: number;
+  latency_ms: number;
+  status: 'healthy' | 'congested' | 'critical';
+  error_rate_pct: number;
+  protocol: string;
+}
+
+export interface ServiceTopology {
+  nodes: TopologyNode[];
+  edges: TopologyEdge[];
+  blast_radius_service_ids: string[];
+  root_cause_service_id?: string | null;
+  cascading_failure_active: boolean;
+  total_cluster_rps: number;
+}
+
+// =============================================================================
+// Feature 3: Acoustic Incident Black Box / Flight Recorder Types
+// =============================================================================
+export interface BlackBoxMarker {
+  id: string;
+  time_seconds: number;
+  time_label: string;
+  speaker: 'system' | 'user' | 'agent' | 'alert';
+  transcript: string;
+  event_type: string;
+  is_key_milestone: boolean;
+}
+
+export interface BlackBoxSession {
+  incident_id: string;
+  total_duration_seconds: number;
+  audio_url: string;
+  audio_data_uri?: string | null;
+  waveform_peaks: number[];
+  markers: BlackBoxMarker[];
+}

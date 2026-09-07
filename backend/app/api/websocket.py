@@ -13,6 +13,8 @@ from app.services.orchestrator import agent_orchestrator
 from app.services.tts_service import tts_service
 from app.services.lemur_service import lemur_service
 from app.tools.infrastructure_bridge import infra_bridge
+from app.core.topology import get_service_topology
+from app.services.runbook_engine import runbook_engine
 
 logger = logging.getLogger("websocket_hub")
 router = APIRouter()
@@ -38,13 +40,18 @@ async def voice_agent_websocket(websocket: WebSocket):
         except Exception:
             pass
 
+    def get_cluster_sync_payload():
+        return {
+            "type": "cluster_sync",
+            "incident": cluster_state.incident.model_dump(),
+            "services": {k: v.model_dump() for k, v in cluster_state.services.items()},
+            "docker_active": infra_bridge.is_docker_available(),
+            "topology": get_service_topology(),
+            "active_runbook": runbook_engine.get_active_session()
+        }
+
     # Send initial cluster and incident state
-    await send_json_safe({
-        "type": "cluster_sync",
-        "incident": cluster_state.incident.model_dump(),
-        "services": {k: v.model_dump() for k, v in cluster_state.services.items()},
-        "docker_active": infra_bridge.is_docker_available()
-    })
+    await send_json_safe(get_cluster_sync_payload())
 
     # =========================================================================
     # Path 2: AssemblyAI Streaming v3 STT + Custom Orchestrator + LeMUR
@@ -92,11 +99,7 @@ async def voice_agent_websocket(websocket: WebSocket):
             })
 
         # Sync cluster state
-        await send_json_safe({
-            "type": "cluster_sync",
-            "incident": cluster_state.incident.model_dump(),
-            "services": {k: v.model_dump() for k, v in cluster_state.services.items()}
-        })
+        await send_json_safe(get_cluster_sync_payload())
 
         # Post-Mortem synthesized
         if postmortem:
@@ -184,12 +187,7 @@ async def voice_agent_websocket(websocket: WebSocket):
             "result": tool_event["result"],
             "timestamp": tool_event["timestamp"]
         })
-        await send_json_safe({
-            "type": "cluster_sync",
-            "incident": cluster_state.incident.model_dump(),
-            "services": {k: v.model_dump() for k, v in cluster_state.services.items()},
-            "docker_active": infra_bridge.is_docker_available()
-        })
+        await send_json_safe(get_cluster_sync_payload())
         if tool_event.get("result", {}).get("status") != "staged":
             await send_json_safe({"type": "agent_state", "state": "listening"})
 
@@ -370,12 +368,7 @@ async def voice_agent_websocket(websocket: WebSocket):
                                     "result": tool_event["result"],
                                     "timestamp": tool_event["timestamp"]
                                 })
-                                await send_json_safe({
-                                    "type": "cluster_sync",
-                                    "incident": cluster_state.incident.model_dump(),
-                                    "services": {k: v.model_dump() for k, v in cluster_state.services.items()},
-                                    "docker_active": infra_bridge.is_docker_available()
-                                })
+                                await send_json_safe(get_cluster_sync_payload())
                                 confirmation_text = tool_event.get("spoken_text") or f"Confirmed. Remediation executed for {tool_event['arguments']['service_name']}."
                                 await send_json_safe({
                                     "type": "turn",
@@ -396,12 +389,7 @@ async def voice_agent_websocket(websocket: WebSocket):
                                     "result": tool_event["result"],
                                     "timestamp": tool_event["timestamp"]
                                 })
-                            await send_json_safe({
-                                "type": "cluster_sync",
-                                "incident": cluster_state.incident.model_dump(),
-                                "services": {k: v.model_dump() for k, v in cluster_state.services.items()},
-                                "docker_active": infra_bridge.is_docker_available()
-                            })
+                            await send_json_safe(get_cluster_sync_payload())
                             await send_json_safe({
                                 "type": "turn",
                                 "speaker": "agent",
@@ -451,17 +439,64 @@ async def voice_agent_websocket(websocket: WebSocket):
                                 await handle_custom_orchestrator_turn(cmd_text)
 
                     elif msg_type == "reset_incident":
+                        cluster_state.reset_to_default_incident()
                         agent_orchestrator.reset()
+                        runbook_engine.reset()
+                        blackbox_service.reset()
                         if voice_agent_session:
                             voice_agent_session.cancel_staged_remediation()
-                        await send_json_safe({
-                            "type": "cluster_sync",
-                            "incident": cluster_state.incident.model_dump(),
-                            "services": {k: v.model_dump() for k, v in cluster_state.services.items()},
-                            "docker_active": infra_bridge.is_docker_available()
-                        })
+                        await send_json_safe(get_cluster_sync_payload())
+                        await send_json_safe({"type": "runbook_sync", "session": None})
                         await send_json_safe({"type": "agent_state", "state": "listening"})
                         await send_json_safe({"type": "system", "message": "Cluster & incident state reset to Sev-1 outage simulation."})
+
+                    elif msg_type == "start_runbook":
+                        rb_id = data.get("runbook_id", "runbook-pg-pool")
+                        spoken_text, session_data = runbook_engine.start_runbook(rb_id)
+                        await send_json_safe({"type": "runbook_sync", "session": session_data})
+                        await send_json_safe(get_cluster_sync_payload())
+                        await send_json_safe({
+                            "type": "turn",
+                            "speaker": "agent",
+                            "transcript": spoken_text,
+                            "end_of_turn": True,
+                            "timestamp": time.time()
+                        })
+                        current_tts_task = asyncio.create_task(stream_tts_to_client(spoken_text))
+
+                    elif msg_type == "advance_runbook":
+                        spoken_text, session_data, tools = runbook_engine.advance_runbook()
+                        for tool_event in tools:
+                            await send_json_safe({
+                                "type": "tool_executed",
+                                "tool_name": tool_event["tool_name"],
+                                "arguments": tool_event["arguments"],
+                                "result": tool_event["result"],
+                                "timestamp": tool_event["timestamp"]
+                            })
+                        await send_json_safe({"type": "runbook_sync", "session": session_data})
+                        await send_json_safe(get_cluster_sync_payload())
+                        await send_json_safe({
+                            "type": "turn",
+                            "speaker": "agent",
+                            "transcript": spoken_text,
+                            "end_of_turn": True,
+                            "timestamp": time.time()
+                        })
+                        current_tts_task = asyncio.create_task(stream_tts_to_client(spoken_text))
+
+                    elif msg_type == "abort_runbook":
+                        spoken_text, session_data = runbook_engine.abort_runbook()
+                        await send_json_safe({"type": "runbook_sync", "session": None})
+                        await send_json_safe(get_cluster_sync_payload())
+                        await send_json_safe({
+                            "type": "turn",
+                            "speaker": "agent",
+                            "transcript": spoken_text,
+                            "end_of_turn": True,
+                            "timestamp": time.time()
+                        })
+                        current_tts_task = asyncio.create_task(stream_tts_to_client(spoken_text))
 
                 except json.JSONDecodeError:
                     pass

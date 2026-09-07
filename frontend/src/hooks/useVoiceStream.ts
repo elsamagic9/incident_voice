@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { AgentStatus, IncidentRecord, ServiceNode, Turn, ToolExecution, PostMortemData, VoiceEngine, StagedRemediation } from '../types';
+import { AgentStatus, IncidentRecord, ServiceNode, Turn, ToolExecution, PostMortemData, VoiceEngine, StagedRemediation, ActiveRunbookSession, ServiceTopology } from '../types';
 import { useAudioPlayer } from './useAudioPlayer';
 
 export interface LatencyStats {
@@ -22,6 +22,8 @@ export function useVoiceStream() {
   const [executedTools, setExecutedTools] = useState<ToolExecution[]>([]);
   const [incident, setIncident] = useState<IncidentRecord | null>(null);
   const [services, setServices] = useState<Record<string, ServiceNode>>({});
+  const [topology, setTopology] = useState<ServiceTopology | null>(null);
+  const [activeRunbook, setActiveRunbook] = useState<ActiveRunbookSession | null>(null);
   const [postMortem, setPostMortem] = useState<PostMortemData | null>(null);
   const [audioLevel, setAudioLevel] = useState<number>(0);
   const [latency, setLatency] = useState<LatencyStats>({
@@ -182,6 +184,14 @@ export function useVoiceStream() {
             if (data.incident) setIncident(data.incident);
             if (data.services) setServices(data.services);
             if (data.docker_active !== undefined) setDockerActive(data.docker_active);
+            if (data.topology) setTopology(data.topology);
+            if (data.active_runbook !== undefined) setActiveRunbook(data.active_runbook);
+            break;
+
+          case 'runbook_sync':
+            if (data.session !== undefined) {
+              setActiveRunbook(data.session);
+            }
             break;
 
           case 'latency_breakdown':
@@ -362,6 +372,7 @@ export function useVoiceStream() {
 
   const selectEngine = useCallback((engine: VoiceEngine) => {
     if (engine === activeEngine) return;
+    stopPlayback();
     setActiveEngine(engine);
     if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
       socketRef.current.send(JSON.stringify({
@@ -370,7 +381,7 @@ export function useVoiceStream() {
       }));
     }
     playSoundEffect(880, 'sine', 0.1);
-  }, [activeEngine, playSoundEffect]);
+  }, [activeEngine, stopPlayback, playSoundEffect]);
 
   const authorizeRemediation = useCallback(() => {
     if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
@@ -397,6 +408,7 @@ export function useVoiceStream() {
       setExecutedTools([]);
       setPostMortem(null);
       setStagedRemediation(null);
+      setActiveRunbook(null);
       setAgentStatus('listening');
       playSoundEffect(659, 'triangle', 0.1);
     }
@@ -408,6 +420,38 @@ export function useVoiceStream() {
       socketRef.current.send(JSON.stringify({ type: 'barge_in' }));
     }
   }, [stopPlayback]);
+
+  const startRunbook = useCallback((runbookId: string) => {
+    if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
+      stopPlayback();
+      socketRef.current.send(JSON.stringify({
+        type: 'start_runbook',
+        runbook_id: runbookId
+      }));
+      playSoundEffect(880, 'sine', 0.1);
+    }
+  }, [stopPlayback, playSoundEffect]);
+
+  const advanceRunbook = useCallback(() => {
+    if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
+      stopPlayback();
+      socketRef.current.send(JSON.stringify({
+        type: 'advance_runbook'
+      }));
+      playSoundEffect(1046, 'sine', 0.1);
+    }
+  }, [stopPlayback, playSoundEffect]);
+
+  const abortRunbook = useCallback(() => {
+    if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
+      stopPlayback();
+      socketRef.current.send(JSON.stringify({
+        type: 'abort_runbook'
+      }));
+      setActiveRunbook(null);
+      playSoundEffect(440, 'sine', 0.08);
+    }
+  }, [stopPlayback, playSoundEffect]);
 
   return {
     isConnected,
@@ -421,6 +465,8 @@ export function useVoiceStream() {
     executedTools,
     incident,
     services,
+    topology,
+    activeRunbook,
     postMortem,
     audioLevel,
     latency,
@@ -433,6 +479,9 @@ export function useVoiceStream() {
     cancelRemediation,
     resetIncident,
     bargeIn,
+    startRunbook,
+    advanceRunbook,
+    abortRunbook,
     closePostMortem: () => setPostMortem(null)
   };
 }

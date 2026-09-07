@@ -1,21 +1,43 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   FileText, X, Check, Copy, Download, Sparkles, AlertOctagon, ShieldAlert,
-  Ticket, MessageSquare, Code, CheckCircle2
+  Ticket, MessageSquare, Code, CheckCircle2, Radio, Play, Pause, RotateCcw,
+  Volume2, Clock, User, Bot, AlertTriangle
 } from 'lucide-react';
-import { PostMortemData, ActionItemTicket } from '../types';
+import { PostMortemData, ActionItemTicket, BlackBoxSession, BlackBoxMarker } from '../types';
 
 interface Props {
   data: PostMortemData | null;
   onClose: () => void;
 }
 
-type TabType = 'pir' | 'tickets' | 'slack';
+type TabType = 'pir' | 'tickets' | 'slack' | 'blackbox';
 
 export const PostMortemViewer: React.FC<Props> = ({ data, onClose }) => {
   const [activeTab, setActiveTab] = useState<TabType>('pir');
   const [copied, setCopied] = useState(false);
   const [showRawJson, setShowRawJson] = useState(false);
+
+  // Black Box Audio Player State
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [playbackSpeed, setPlaybackSpeed] = useState(1);
+  const [blackbox, setBlackbox] = useState<BlackBoxSession | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  useEffect(() => {
+    // Fetch Black Box Flight Recorder Data
+    fetch('/api/incident/blackbox')
+      .then(res => res.json())
+      .then(d => setBlackbox(d))
+      .catch(err => console.warn('Could not fetch blackbox metadata:', err));
+  }, []);
+
+  useEffect(() => {
+    if (audioRef.current) {
+      audioRef.current.playbackRate = playbackSpeed;
+    }
+  }, [playbackSpeed]);
 
   if (!data) return null;
 
@@ -67,14 +89,86 @@ export const PostMortemViewer: React.FC<Props> = ({ data, onClose }) => {
 
   const slackBriefing = data.slack_briefing || fallbackSlack;
 
+  const totalDuration = blackbox?.total_duration_seconds || 90;
+  const waveformPeaks = blackbox?.waveform_peaks || Array.from({ length: 100 }, (_, i) => 0.1 + 0.4 * Math.sin(i * 0.3) ** 2);
+  const markers: BlackBoxMarker[] = blackbox?.markers || [
+    { id: '1', time_seconds: 0, time_label: '00:00', speaker: 'system', transcript: 'PagerDuty Sev-1 Alert: HighErrorRate on payment-gateway', event_type: 'alert', is_key_milestone: true },
+    { id: '2', time_seconds: 14, time_label: '00:14', speaker: 'user', transcript: 'What alerts are active and why is checkout failing?', event_type: 'voice', is_key_milestone: false },
+    { id: '3', time_seconds: 22, time_label: '00:22', speaker: 'agent', transcript: 'Payment service failing with 42% 503 errors due to DB pool exhaustion.', event_type: 'voice', is_key_milestone: true },
+    { id: '4', time_seconds: 47, time_label: '00:47', speaker: 'agent', transcript: 'Remediation staged: Rolling restart of payment-service. Awaiting confirmation.', event_type: 'remediation', is_key_milestone: true },
+    { id: '5', time_seconds: 70, time_label: '01:10', speaker: 'agent', transcript: 'Confirmed. Graceful rolling restart executed. Replacement pods healthy.', event_type: 'verification', is_key_milestone: true },
+    { id: '6', time_seconds: 84, time_label: '01:24', speaker: 'system', transcript: 'Incident Mitigated: All services returning to nominal health.', event_type: 'resolved', is_key_milestone: true }
+  ];
+
+  const simIntervalRef = useRef<number | null>(null);
+
+  const clearSimInterval = () => {
+    if (simIntervalRef.current) {
+      clearInterval(simIntervalRef.current);
+      simIntervalRef.current = null;
+    }
+  };
+
+  useEffect(() => {
+    return () => {
+      clearSimInterval();
+    };
+  }, []);
+
+  const togglePlay = () => {
+    if (!audioRef.current) return;
+    if (isPlaying) {
+      audioRef.current.pause();
+      clearSimInterval();
+      setIsPlaying(false);
+    } else {
+      clearSimInterval();
+      audioRef.current.play()
+        .then(() => {
+          setIsPlaying(true);
+        })
+        .catch((err) => {
+          console.warn('Audio playback blocked by browser, engaging simulated replay:', err);
+          setIsPlaying(true);
+          simIntervalRef.current = window.setInterval(() => {
+            setCurrentTime((prev) => {
+              const next = prev + 0.25 * playbackSpeed;
+              if (next >= totalDuration) {
+                clearSimInterval();
+                setIsPlaying(false);
+                return totalDuration;
+              }
+              return next;
+            });
+          }, 250);
+        });
+    }
+  };
+
+  const handleSeek = (seconds: number) => {
+    const clamped = Math.max(0, Math.min(totalDuration, seconds));
+    setCurrentTime(clamped);
+    if (audioRef.current) {
+      audioRef.current.currentTime = Math.min(clamped, totalDuration);
+    }
+  };
+
+  const formatSeconds = (sec: number) => {
+    const m = Math.floor(sec / 60);
+    const s = Math.floor(sec % 60);
+    return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+  };
+
   const handleCopy = async () => {
     let content = '';
     if (activeTab === 'pir') {
       content = data.markdown_report;
     } else if (activeTab === 'tickets') {
       content = JSON.stringify(tickets, null, 2);
-    } else {
+    } else if (activeTab === 'slack') {
       content = slackBriefing;
+    } else {
+      content = JSON.stringify(blackbox || markers, null, 2);
     }
 
     try {
@@ -96,6 +190,14 @@ export const PostMortemViewer: React.FC<Props> = ({ data, onClose }) => {
   };
 
   const handleDownload = () => {
+    if (activeTab === 'blackbox') {
+      const a = document.createElement('a');
+      a.href = '/api/incident/blackbox/audio.wav';
+      a.download = `incident-blackbox-${data.incident_id}.wav`;
+      a.click();
+      return;
+    }
+
     let content = '';
     let filename = '';
     let mimeType = 'text/plain';
@@ -122,9 +224,29 @@ export const PostMortemViewer: React.FC<Props> = ({ data, onClose }) => {
     URL.revokeObjectURL(url);
   };
 
+  // Find active marker based on currentTime
+  const activeMarker = markers.reduce((prev, curr) => {
+    return curr.time_seconds <= currentTime ? curr : prev;
+  }, markers[0]);
+
   return (
     <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
       <div className="bg-[#101522] border border-cyan-500/40 rounded-2xl w-full max-w-4xl max-h-[92vh] flex flex-col shadow-2xl overflow-hidden glow-cyan">
+        {/* Hidden Audio Element */}
+        <audio
+          ref={audioRef}
+          src="/api/incident/blackbox/audio.wav"
+          onTimeUpdate={() => {
+            if (audioRef.current) {
+              setCurrentTime(audioRef.current.currentTime);
+            }
+          }}
+          onEnded={() => {
+            clearSimInterval();
+            setIsPlaying(false);
+          }}
+        />
+
         {/* Top Header */}
         <div className="p-4 border-b border-slate-800 bg-slate-900/90 flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -133,9 +255,9 @@ export const PostMortemViewer: React.FC<Props> = ({ data, onClose }) => {
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h2 className="text-base font-bold text-white">Multi-Artifact Post-Mortem Synthesis</h2>
+                <h2 className="text-base font-bold text-white">Multi-Artifact Post-Mortem & Incident Black Box</h2>
                 <span className="text-[11px] px-2 py-0.5 rounded bg-cyan-950 text-cyan-300 border border-cyan-800 font-mono flex items-center gap-1">
-                  <Sparkles className="w-3 h-3 text-cyan-400" /> Synthesized via AssemblyAI LeMUR
+                  <Sparkles className="w-3 h-3 text-cyan-400" /> Powered by AssemblyAI LeMUR
                 </span>
               </div>
               <p className="text-xs text-slate-400">{data.incident_id}: {data.title}</p>
@@ -148,17 +270,24 @@ export const PostMortemViewer: React.FC<Props> = ({ data, onClose }) => {
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-medium transition"
             >
               {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-              {copied ? 'Copied' : activeTab === 'tickets' ? 'Copy JSON' : activeTab === 'slack' ? 'Copy Slack' : 'Copy Markdown'}
+              {copied ? 'Copied' : activeTab === 'tickets' ? 'Copy JSON' : activeTab === 'slack' ? 'Copy Slack' : activeTab === 'blackbox' ? 'Copy Flight Log' : 'Copy Markdown'}
             </button>
             <button
               onClick={handleDownload}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-semibold shadow-md transition"
             >
               <Download className="w-3.5 h-3.5" />
-              {activeTab === 'tickets' ? 'Export .json' : activeTab === 'slack' ? 'Export .txt' : 'Export .md'}
+              {activeTab === 'tickets' ? 'Export .json' : activeTab === 'slack' ? 'Export .txt' : activeTab === 'blackbox' ? 'Export .wav Audio' : 'Export .md'}
             </button>
             <button
-              onClick={onClose}
+              onClick={() => {
+                if (audioRef.current) {
+                  audioRef.current.pause();
+                }
+                clearSimInterval();
+                setIsPlaying(false);
+                onClose();
+              }}
               className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition"
             >
               <X className="w-5 h-5" />
@@ -166,11 +295,11 @@ export const PostMortemViewer: React.FC<Props> = ({ data, onClose }) => {
           </div>
         </div>
 
-        {/* 3-Artifact Tab Navigation Bar */}
-        <div className="flex items-center bg-slate-950 border-b border-slate-800 px-4 pt-2 gap-2 text-xs">
+        {/* 4-Artifact Tab Navigation Bar */}
+        <div className="flex items-center bg-slate-950 border-b border-slate-800 px-4 pt-2 gap-2 text-xs overflow-x-auto">
           <button
             onClick={() => setActiveTab('pir')}
-            className={`flex items-center gap-2 px-4 py-2 rounded-t-lg font-medium transition border-b-2 ${
+            className={`flex items-center gap-2 px-4 py-2 rounded-t-lg font-medium transition border-b-2 shrink-0 ${
               activeTab === 'pir'
                 ? 'bg-slate-900 text-cyan-400 border-cyan-400 font-semibold'
                 : 'text-slate-400 hover:text-slate-200 border-transparent'
@@ -182,7 +311,7 @@ export const PostMortemViewer: React.FC<Props> = ({ data, onClose }) => {
 
           <button
             onClick={() => setActiveTab('tickets')}
-            className={`flex items-center gap-2 px-4 py-2 rounded-t-lg font-medium transition border-b-2 ${
+            className={`flex items-center gap-2 px-4 py-2 rounded-t-lg font-medium transition border-b-2 shrink-0 ${
               activeTab === 'tickets'
                 ? 'bg-slate-900 text-amber-400 border-amber-400 font-semibold'
                 : 'text-slate-400 hover:text-slate-200 border-transparent'
@@ -194,7 +323,7 @@ export const PostMortemViewer: React.FC<Props> = ({ data, onClose }) => {
 
           <button
             onClick={() => setActiveTab('slack')}
-            className={`flex items-center gap-2 px-4 py-2 rounded-t-lg font-medium transition border-b-2 ${
+            className={`flex items-center gap-2 px-4 py-2 rounded-t-lg font-medium transition border-b-2 shrink-0 ${
               activeTab === 'slack'
                 ? 'bg-slate-900 text-emerald-400 border-emerald-400 font-semibold'
                 : 'text-slate-400 hover:text-slate-200 border-transparent'
@@ -202,6 +331,18 @@ export const PostMortemViewer: React.FC<Props> = ({ data, onClose }) => {
           >
             <MessageSquare className="w-4 h-4" />
             <span>(c) Slack Sev-1 Outage Briefing</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('blackbox')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-t-lg font-medium transition border-b-2 shrink-0 ${
+              activeTab === 'blackbox'
+                ? 'bg-slate-900 text-cyan-300 border-cyan-300 font-bold glow-cyan'
+                : 'text-slate-400 hover:text-slate-200 border-transparent'
+            }`}
+          >
+            <Radio className="w-4 h-4 text-cyan-400" />
+            <span>(d) Acoustic Black Box Audio Replay</span>
           </button>
         </div>
 
@@ -395,6 +536,210 @@ export const PostMortemViewer: React.FC<Props> = ({ data, onClose }) => {
                       <span>Ready for stakeholder copy-paste</span>
                     </div>
                   </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* TAB 4: ACOUSTIC INCIDENT BLACK BOX REPLAY */}
+          {activeTab === 'blackbox' && (
+            <div className="space-y-5">
+              {/* Introduction Card */}
+              <div className="bg-slate-900/70 p-4 rounded-xl border border-slate-800 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 rounded-xl bg-cyan-500/20 text-cyan-400 border border-cyan-500/40">
+                    <Radio className="w-6 h-6 animate-pulse" />
+                  </div>
+                  <div>
+                    <h3 className="text-xs font-bold text-white uppercase tracking-wide">
+                      Acoustic War-Room Flight Recorder & Audio Replay
+                    </h3>
+                    <p className="text-xs text-slate-400">
+                      Synchronized cockpit audio log capturing verbal triage, emergency commands, and automated mitigations.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-800 font-mono">
+                    16kHz PCM High-Fidelity
+                  </span>
+                </div>
+              </div>
+
+              {/* Master Audio Controller Box */}
+              <div className="bg-slate-950/90 border border-cyan-500/40 rounded-xl p-5 shadow-2xl flex flex-col gap-4 glow-cyan">
+                {/* Transport Bar */}
+                <div className="flex items-center justify-between gap-4">
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={togglePlay}
+                      className="w-11 h-11 rounded-full bg-cyan-500 hover:bg-cyan-400 text-slate-950 flex items-center justify-center font-bold shadow-lg shadow-cyan-500/30 transition"
+                    >
+                      {isPlaying ? <Pause className="w-5 h-5 fill-current" /> : <Play className="w-5 h-5 fill-current ml-0.5" />}
+                    </button>
+                    <button
+                      onClick={() => handleSeek(0)}
+                      className="p-2.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-800 transition"
+                      title="Rewind to 00:00"
+                    >
+                      <RotateCcw className="w-4 h-4" />
+                    </button>
+                  </div>
+
+                  {/* Time Counter */}
+                  <div className="flex items-center gap-2 font-mono text-xs">
+                    <Clock className="w-3.5 h-3.5 text-cyan-400" />
+                    <span className="text-cyan-300 font-bold text-sm">{formatSeconds(currentTime)}</span>
+                    <span className="text-slate-600">/</span>
+                    <span className="text-slate-400">{formatSeconds(totalDuration)}</span>
+                  </div>
+
+                  {/* Speed Selector */}
+                  <div className="flex items-center gap-1.5 bg-slate-900 p-1 rounded-lg border border-slate-800 text-[11px] font-mono">
+                    {[1, 1.5, 2].map((sp) => (
+                      <button
+                        key={sp}
+                        onClick={() => setPlaybackSpeed(sp)}
+                        className={`px-2 py-1 rounded transition ${
+                          playbackSpeed === sp
+                            ? 'bg-cyan-500 text-slate-950 font-bold'
+                            : 'text-slate-400 hover:text-white'
+                        }`}
+                      >
+                        {sp}x
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Waveform Bar Canvas / Scrubber */}
+                <div className="relative py-2 select-none">
+                  <div
+                    onClick={(e) => {
+                      const rect = e.currentTarget.getBoundingClientRect();
+                      const ratio = (e.clientX - rect.left) / rect.width;
+                      handleSeek(ratio * totalDuration);
+                    }}
+                    className="h-16 w-full flex items-end justify-between gap-[2px] cursor-pointer bg-slate-900/60 p-2 rounded-lg border border-slate-800/80 relative"
+                  >
+                    {waveformPeaks.map((peak, idx) => {
+                      const barTime = (idx / waveformPeaks.length) * totalDuration;
+                      const isPast = barTime <= currentTime;
+                      const isCurrent = Math.abs(barTime - currentTime) < (totalDuration / waveformPeaks.length);
+                      return (
+                        <div
+                          key={idx}
+                          style={{ height: `${Math.max(12, peak * 100)}%` }}
+                          className={`flex-1 rounded-t-sm transition-colors duration-75 ${
+                            isCurrent
+                              ? 'bg-cyan-300 shadow-md shadow-cyan-400'
+                              : isPast
+                              ? 'bg-cyan-500/80'
+                              : 'bg-slate-700/50 hover:bg-slate-600'
+                          }`}
+                        />
+                      );
+                    })}
+
+                    {/* Scrubber Playhead Line */}
+                    <div
+                      style={{ left: `${(currentTime / totalDuration) * 100}%` }}
+                      className="absolute top-0 bottom-0 w-0.5 bg-cyan-300 shadow-lg pointer-events-none"
+                    >
+                      <div className="w-2.5 h-2.5 rounded-full bg-cyan-300 -ml-1 -mt-1 shadow" />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Jump-to-Event Bookmarks Bar */}
+                <div className="flex items-center gap-2 overflow-x-auto pb-1 text-[11px] font-mono">
+                  <span className="text-slate-500 shrink-0">Jump To:</span>
+                  {markers.filter(m => m.is_key_milestone).map((m) => (
+                    <button
+                      key={m.id}
+                      onClick={() => handleSeek(m.time_seconds)}
+                      className={`px-2 py-1 rounded-lg border shrink-0 transition flex items-center gap-1.5 ${
+                        activeMarker.id === m.id
+                          ? 'bg-cyan-950 text-cyan-300 border-cyan-500 font-bold'
+                          : 'bg-slate-900 text-slate-300 border-slate-800 hover:border-slate-700'
+                      }`}
+                    >
+                      <span className="text-[10px] text-cyan-400">{m.time_label}</span>
+                      <span className="truncate max-w-[140px]">{m.transcript.split(':')[0]}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Synchronized Live Transcript Karaoke Stream */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-slate-300">
+                    Synchronized Incident Audio Transcript
+                  </h4>
+                  <span className="text-[10px] font-mono text-slate-500">
+                    Auto-highlights with playback
+                  </span>
+                </div>
+
+                <div className="space-y-2.5 max-h-72 overflow-y-auto pr-1">
+                  {markers.map((m) => {
+                    const isActive = activeMarker.id === m.id;
+                    const isAgent = m.speaker === 'agent';
+                    const isAlert = m.event_type === 'alert';
+
+                    return (
+                      <div
+                        key={m.id}
+                        onClick={() => handleSeek(m.time_seconds)}
+                        className={`p-3 rounded-xl border transition cursor-pointer flex items-start gap-3 ${
+                          isActive
+                            ? 'bg-cyan-950/40 border-cyan-400 shadow-md ring-1 ring-cyan-400/40 glow-cyan'
+                            : 'bg-slate-900/60 border-slate-800/80 hover:bg-slate-900/90'
+                        }`}
+                      >
+                        <div className="shrink-0 mt-0.5">
+                          {isAlert ? (
+                            <div className="p-1.5 rounded-lg bg-red-500/20 text-red-400 border border-red-500/40">
+                              <AlertTriangle className="w-4 h-4" />
+                            </div>
+                          ) : isAgent ? (
+                            <div className="p-1.5 rounded-lg bg-cyan-500/20 text-cyan-400 border border-cyan-500/40">
+                              <Bot className="w-4 h-4" />
+                            </div>
+                          ) : (
+                            <div className="p-1.5 rounded-lg bg-indigo-500/20 text-indigo-400 border border-indigo-500/40">
+                              <User className="w-4 h-4" />
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between mb-1">
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs font-bold text-white">
+                                {isAlert ? 'PagerDuty Alert System' : isAgent ? 'IncidentVoice Commander' : 'On-Call SRE Engineer'}
+                              </span>
+                              <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-slate-800 text-slate-400">
+                                {m.time_label}
+                              </span>
+                            </div>
+
+                            {isActive && (
+                              <span className="text-[10px] font-mono text-cyan-400 font-bold animate-pulse flex items-center gap-1">
+                                <Volume2 className="w-3 h-3" /> Playing Now
+                              </span>
+                            )}
+                          </div>
+
+                          <p className={`text-xs leading-relaxed ${isActive ? 'text-cyan-100 font-medium' : 'text-slate-300'}`}>
+                            {m.transcript}
+                          </p>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             </div>

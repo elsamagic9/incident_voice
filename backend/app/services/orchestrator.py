@@ -35,6 +35,13 @@ class AgentOrchestrator:
         self.staged_action = None
         self.awaiting_confirmation = False
         cluster_state.reset_to_default_incident()
+        try:
+            from app.services.runbook_engine import runbook_engine
+            runbook_engine.reset()
+            from app.services.blackbox_service import blackbox_service
+            blackbox_service.reset()
+        except Exception:
+            pass
 
     def confirm_staged_remediation(self) -> Tuple[str, List[Dict[str, Any]]]:
         """Directly executes the currently staged remediation (e.g. via UI Authorize button)."""
@@ -117,13 +124,19 @@ class AgentOrchestrator:
         user_transcript = user_transcript.strip()
         self.history.append({"speaker": "user", "transcript": user_transcript})
         cluster_state.add_event("voice", f"Engineer: \"{user_transcript}\"")
+        try:
+            from app.services.blackbox_service import blackbox_service
+            blackbox_service.record_event("user", user_transcript, "voice")
+        except Exception:
+            pass
 
         executed_tools: List[Dict[str, Any]] = []
         postmortem_result: Optional[Dict[str, Any]] = None
         lower = user_transcript.lower()
 
         # 1. Handle confirmation / cancellation of staged remediation
-        if self.awaiting_confirmation and self.staged_action:
+        is_runbook_cmd = any(k in lower for k in ["runbook", "step"])
+        if self.awaiting_confirmation and self.staged_action and not is_runbook_cmd:
             staged_at = self.staged_action.get("staged_at", 0)
             if time.time() - staged_at > 30.0:
                 logger.info("Staged remediation timed out after 30s. Disengaging lock.")
@@ -135,9 +148,19 @@ class AgentOrchestrator:
 
                 if any(w in lower for w in confirm_words):
                     spoken_text, tools = self.confirm_staged_remediation()
+                    try:
+                        from app.services.blackbox_service import blackbox_service
+                        blackbox_service.record_event("agent", spoken_text, "remediation")
+                    except Exception:
+                        pass
                     return spoken_text, tools, None
                 elif any(w in lower for w in cancel_words):
                     spoken_text = self.cancel_staged_remediation()
+                    try:
+                        from app.services.blackbox_service import blackbox_service
+                        blackbox_service.record_event("agent", spoken_text, "voice")
+                    except Exception:
+                        pass
                     return spoken_text, [], None
 
         # 2. Check for Post-Mortem trigger
@@ -152,6 +175,11 @@ class AgentOrchestrator:
             spoken_text = "Incident review complete. I have synthesized the root cause, timeline, and action items via AssemblyAI LeMUR. The report is ready on your mission control console."
             self.history.append({"speaker": "agent", "transcript": spoken_text})
             cluster_state.add_event("voice", f"IncidentVoice: \"{spoken_text}\"")
+            try:
+                from app.services.blackbox_service import blackbox_service
+                blackbox_service.record_event("agent", spoken_text, "voice")
+            except Exception:
+                pass
             return spoken_text, executed_tools, postmortem_result
 
         # 3. Dynamic Function Calling with LLM (Gemini 2.0 Flash / OpenAI)
@@ -162,6 +190,11 @@ class AgentOrchestrator:
                 executed_tools.extend(tools)
                 self.history.append({"speaker": "agent", "transcript": spoken_text})
                 cluster_state.add_event("voice", f"IncidentVoice: \"{spoken_text}\"")
+                try:
+                    from app.services.blackbox_service import blackbox_service
+                    blackbox_service.record_event("agent", spoken_text, "voice")
+                except Exception:
+                    pass
                 return spoken_text, executed_tools, None
             except Exception as e:
                 logger.error(f"LLM function calling error, falling back to deterministic fast engine: {e}")
@@ -171,6 +204,11 @@ class AgentOrchestrator:
         executed_tools.extend(tools)
         self.history.append({"speaker": "agent", "transcript": spoken_text})
         cluster_state.add_event("voice", f"IncidentVoice: \"{spoken_text}\"")
+        try:
+            from app.services.blackbox_service import blackbox_service
+            blackbox_service.record_event("agent", spoken_text, "voice")
+        except Exception:
+            pass
         return spoken_text, executed_tools, None
 
     def _deterministic_agent_reasoning(self, text: str) -> Tuple[str, List[Dict[str, Any]]]:
@@ -334,6 +372,77 @@ class AgentOrchestrator:
             elif any(w in lower for w in ["crash", "payment", "p1 outage", "503"]):
                 res = cluster_state.simulate_scenario("crash_payment")
                 return "Simulated Sev-1 crash injected on payment-service. Error rate spiked to 42.6% with pod crashloop.", tools
+
+        # 7. SRE Runbook Workflow Engine
+        elif any(w in lower for w in ["runbook", "standard operating procedure", "sop"]):
+            if any(w in lower for w in ["list", "available", "what runbooks", "catalog", "options"]):
+                res = SRE_TOOL_MAP["list_runbooks"]()
+                tools.append({
+                    "tool_name": "list_runbooks",
+                    "arguments": {},
+                    "result": res,
+                    "timestamp": time.time()
+                })
+                titles = [rb["title"] for rb in res.get("runbooks", [])]
+                return f"Available SRE Runbooks: {'; '.join(titles)}. Say 'Start runbook postgres' or 'Start runbook redis' to begin.", tools
+
+            elif any(w in lower for w in ["abort", "cancel", "stop"]):
+                res = SRE_TOOL_MAP["abort_runbook"]()
+                tools.append({
+                    "tool_name": "abort_runbook",
+                    "arguments": {},
+                    "result": res,
+                    "timestamp": time.time()
+                })
+                return res.get("spoken", "Runbook aborted."), tools
+
+            elif any(w in lower for w in ["advance", "next", "continue", "proceed"]) or ("execute" in lower and "step" in lower):
+                res = SRE_TOOL_MAP["advance_runbook"]()
+                tools.append({
+                    "tool_name": "advance_runbook",
+                    "arguments": {},
+                    "result": res,
+                    "timestamp": time.time()
+                })
+                if res.get("executed_tools"):
+                    tools.extend(res["executed_tools"])
+                return res.get("spoken", "Runbook step advanced."), tools
+
+            else:
+                res = SRE_TOOL_MAP["start_runbook"](lower)
+                tools.append({
+                    "tool_name": "start_runbook",
+                    "arguments": {"runbook_id": lower},
+                    "result": res,
+                    "timestamp": time.time()
+                })
+                return res.get("spoken", "Runbook started."), tools
+
+        elif any(w in lower for w in ["next step", "advance step", "continue runbook", "execute step", "proceed with step", "next runbook step"]) or \
+             (runbook_engine.active_session and runbook_engine.active_session.status == "active" and any(w in lower for w in ["next step", "execute step", "advance", "continue step"])):
+            res = SRE_TOOL_MAP["advance_runbook"]()
+            tools.append({
+                "tool_name": "advance_runbook",
+                "arguments": {},
+                "result": res,
+                "timestamp": time.time()
+            })
+            if res.get("executed_tools"):
+                tools.extend(res["executed_tools"])
+            return res.get("spoken", "Runbook step advanced."), tools
+
+        # 8. Service Dependency Graph & Blast Radius
+        elif any(w in lower for w in ["topology", "dependency graph", "blast radius", "dependencies", "service map"]):
+            res = SRE_TOOL_MAP["get_service_topology"]()
+            tools.append({
+                "tool_name": "get_service_topology",
+                "arguments": {},
+                "result": res,
+                "timestamp": time.time()
+            })
+            blast = res.get("blast_radius_service_ids", [])
+            blast_txt = f"Active blast radius impacts {', '.join(blast)}." if blast else "No cascading blast radius detected."
+            return f"Service dependency topology analyzed. Ingress gateway routes to Payment Service and Auth. {blast_txt}", tools
 
         # Default SRE response
         return (

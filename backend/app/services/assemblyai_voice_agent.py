@@ -180,6 +180,11 @@ class AssemblyAIVoiceAgentSession:
                 if end_of_turn:
                     self.history.append({"speaker": "user", "transcript": transcript})
                     cluster_state.add_event("voice", f"Engineer: \"{transcript}\"")
+                    try:
+                        from app.services.blackbox_service import blackbox_service
+                        blackbox_service.record_event("user", transcript, "voice")
+                    except Exception:
+                        pass
                 if self.on_user_turn:
                     await self._call_cb(self.on_user_turn, transcript, end_of_turn, confidence)
 
@@ -191,6 +196,11 @@ class AssemblyAIVoiceAgentSession:
                 if end_of_turn:
                     self.history.append({"speaker": "agent", "transcript": agent_text})
                     cluster_state.add_event("voice", f"IncidentVoice: \"{agent_text}\"")
+                    try:
+                        from app.services.blackbox_service import blackbox_service
+                        blackbox_service.record_event("agent", agent_text, "voice")
+                    except Exception:
+                        pass
                 if self.on_agent_turn:
                     await self._call_cb(self.on_agent_turn, agent_text, end_of_turn)
 

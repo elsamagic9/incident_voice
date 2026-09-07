@@ -13,8 +13,9 @@
 * **Core Value Pillars:**
   1. **Dual-Engine Flexibility:** Voice Agent API (Path 1) for end-to-end all-in-one execution + Streaming v3 STT (Path 2) for custom enterprise orchestration.
   2. **Deterministic Safety Guardrails:** Two-phase voice staging prevents catastrophic automated outages (`"Say 'Confirm' to execute"`).
-  3. **Live Infrastructure Bridge:** Real-time diagnostics and sub-second container recovery against live production Docker daemons.
-  4. **Multi-Artifact Post-Mortem:** Automated Markdown PIRs, Jira P0 tickets, and Slack outage briefings powered by AssemblyAI LeMUR.
+  3. **Live Infrastructure & Topology Graph:** Real-time diagnostics against live Docker daemons with dynamic SVG dependency blast-radius mapping.
+  4. **Voice-Guided Runbook Engine:** Interactive SOP execution with automated live telemetry verification gates.
+  5. **Acoustic Black Box & LeMUR Synthesis:** 90s synchronized incident audio flight recorder plus automated Markdown PIRs, Jira P0 tickets, and Slack outage briefings.
 * **Presenter Notes:**
   > "Welcome judges. Every engineer knows the terror of being paged at 3 AM for a Sev-1 outage. Your heart races, your brain is foggy, and typing complex cluster commands in a panic leads to catastrophic typos. IncidentVoice is the world's first Autonomous Voice SRE Incident Commander that pairs AssemblyAI's voice intelligence with real containerized infrastructure."
 
@@ -102,21 +103,22 @@
     - `incident-payment`: Python/FastAPI microservice exhibiting simulated connection starvation.
     - `incident-redis`: Live cache store on port 6380.
     - `incident-order-db`: Live PostgreSQL database on port 5433.
-* **SRE Tool Arsenal:**
+* **SRE Tool Arsenal & Topology Mapping:**
   - `check_cluster_health`: Real-time container statuses, memory footprints, and CPU utilization.
   - `inspect_service_logs`: Direct log extraction from Docker (`docker logs incident-payment --tail 50`) with regex error grep.
   - `execute_remediation`: Real container restarts (`docker restart incident-payment`) executed in **1.16 seconds**.
   - `scale_service`: Dynamic replica scaling and worker thread adjustment.
+  - **Live Topology Graph:** Real-time SVG dependency map visualizing traffic rates, bottleneck degradation, and cascading blast radiuses.
 * **Presenter Notes:**
-  > "90% of hackathon AI projects use mock JSON. IncidentVoice operates against real, live Docker containers on the host. When our voice agent inspects logs, it reads the active Docker daemon. When it executes a rolling restart, the actual container restarts in 1.16 seconds, and the health status changes live on your screen."
+  > "90% of hackathon AI projects use mock JSON. IncidentVoice operates against real, live Docker containers on the host with an interactive topology graph. When our voice agent inspects logs, it reads the active Docker daemon. When it executes a rolling restart, the actual container restarts in 1.16 seconds, and the dependency topology updates live on your screen."
 
 ---
 
-## Slide 6: Two-Phase SRE Safety Engine
-* **Slide Title:** Zero-Trust Voice Guardrails: Staged Execution with Vocal Confirmation
+## Slide 6: Two-Phase SRE Safety & Runbook Engine
+* **Slide Title:** Zero-Trust Guardrails: Two-Phase Safety & Voice-Guided Runbooks
 * **The Safety Dilemma:**
   - An autonomous AI with direct infrastructure credentials can cause catastrophic damage if it misinterprets a command or acts on an unverified hallucination.
-* **The Two-Phase Architecture:**
+* **The Two-Phase Architecture & Runbook SOPs:**
   1. **Phase 1: Diagnostic Queries & Non-Destructive Actions:**
      - Tools like `check_cluster_health` and `inspect_service_logs` execute instantly and stream results.
   2. **Phase 2: Destructive Mutations (Restarts, Rollbacks, Cache Flushes):**
@@ -124,25 +126,27 @@
      - Agent vocalizes: *"Remediation staged: Rolling restart of payment-service. Say 'Confirm' or click Authorize to execute."*
      - UI triggers an amber **Approval Required** banner with a 30-second countdown.
      - Execution is locked until explicit vocal confirmation (*"Confirm"*, *"Approved"*) or UI button click is registered.
-* **Blast Radius Gating:**
-  - Destructive tools evaluate blast radius, dependent services, and traffic impact before presenting confirmation prompts.
+  3. **Voice-Guided Runbook Engine:**
+     - Stateful SOP execution (e.g. `postgres-failover`, `redis-eviction`) with automated **live telemetry verification gates** (`latency_p99_ms <= 1500`).
+     - Operators verbally advance through steps (*"proceed"*, *"verify step"*, *"abort runbook"*).
 * **Presenter Notes:**
-  > "In enterprise SRE, autonomy without guardrails is a liability. IncidentVoice enforces a strict two-phase Zero-Trust safety protocol. Destructive actions like pod restarts or cache flushes are staged in memory. The agent explicitly states the action and asks for verbal confirmation. Without an explicit 'Confirm', no production code is touched."
+  > "In enterprise SRE, autonomy without guardrails is a liability. IncidentVoice enforces a strict two-phase Zero-Trust safety protocol and structured runbooks. Destructive actions like pod restarts or cache flushes are staged in memory. The agent explicitly states the action, verifies telemetry gates, and asks for verbal confirmation. Without an explicit 'Confirm', no production code is touched."
 
 ---
 
-## Slide 7: LeMUR Multi-Artifact Synthesis
-* **Slide Title:** Transforming Outage Voice Transcripts into Structured Enterprise Assets
+## Slide 7: LeMUR Synthesis & Acoustic Black Box Replay
+* **Slide Title:** Transforming Outage Audio into Synchronized Enterprise Assets
 * **The Post-Incident Challenge:**
   - Writing post-mortems is the most hated task in engineering. SREs spend 4–8 hours re-reading Slack channels, PagerDuty logs, and incident notes to write a Post-Incident Review (PIR).
-* **AssemblyAI LeMUR Integration:**
-  - Once the incident is resolved, IncidentVoice passes the entire chronological voice transcript, tool outputs, and telemetry events to **AssemblyAI LeMUR** (`/v3/generate/task`).
-* **3 Automated Enterprise Artifacts:**
+* **AssemblyAI LeMUR + Black Box Audio Flight Recorder:**
+  - Once the incident is resolved, IncidentVoice passes the entire chronological voice transcript, tool outputs, and telemetry events to **AssemblyAI LeMUR** (`/v3/generate/task`) while compiling a **90-second synchronized acoustic black box WAV**.
+* **4 Automated Enterprise Artifacts:**
   1. **Formal Post-Incident Review (PIR):** Complete executive summary, root-cause analysis (RCA), trigger events, and timeline formatted in GitHub Flavored Markdown.
   2. **Jira / Linear Action Items (JSON):** Structured remediation tickets categorized into P0/P1/P2 priorities with suggested assignees.
   3. **Slack / PagerDuty Executive Briefing:** 3-bullet Sev-1 outage resolution summary ready for immediate broadcast to executive leadership.
+  4. **Acoustic Black Box Flight Recorder Replay:** Interactive 90s audio scrubber with jump-to-incident markers and variable playback speed.
 * **Presenter Notes:**
-  > "Mitigating an outage is only half the job; the other half is documentation. IncidentVoice feeds the complete multi-modal incident transcript into AssemblyAI LeMUR, generating a formal Markdown post-mortem, Jira action items, and an executive Slack briefing in seconds. What previously took 6 hours now takes 6 seconds."
+  > "Mitigating an outage is only half the job; the other half is documentation and accountability. IncidentVoice feeds the incident transcript into AssemblyAI LeMUR for 3 enterprise documents, and provides an Acoustic Black Box flight recorder. Engineering leadership can listen back to the exact 3 AM audio synchronized with telemetry markers. What previously took 6 hours now takes 6 seconds."
 
 ---
 
@@ -171,16 +175,20 @@
 | **Voice Interface** | **Native AssemblyAI Voice** | Text / SMS / Call only | Web Chat only | Consumer STT (High WER) |
 | **Dual-Engine Architecture** | **Yes (Path 1 + Path 2)** | No | No | Single pipeline |
 | **Two-Phase Safety Engine** | **Deterministic Vocal Staging**| Manual click only | Read-only suggestions | Unsafe direct execution |
+| **Runbook SOP Engine** | **Voice-Guided Telemetry Gates** | Static wiki text | Static runbook links | Hallucinated bash commands |
+| **Dependency Topology Graph** | **Live SVG Blast Radius** | Static Service Graph | Dashboard widget | None |
 | **Infrastructure Coupling** | **Live Docker & K8s Bridge** | Webhook triggers only | Metrics viewer | Simulated JSON mocks |
+| **Acoustic Black Box Replay** | **90s Synchronized Audio WAV**| None | None | None |
 | **Post-Mortem Synthesis** | **LeMUR Multi-Artifact (PIR/Jira)**| Manual post-mortem | Text summary | Generic LLM summary |
 | **Hands-Free 3 AM Triage** | **Full AudioWorklet Voice** | False | False | Unreliable latency |
 
 * **Key Strategic Moat:**
   - High-precision technical speech recognition tuned for DevOps jargon.
   - Hardened deterministic safety guardrails preventing hallucinated cluster destruction.
+  - Structured runbook workflows with live telemetry verification.
   - Seamless dual-engine flexibility catering to both rapid prototyping and enterprise air-gapped deployments.
 * **Presenter Notes:**
-  > "Existing tools like PagerDuty alert you, and Datadog shows you graphs, but neither resolves incidents with voice. Generic LLM wrappers fail because they hallucinate commands and lack safety guardrails. IncidentVoice combines AssemblyAI's industry-leading voice stack with deterministic SRE safety policies."
+  > "Existing tools like PagerDuty alert you, and Datadog shows you graphs, but neither resolves incidents with voice. Generic LLM wrappers fail because they hallucinate commands and lack safety guardrails. IncidentVoice combines AssemblyAI's industry-leading voice stack with deterministic SRE safety policies, automated runbooks, and acoustic incident replays."
 
 ---
 

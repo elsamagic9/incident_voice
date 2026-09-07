@@ -4,11 +4,13 @@ import { MissionControlHeader } from './components/MissionControlHeader';
 import { AudioOscilloscope } from './components/AudioOscilloscope';
 import { LiveTranscriptHUD } from './components/LiveTranscriptHUD';
 import { ServiceHealthMatrix } from './components/ServiceHealthMatrix';
+import { ServiceDependencyGraph } from './components/ServiceDependencyGraph';
+import { RunbookWorkflowHUD } from './components/RunbookWorkflowHUD';
 import { IncidentTimeline } from './components/IncidentTimeline';
 import { ToolExecutionCard } from './components/ToolExecutionCard';
 import { PostMortemViewer } from './components/PostMortemViewer';
 import { LiveTelemetryDrawer } from './components/LiveTelemetryDrawer';
-import { Wrench, FileText, ShieldAlert, CheckCircle2 } from 'lucide-react';
+import { Wrench, FileText, ShieldAlert, CheckCircle2, Network, LayoutGrid } from 'lucide-react';
 
 export const App: React.FC = () => {
   const {
@@ -23,6 +25,8 @@ export const App: React.FC = () => {
     executedTools,
     incident,
     services,
+    topology,
+    activeRunbook,
     postMortem,
     audioLevel,
     latency,
@@ -33,10 +37,14 @@ export const App: React.FC = () => {
     cancelRemediation,
     resetIncident,
     bargeIn,
+    startRunbook,
+    advanceRunbook,
+    abortRunbook,
     closePostMortem
   } = useVoiceStream();
 
   const [isPostMortemOpen, setIsPostMortemOpen] = useState(false);
+  const [activeRightView, setActiveRightView] = useState<'topology' | 'matrix'>('topology');
 
   // Automatically open modal when a new postmortem is synthesized
   useEffect(() => {
@@ -126,6 +134,14 @@ export const App: React.FC = () => {
           </div>
         )}
 
+        {/* Feature 1: Interactive SRE Runbook Workflow Engine Bar */}
+        <RunbookWorkflowHUD
+          activeRunbook={activeRunbook}
+          onStartRunbook={startRunbook}
+          onAdvanceRunbook={advanceRunbook}
+          onAbortRunbook={abortRunbook}
+        />
+
         {/* SRE Chaos Injection Controls */}
         <LiveTelemetryDrawer
           onTriggerChaos={handleTriggerChaos}
@@ -135,7 +151,7 @@ export const App: React.FC = () => {
         {/* 2-Column War-Room Split */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 flex-1 items-stretch">
           {/* Left Column: Live Transcript HUD */}
-          <div className="lg:col-span-5 min-h-[440px] lg:h-[620px]">
+          <div className="lg:col-span-5 min-h-[440px] lg:h-[640px]">
             <LiveTranscriptHUD
               turns={turns}
               interimTranscript={currentInterimTranscript}
@@ -149,8 +165,46 @@ export const App: React.FC = () => {
 
           {/* Right Column: SRE Topology & Incident Diagnostics */}
           <div className="lg:col-span-7 flex flex-col gap-4">
-            {/* Microservice Health Matrix */}
-            <ServiceHealthMatrix services={services} />
+            {/* View Switcher Bar for Right Column */}
+            <div className="flex items-center justify-between bg-slate-900/80 p-1.5 px-2 rounded-xl border border-slate-800">
+              <span className="text-[11px] font-mono text-slate-400 uppercase tracking-wider pl-1">
+                Diagnostic Console View:
+              </span>
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => setActiveRightView('topology')}
+                  className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-semibold transition ${
+                    activeRightView === 'topology'
+                      ? 'bg-cyan-500 text-slate-950 shadow-md shadow-cyan-500/20'
+                      : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                  }`}
+                >
+                  <Network className="w-3.5 h-3.5" />
+                  <span>Dependency Topology & Blast Radius</span>
+                </button>
+                <button
+                  onClick={() => setActiveRightView('matrix')}
+                  className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-semibold transition ${
+                    activeRightView === 'matrix'
+                      ? 'bg-cyan-500 text-slate-950 shadow-md shadow-cyan-500/20'
+                      : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                  }`}
+                >
+                  <LayoutGrid className="w-3.5 h-3.5" />
+                  <span>Service Health Matrix</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Feature 2: Interactive Service Dependency Graph OR Matrix */}
+            {activeRightView === 'topology' ? (
+              <ServiceDependencyGraph
+                topology={topology}
+                onSendAction={sendTextCommand}
+              />
+            ) : (
+              <ServiceHealthMatrix services={services} />
+            )}
 
             {/* Split Lower Pane: Executed Tools & Incident Timeline */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 flex-1">
@@ -193,15 +247,15 @@ export const App: React.FC = () => {
                 <div className="flex items-center gap-2.5">
                   <FileText className="w-5 h-5 text-cyan-400" />
                   <div>
-                    <h4 className="text-xs font-bold text-white">Post-Incident Review Ready</h4>
-                    <p className="text-[11px] text-slate-300">Generated via AssemblyAI LeMUR (3 Formats: PIR, Jira JSON, Slack)</p>
+                    <h4 className="text-xs font-bold text-white">Post-Incident Review & Black Box Ready</h4>
+                    <p className="text-[11px] text-slate-300">4 Artifacts: PIR Markdown, Jira Tickets, Slack Briefing, and Acoustic Replay</p>
                   </div>
                 </div>
                 <button
                   onClick={() => setIsPostMortemOpen(true)}
-                  className="px-3 py-1.5 rounded-lg bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-xs transition"
+                  className="px-3 py-1.5 rounded-lg bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-xs transition shadow-md shadow-cyan-500/30"
                 >
-                  View Full Report
+                  Open Black Box & Review
                 </button>
               </div>
             )}
@@ -209,7 +263,7 @@ export const App: React.FC = () => {
         </div>
       </main>
 
-      {/* Post-Mortem Fullscreen Modal with 3 Distinct Artifact Tabs */}
+      {/* Post-Mortem Fullscreen Modal with 4 Distinct Artifact Tabs */}
       {isPostMortemOpen && (
         <PostMortemViewer
           data={postMortem}

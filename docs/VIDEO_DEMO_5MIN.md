@@ -66,29 +66,32 @@
   > In the header, we provide immediate architectural flexibility: judges can switch dynamically between Path 1 — AssemblyAI's brand-new end-to-end Voice Agent API — and Path 2 — AssemblyAI Streaming v3 STT with custom orchestration and LeMUR post-incident intelligence.  
   > Notice the status indicator: IncidentVoice is not talking to a fake mock; it is connected to a live Docker daemon on our host machine."*
 
-#### 2.2 Live Diagnostic Voice Query & Real Log Inspection (1:05 - 1:35)
+#### 2.2 Live Diagnostic Voice Query & Service Dependency Topology (1:05 - 1:25)
 * **Action:** Presenter clicks the Microphone button (or presses spacebar).
   - Oscilloscope pulses green.
 * **Spoken Command into Microphone:**
-  > *"IncidentVoice, what alerts are firing right now, and what is the health of the payment service?"*
+  > *"IncidentVoice, what alerts are firing right now, and show me the blast radius?"*
 * **HUD Action:**
-  - Real-time partial and final transcripts appear in the Live Transcript HUD with zero latency.
-  - Incident timeline logs the event.
+  - Real-time partial and final transcripts appear in the Live Transcript HUD with sub-300ms latency.
+  - The **Service Dependency Topology Graph** animates dynamically:
+    - Red pulsating bottleneck glows on `payment-service` and `order-db`.
+    - Golden dashed traffic flow lines highlight the active blast radius reaching upstream `api-gateway`.
   - IncidentVoice speaks back with natural neural voice:
-    > *"Warning: Critical alert active on Payment Processing Core. Error rate has spiked to 42% with severe database connection timeouts. Inspecting service logs now."*
-* **Action:** Presenter commands:
-  > *"Inspect the payment service logs and find the root cause."*
-* **HUD Action:**
-  - Tool execution card expands on screen.
-  - The agent executes `inspect_service_logs` against the **real Docker daemon** (`docker logs incident-payment`).
-  - Screen displays live extracted regex log matches:
-    `ConnectionPoolStarvation: pool size 10 exhausted (120 threads blocked)`.
-  - Agent speaks:
-    > *"Live container logs confirm PostgreSQL connection starvation. 120 worker threads are blocked waiting for database connections."*
+    > *"Warning: Critical alert active on Payment Processing Core. Error rate has spiked to 42% with severe database connection timeouts. Downstream blast radius impacts the API Gateway and Checkout flow."*
 
-#### 2.3 Two-Phase SRE Safety Guardrail & Verbal Confirmation (1:35 - 1:55)
-* **Action:** Presenter issues a destructive remediation command:
-  > *"Execute a rolling restart on payment-service and flush the connection cache."*
+#### 2.3 Interactive Voice-Guided Runbook Workflow (1:25 - 1:45)
+* **Action:** Presenter commands:
+  > *"Start runbook postgres-failover."*
+* **HUD Action:**
+  - The **Runbook Workflow HUD** expands at the top of the console.
+  - Step 1 ("Inspect Connection Saturation & Logs") is automatically staged and verified.
+  - Step 2 ("Execute Rolling Restart of Payment Service") is staged with telemetry gate: `latency_p99_ms <= 1500`.
+  - Agent speaks:
+    > *"Runbook postgres-failover initiated. Step one verified. Step two staged: Rolling restart of payment-service with p99 latency verification gate."*
+
+#### 2.4 Two-Phase SRE Safety Guardrail & Verbal Confirmation (1:45 - 2:05)
+* **Action:** Presenter speaks:
+  > *"Proceed and execute the step."*
 * **HUD Action:**
   - **The agent DOES NOT blindly restart production!**
   - The UI instantly displays an **amber Approval Required banner** with a pulsing shield and a 30-second countdown.
@@ -99,28 +102,29 @@
   > *"Confirm."*
 * **HUD Action:**
   - Staged authorization is unlocked verbally.
+  - Execution card flashes blue then emerald: `docker restart incident-payment => Succeeded in 1.16s`.
 
-#### 2.4 Live Container Restart in 1.16s & Service Recovery (1:55 - 2:15)
+#### 2.5 Live Telemetry Gate Verification & Topology Recovery (2:05 - 2:20)
 * **HUD Action:**
-  - Execution card flashes blue then emerald:
-    `docker restart incident-payment => Succeeded in 1.16s`.
-  - The Service Health Matrix flips `payment-service` from **RED (Degraded)** to **GREEN (Healthy 100%)**.
-  - Latency gauge drops from 2,450ms back down to nominal 18ms.
+  - The Runbook Engine evaluates the live telemetry gate expression (`latency_p99_ms <= 1500`).
+  - As `payment-service` metrics return nominal (18ms), the runbook step flips to emerald **VERIFIED**.
+  - The **Dependency Topology Graph** shifts from crimson warning back to vibrant emerald green across all edges.
   - Agent speaks:
-    > *"Rolling restart executed successfully against the live Docker container in 1.16 seconds. Health checks are passing, error rate has dropped to 0%, and latency is nominal."*
+    > *"Rolling restart executed against the live Docker container in 1.16 seconds. Telemetry gate verified: p99 latency dropped to 18ms. Runbook completed successfully."*
 
-#### 2.5 AssemblyAI LeMUR Multi-Artifact Post-Mortem (2:15 - 2:45)
+#### 2.6 LeMUR Post-Mortem & Acoustic Black Box Replay (2:20 - 2:45)
 * **Action:** Presenter speaks:
   > *"The outage is mitigated. Wrap up the incident and generate the post-mortem report."*
 * **HUD Action:**
   - Agent triggers the AssemblyAI LeMUR synthesis endpoint (`/lemur/v3/generate/task`).
-  - An interactive **Post-Mortem Synthesis Modal** opens with 3 interactive tabs:
+  - An interactive **Post-Mortem Synthesis Modal** opens with 4 interactive tabs:
     - **Tab 1: Post-Incident Review (PIR):** Complete GitHub-flavored markdown with Executive Summary, 5-Whys Root Cause Analysis, and Chronological Timeline.
-    - **Tab 2: Jira / Linear Action Items:** Structured JSON tickets categorized into P0 (increase pool size) and P1 (add Redis alarm).
+    - **Tab 2: Jira / Linear Action Items:** Structured JSON tickets categorized into P0 and P1 priorities.
     - **Tab 3: Slack Sev-1 Outage Broadcast:** Concise 3-bullet executive resolution briefing.
+    - **Tab 4: Acoustic Black Box Replay:** Interactive 90s audio scrubber. Presenter clicks the scrubber at marker `T+00:52` to demonstrate audible voice playback and timeline event synchronization.
   - Presenter clicks **Export Markdown** to demonstrate enterprise workflow integration.
 * **Presenter Voiceover:**
-  > *"What previously took an engineering team 6 hours of tedious transcript hunting and Slack copy-pasting is completely synthesized in seconds by AssemblyAI LeMUR into 3 publication-grade enterprise artifacts."*
+  > *"What previously took an engineering team 6 hours of tedious transcript hunting and Slack copy-pasting is completely synthesized in seconds by AssemblyAI LeMUR into 3 publication-grade enterprise artifacts — backed by a synchronized 90-second Acoustic Black Box flight recorder."*
 
 ---
 

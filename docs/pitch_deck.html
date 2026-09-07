@@ -141,6 +141,14 @@
       align-items: center;
     }
 
+    .grid-4 {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 18px;
+      height: 100%;
+      align-items: stretch;
+    }
+
     .card {
       background: rgba(31, 41, 55, 0.5);
       border: 1px solid var(--border);
@@ -347,15 +355,21 @@
         <h2 style="font-size: 1.4rem; font-weight: 400; color: var(--text-muted); margin-bottom: 32px;">
           The Autonomous Voice SRE Incident Commander for Mission-Critical Infrastructure
         </h2>
-        <div style="display: flex; justify-content: center; gap: 16px; margin-bottom: 32px;">
-          <div class="card" style="padding: 12px 24px; border-color: rgba(56,189,248,0.4);">
-            <strong style="color: var(--cyan);">Dual-Engine Core</strong>: Path 1 (Voice Agent API) + Path 2 (Streaming v3)
+        <div style="display: flex; justify-content: center; gap: 12px; flex-wrap: wrap; margin-bottom: 28px;">
+          <div class="card" style="padding: 10px 18px; border-color: rgba(56,189,248,0.4);">
+            <strong style="color: var(--cyan);">Dual-Engine Core</strong>: Path 1 + Path 2
           </div>
-          <div class="card" style="padding: 12px 24px; border-color: rgba(52,211,153,0.4);">
-            <strong style="color: var(--emerald);">Live Docker Host</strong>: 1.16s Sub-Second Real Container Restarts
+          <div class="card" style="padding: 10px 18px; border-color: rgba(52,211,153,0.4);">
+            <strong style="color: var(--emerald);">Live Docker Host</strong>: 1.16s Container Restarts
           </div>
-          <div class="card" style="padding: 12px 24px; border-color: rgba(251,191,36,0.4);">
-            <strong style="color: var(--amber);">Two-Phase Safety</strong>: Zero-Trust Verbal Authorization
+          <div class="card" style="padding: 10px 18px; border-color: rgba(251,191,36,0.4);">
+            <strong style="color: var(--amber);">Two-Phase Safety</strong>: Zero-Trust Verbal Auth
+          </div>
+          <div class="card" style="padding: 10px 18px; border-color: rgba(167,139,250,0.4);">
+            <strong style="color: #a78bfa;">SRE Runbook SOPs</strong>: Live Telemetry Gates
+          </div>
+          <div class="card" style="padding: 10px 18px; border-color: rgba(251,113,133,0.4);">
+            <strong style="color: var(--rose);">Acoustic Black Box</strong>: 90s Synchronized Replay
           </div>
         </div>
         <p style="font-size: 1.1rem; color: #fff; font-family: var(--font-mono);">
@@ -507,7 +521,7 @@ wss://agents.assemblyai.com/v1/ws   wss://streaming.assemblyai...
   <!-- SLIDE 5 -->
   <div class="slide" id="slide-5">
     <div class="slide-header">
-      <div class="slide-title"><span>05.</span> Real Infrastructure: Live Docker Bridge</div>
+      <div class="slide-title"><span>05.</span> Real Infrastructure & Live Topology Graph</div>
       <div class="slide-num">SLIDE 05 / 10</div>
     </div>
     <div class="slide-body">
@@ -522,12 +536,13 @@ wss://agents.assemblyai.com/v1/ws   wss://streaming.assemblyai...
           </ul>
         </div>
         <div class="card">
-          <h3>🔍 Sub-Second Log Grep</h3>
-          <p>Executes live container log streaming and regex error extraction:</p>
+          <h3>🗺️ Live Topology & Blast Radius</h3>
+          <p>Interactive SVG dependency topology map with real-time health flows:</p>
           <p style="font-family: var(--font-mono); font-size: 0.8rem; color: var(--amber); margin-top: 8px;">
-            ConnectionPoolStarvation: pool exhausted (120/120 threads blocked)
+            Bottleneck: payment-service (p99 > 2400ms)<br>
+            Blast Radius: api-gateway, checkout-ui
           </p>
-          <p style="margin-top: 8px;">Diagnoses root causes in under <strong>400ms</strong>.</p>
+          <p style="margin-top: 8px;">Pulsating SVG connections highlight cascading bottlenecks.</p>
         </div>
         <div class="card">
           <h3>⚡ 1.16s Recovery Time</h3>
@@ -536,91 +551,101 @@ wss://agents.assemblyai.com/v1/ws   wss://streaming.assemblyai...
             $ docker restart incident-payment<br>
             => Completed in 1.16s
           </p>
-          <p style="margin-top: 8px;">Service health matrix updates in real time.</p>
+          <p style="margin-top: 8px;">Service health matrix & topology update in real time.</p>
         </div>
       </div>
     </div>
     <div class="slide-footer">
-      <div>Infrastructure Coupling: Live Production Sandbox</div>
-      <div class="speaker-note">Notes: 90% of hackathon demos use fake sleep delays. IncidentVoice restarts real Docker containers in 1.16s.</div>
+      <div>Infrastructure Coupling: Live Production Sandbox & SVG Topology</div>
+      <div class="speaker-note">Notes: 90% of hackathon demos use fake sleep delays. IncidentVoice restarts real Docker containers in 1.16s and renders live SVG blast radius flows.</div>
     </div>
   </div>
 
   <!-- SLIDE 6 -->
   <div class="slide" id="slide-6">
     <div class="slide-header">
-      <div class="slide-title"><span>06.</span> Two-Phase SRE Safety Guardrails</div>
+      <div class="slide-title"><span>06.</span> Two-Phase Safety & SRE Runbook Engine</div>
       <div class="slide-num">SLIDE 06 / 10</div>
     </div>
     <div class="slide-body">
       <div class="grid-2">
-        <div class="card">
-          <h3>🔒 Phase 1: Diagnostic Queries</h3>
-          <p>Instantaneous, non-destructive telemetry inspections:</p>
-          <ul style="padding-left: 20px; margin-top: 8px;">
-            <li><code>check_cluster_health</code></li>
-            <li><code>inspect_service_logs</code></li>
-            <li><code>query_prometheus_metrics</code></li>
-          </ul>
-          <p style="margin-top: 12px; color: var(--emerald);"><strong>Policy:</strong> Auto-executed immediately with zero human friction.</p>
-        </div>
         <div class="card" style="border-color: rgba(251,191,36,0.5);">
-          <h3>🛑 Phase 2: Destructive Mutations</h3>
-          <p>Remediations (restarts, scale-outs, cache flushes) are staged:</p>
+          <h3>🛑 Two-Phase SRE Safety Guardrails</h3>
+          <p>Destructive mutations (restarts, scale-outs, cache flushes) are staged:</p>
           <div style="background: rgba(251,191,36,0.1); border-left: 4px solid var(--amber); padding: 10px; margin: 12px 0; font-family: var(--font-mono); font-size: 0.85rem;">
             "Remediation staged: Rolling restart of payment-service. Say 'Confirm' or click Authorize to execute."
           </div>
-          <p>UI displays an amber <strong>Approval Required</strong> banner with a 30s countdown. Locked until vocal confirmation.</p>
+          <p>UI displays an amber <strong>Approval Required</strong> banner with a 30s countdown. Execution is locked until explicit vocal confirmation.</p>
+        </div>
+        <div class="card" style="border-color: rgba(167,139,250,0.5);">
+          <h3>📋 Voice-Guided Runbook SOP Engine</h3>
+          <p>Stateful Standard Operating Procedures with live telemetry verification gates:</p>
+          <ul style="padding-left: 18px; margin-top: 8px; font-size: 0.85rem;">
+            <li><code>postgres-failover</code> & <code>redis-eviction</code> SOPs</li>
+            <li>Evaluates expressions: <code>latency_p99_ms &lt;= 1500</code></li>
+            <li>Voice-driven step stepping: <em>"proceed"</em>, <em>"verify step"</em></li>
+          </ul>
+          <p style="margin-top: 8px; color: #a78bfa;"><strong>Guarantee:</strong> Steps only complete when live telemetry passes gates.</p>
         </div>
       </div>
     </div>
     <div class="slide-footer">
-      <div>Deterministic Safety: Zero-Trust Voice Gating</div>
-      <div class="speaker-note">Notes: We do not allow hallucinated AI to kill clusters. Destructive actions require explicit vocal authorization.</div>
+      <div>Deterministic Safety & SOP Automation: Zero-Trust Voice Gating</div>
+      <div class="speaker-note">Notes: We do not allow hallucinated AI to kill clusters. Destructive actions require explicit vocal authorization, and runbook steps evaluate live telemetry gates.</div>
     </div>
   </div>
 
   <!-- SLIDE 7 -->
   <div class="slide" id="slide-7">
     <div class="slide-header">
-      <div class="slide-title"><span>07.</span> LeMUR Multi-Artifact Post-Mortem</div>
+      <div class="slide-title"><span>07.</span> LeMUR Multi-Artifact Post-Mortem & Acoustic Black Box</div>
       <div class="slide-num">SLIDE 07 / 10</div>
     </div>
     <div class="slide-body">
-      <div class="grid-3">
+      <div class="grid-4">
         <div class="card">
           <h3>📄 Markdown PIR Report</h3>
-          <p>Formal Post-Incident Review generated in GitHub-flavored markdown:</p>
-          <ul style="padding-left: 18px; margin-top: 8px; font-size: 0.85rem;">
+          <p>Formal Post-Incident Review generated in GFM:</p>
+          <ul style="padding-left: 18px; margin-top: 8px; font-size: 0.82rem;">
             <li>Executive Summary</li>
-            <li>Chronological Incident Timeline</li>
-            <li>Root Cause Analysis (5-Whys)</li>
-            <li>Blast Radius Assessment</li>
+            <li>Incident Timeline</li>
+            <li>Root Cause (5-Whys)</li>
+            <li>Blast Assessment</li>
           </ul>
         </div>
         <div class="card">
-          <h3>🎫 Jira / Linear Tickets</h3>
-          <p>Actionable prevention items parsed into structured JSON:</p>
-          <ul style="padding-left: 18px; margin-top: 8px; font-size: 0.85rem;">
-            <li><strong>P0:</strong> Increase connection pool limits</li>
-            <li><strong>P1:</strong> Add Redis keep-alive alarms</li>
-            <li><strong>P2:</strong> Update runbook docs</li>
+          <h3>🎫 Jira Tickets</h3>
+          <p>Structured JSON items with SLA priorities:</p>
+          <ul style="padding-left: 18px; margin-top: 8px; font-size: 0.82rem;">
+            <li><strong>P0:</strong> Pool limits</li>
+            <li><strong>P1:</strong> Redis alarms</li>
+            <li><strong>P2:</strong> Update docs</li>
           </ul>
         </div>
         <div class="card">
-          <h3>💬 Slack Sev-1 Briefing</h3>
-          <p>Executive 3-bullet resolution broadcast ready for leadership:</p>
-          <ul style="padding-left: 18px; margin-top: 8px; font-size: 0.85rem;">
-            <li>Status: Mitigated (100% Nominal)</li>
-            <li>Total Outage Duration: 4m 12s</li>
-            <li>Remediation: Container restarted</li>
+          <h3>💬 Slack Briefing</h3>
+          <p>Executive 3-bullet resolution broadcast:</p>
+          <ul style="padding-left: 18px; margin-top: 8px; font-size: 0.82rem;">
+            <li>Status: Mitigated</li>
+            <li>Duration: 4m 12s</li>
+            <li>Action: Restarted</li>
+          </ul>
+        </div>
+        <div class="card" style="border-color: rgba(251,113,133,0.5);">
+          <h3>📼 Acoustic Black Box</h3>
+          <p>Synchronized 90s incident audio flight recorder:</p>
+          <ul style="padding-left: 18px; margin-top: 8px; font-size: 0.82rem;">
+            <li>16kHz Mono WAV</li>
+            <li>Timeline Scrubbing</li>
+            <li>Jump-to-Markers</li>
+            <li>1x / 1.5x / 2x speed</li>
           </ul>
         </div>
       </div>
     </div>
     <div class="slide-footer">
-      <div>Post-Incident Intelligence: AssemblyAI LeMUR</div>
-      <div class="speaker-note">Notes: What takes an SRE team 6 hours to write, LeMUR synthesizes in 6 seconds from the voice transcript.</div>
+      <div>Post-Incident Intelligence: AssemblyAI LeMUR & Flight Recorder Replay</div>
+      <div class="speaker-note">Notes: What takes an SRE team 6 hours to write, LeMUR synthesizes in 6 seconds, backed by a synchronized 90s acoustic black box replay.</div>
     </div>
   </div>
 
@@ -714,6 +739,27 @@ wss://agents.assemblyai.com/v1/ws   wss://streaming.assemblyai...
             <td>Webhook Triggers</td>
             <td>Metrics Viewer</td>
             <td>Simulated JSON mocks</td>
+          </tr>
+          <tr>
+            <td><strong>Runbook SOP Engine</strong></td>
+            <td style="color: var(--emerald); font-weight: 700;">Voice-Guided Telemetry Gates</td>
+            <td>Static Wiki Docs</td>
+            <td>Static Runbook Links</td>
+            <td>Hallucinated Bash Scripts</td>
+          </tr>
+          <tr>
+            <td><strong>Dependency Topology Map</strong></td>
+            <td style="color: var(--emerald); font-weight: 700;">Live SVG Blast Radius</td>
+            <td>Static Service Graph</td>
+            <td>Dashboard Widget</td>
+            <td>None</td>
+          </tr>
+          <tr>
+            <td><strong>Acoustic Black Box Replay</strong></td>
+            <td style="color: var(--emerald); font-weight: 700;">90s Synchronized Audio WAV</td>
+            <td>None</td>
+            <td>None</td>
+            <td>None</td>
           </tr>
           <tr>
             <td><strong>Post-Mortem Synthesis</strong></td>

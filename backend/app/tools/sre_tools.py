@@ -183,6 +183,34 @@ def generate_postmortem() -> Dict[str, Any]:
         timeline_events=cluster_state.incident.timeline_events
     )
 
+def list_runbooks() -> Dict[str, Any]:
+    """Lists all available standard operating procedure SRE runbooks."""
+    from app.services.runbook_engine import runbook_engine
+    return {"runbooks": runbook_engine.list_runbooks()}
+
+def start_runbook(runbook_id: str = "runbook-pg-pool") -> Dict[str, Any]:
+    """Starts a guided SRE runbook workflow."""
+    from app.services.runbook_engine import runbook_engine
+    spoken, data = runbook_engine.start_runbook(runbook_id)
+    return {"spoken": spoken, "session": data}
+
+def advance_runbook() -> Dict[str, Any]:
+    """Advances the active SRE runbook to the next step, executing actions and verifying telemetry."""
+    from app.services.runbook_engine import runbook_engine
+    spoken, data, tools = runbook_engine.advance_runbook()
+    return {"spoken": spoken, "session": data, "executed_tools": tools}
+
+def abort_runbook() -> Dict[str, Any]:
+    """Aborts the currently running SRE runbook."""
+    from app.services.runbook_engine import runbook_engine
+    spoken, data = runbook_engine.abort_runbook()
+    return {"spoken": spoken, "session": data}
+
+def get_service_topology() -> Dict[str, Any]:
+    """Returns live service dependency graph, real-time traffic flow, and blast radius."""
+    from app.core.topology import get_service_topology as _get_topo
+    return _get_topo()
+
 # Mapping of function names to implementations
 SRE_TOOL_MAP = {
     "get_cluster_health": get_cluster_health,
@@ -191,5 +219,10 @@ SRE_TOOL_MAP = {
     "execute_remediation": execute_remediation,
     "query_host_telemetry": query_host_telemetry,
     "trigger_pager": trigger_pager,
-    "generate_postmortem": generate_postmortem
+    "generate_postmortem": generate_postmortem,
+    "list_runbooks": list_runbooks,
+    "start_runbook": start_runbook,
+    "advance_runbook": advance_runbook,
+    "abort_runbook": abort_runbook,
+    "get_service_topology": get_service_topology
 }

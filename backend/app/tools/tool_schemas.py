@@ -121,5 +121,70 @@ SRE_TOOL_DEFINITIONS = [
                 "required": []
             }
         }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "list_runbooks",
+            "description": "List all available voice-guided SRE Standard Operating Procedure runbooks (e.g. Postgres pool failover, Redis eviction triage, Ingress surge).",
+            "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": []
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "start_runbook",
+            "description": "Initiate a voice-guided interactive SRE runbook workflow to guide engineers step-by-step through outage triage and remediation.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "runbook_id": {
+                        "type": "string",
+                        "description": "Identifier or title of the runbook (e.g. 'runbook-pg-pool', 'runbook-redis-eviction', 'runbook-ingress-surge')"
+                    }
+                },
+                "required": ["runbook_id"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "advance_runbook",
+            "description": "Execute the current runbook step, perform automated telemetry verification, and advance to the next step.",
+            "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": []
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "abort_runbook",
+            "description": "Cancel and abort the active SRE runbook workflow.",
+            "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": []
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_service_topology",
+            "description": "Retrieve the live service dependency topology map, traffic RPS, and active cascading blast radiuses.",
+            "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": []
+            }
+        }
     }
 ]
