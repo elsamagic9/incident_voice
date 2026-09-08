@@ -243,8 +243,8 @@ export const PostMortemViewer: React.FC<Props> = ({ data, onClose }) => {
   }, markers[0]);
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4" role="dialog" aria-modal="true">
-      <div className="bg-[#101522] border border-cyan-500/40 rounded-2xl w-full max-w-4xl max-h-[92vh] flex flex-col shadow-2xl overflow-hidden glow-cyan">
+    <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-xl flex items-center justify-center p-3 sm:p-5 animate-in fade-in duration-200" role="dialog" aria-modal="true">
+      <div className="glass-panel border border-cyan-500/50 rounded-2xl w-full max-w-5xl max-h-[92vh] flex flex-col shadow-2xl overflow-hidden glow-cyan">
         {/* Hidden Audio Element */}
         <audio
           ref={audioRef}
@@ -261,33 +261,33 @@ export const PostMortemViewer: React.FC<Props> = ({ data, onClose }) => {
         />
 
         {/* Top Header */}
-        <div className="p-4 border-b border-slate-800 bg-slate-900/90 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="p-2 rounded-xl bg-cyan-500/20 text-cyan-400 border border-cyan-500/30">
+        <div className="p-4 sm:p-5 border-b border-white/[0.08] bg-slate-900/80 backdrop-blur-xl flex items-center justify-between">
+          <div className="flex items-center gap-3.5">
+            <div className="p-2.5 rounded-xl bg-gradient-to-br from-cyan-500/20 to-blue-600/20 text-cyan-300 border border-cyan-500/40 shadow-inner">
               <FileText className="w-6 h-6" />
             </div>
             <div>
-              <div className="flex items-center gap-2">
-                <h2 className="text-base font-bold text-white">Multi-Artifact Post-Mortem & Incident Black Box</h2>
-                <span className="text-[11px] px-2 py-0.5 rounded bg-cyan-950 text-cyan-300 border border-cyan-800 font-mono flex items-center gap-1">
+              <div className="flex items-center gap-2 flex-wrap">
+                <h2 className="text-base font-bold text-white font-sans">Multi-Artifact Post-Mortem & Incident Black Box</h2>
+                <span className="text-[11px] px-2.5 py-0.5 rounded-full bg-cyan-950 text-cyan-300 border border-cyan-500/40 font-mono flex items-center gap-1.5 font-semibold">
                   <Sparkles className="w-3 h-3 text-cyan-400" /> Powered by AssemblyAI LeMUR
                 </span>
               </div>
-              <p className="text-xs text-slate-400">{data.incident_id}: {data.title}</p>
+              <p className="text-xs text-slate-400 mt-0.5 font-mono">{data.incident_id}: {data.title}</p>
             </div>
           </div>
 
           <div className="flex items-center gap-2">
             <button
               onClick={handleCopy}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-medium transition"
+              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-slate-800/90 hover:bg-slate-700 text-slate-200 border border-white/[0.08] text-xs font-semibold transition cursor-pointer"
             >
               {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
               {copied ? 'Copied' : activeTab === 'tickets' ? 'Copy JSON' : activeTab === 'slack' ? 'Copy Slack' : activeTab === 'blackbox' ? 'Copy Flight Log' : 'Copy Markdown'}
             </button>
             <button
               onClick={handleDownload}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-semibold shadow-md transition"
+              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 text-xs font-bold shadow-md shadow-cyan-500/30 transition cursor-pointer hover:scale-105 active:scale-95"
             >
               <Download className="w-3.5 h-3.5" />
               {activeTab === 'tickets' ? 'Export .json' : activeTab === 'slack' ? 'Export .txt' : activeTab === 'blackbox' ? 'Export .wav Audio' : 'Export .md'}
@@ -301,7 +301,7 @@ export const PostMortemViewer: React.FC<Props> = ({ data, onClose }) => {
                 setIsPlaying(false);
                 onClose();
               }}
-              className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition"
+              className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800/80 transition cursor-pointer"
             >
               <X className="w-5 h-5" />
             </button>
@@ -309,13 +309,13 @@ export const PostMortemViewer: React.FC<Props> = ({ data, onClose }) => {
         </div>
 
         {/* 4-Artifact Tab Navigation Bar */}
-        <div className="flex items-center bg-slate-950 border-b border-slate-800 px-4 pt-2 gap-2 text-xs overflow-x-auto">
+        <div className="flex items-center bg-slate-950/90 border-b border-white/[0.08] px-4 pt-2 gap-2 text-xs overflow-x-auto">
           <button
             onClick={() => setActiveTab('pir')}
-            className={`flex items-center gap-2 px-4 py-2 rounded-t-lg font-medium transition border-b-2 shrink-0 ${
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-t-xl font-semibold transition border-b-2 shrink-0 cursor-pointer ${
               activeTab === 'pir'
-                ? 'bg-slate-900 text-cyan-400 border-cyan-400 font-semibold'
-                : 'text-slate-400 hover:text-slate-200 border-transparent'
+                ? 'bg-slate-900/90 text-cyan-300 border-cyan-400 shadow-sm'
+                : 'text-slate-400 hover:text-slate-200 border-transparent hover:bg-white/[0.02]'
             }`}
           >
             <FileText className="w-4 h-4" />
@@ -324,10 +324,10 @@ export const PostMortemViewer: React.FC<Props> = ({ data, onClose }) => {
 
           <button
             onClick={() => setActiveTab('tickets')}
-            className={`flex items-center gap-2 px-4 py-2 rounded-t-lg font-medium transition border-b-2 shrink-0 ${
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-t-xl font-semibold transition border-b-2 shrink-0 cursor-pointer ${
               activeTab === 'tickets'
-                ? 'bg-slate-900 text-amber-400 border-amber-400 font-semibold'
-                : 'text-slate-400 hover:text-slate-200 border-transparent'
+                ? 'bg-slate-900/90 text-amber-300 border-amber-400 shadow-sm'
+                : 'text-slate-400 hover:text-slate-200 border-transparent hover:bg-white/[0.02]'
             }`}
           >
             <Ticket className="w-4 h-4" />
@@ -336,10 +336,10 @@ export const PostMortemViewer: React.FC<Props> = ({ data, onClose }) => {
 
           <button
             onClick={() => setActiveTab('slack')}
-            className={`flex items-center gap-2 px-4 py-2 rounded-t-lg font-medium transition border-b-2 shrink-0 ${
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-t-xl font-semibold transition border-b-2 shrink-0 cursor-pointer ${
               activeTab === 'slack'
-                ? 'bg-slate-900 text-emerald-400 border-emerald-400 font-semibold'
-                : 'text-slate-400 hover:text-slate-200 border-transparent'
+                ? 'bg-slate-900/90 text-emerald-300 border-emerald-400 shadow-sm'
+                : 'text-slate-400 hover:text-slate-200 border-transparent hover:bg-white/[0.02]'
             }`}
           >
             <MessageSquare className="w-4 h-4" />
@@ -348,10 +348,10 @@ export const PostMortemViewer: React.FC<Props> = ({ data, onClose }) => {
 
           <button
             onClick={() => setActiveTab('blackbox')}
-            className={`flex items-center gap-2 px-4 py-2 rounded-t-lg font-medium transition border-b-2 shrink-0 ${
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-t-xl font-semibold transition border-b-2 shrink-0 cursor-pointer ${
               activeTab === 'blackbox'
-                ? 'bg-slate-900 text-cyan-300 border-cyan-300 font-bold glow-cyan'
-                : 'text-slate-400 hover:text-slate-200 border-transparent'
+                ? 'bg-slate-900/90 text-cyan-200 border-cyan-300 shadow-sm glow-cyan font-bold'
+                : 'text-slate-400 hover:text-slate-200 border-transparent hover:bg-white/[0.02]'
             }`}
           >
             <Radio className="w-4 h-4 text-cyan-400" />
@@ -360,10 +360,10 @@ export const PostMortemViewer: React.FC<Props> = ({ data, onClose }) => {
 
           <button
             onClick={() => setActiveTab('audit')}
-            className={`flex items-center gap-2 px-4 py-2 rounded-t-lg font-medium transition border-b-2 shrink-0 ${
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-t-xl font-semibold transition border-b-2 shrink-0 cursor-pointer ${
               activeTab === 'audit'
-                ? 'bg-slate-900 text-indigo-400 border-indigo-400 font-bold glow-indigo'
-                : 'text-slate-400 hover:text-slate-200 border-transparent'
+                ? 'bg-slate-900/90 text-indigo-300 border-indigo-400 shadow-sm font-bold'
+                : 'text-slate-400 hover:text-slate-200 border-transparent hover:bg-white/[0.02]'
             }`}
           >
             <ShieldAlert className="w-4 h-4 text-indigo-400" />

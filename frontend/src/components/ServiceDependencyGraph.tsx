@@ -142,38 +142,38 @@ export const ServiceDependencyGraph: React.FC<Props> = ({ topology, onSendAction
   };
 
   return (
-    <div className="bg-[#101522] rounded-xl border border-slate-800 p-4 shadow-xl flex flex-col gap-3 relative overflow-hidden">
+    <div className="glass-panel rounded-2xl border border-white/[0.08] p-4 sm:p-5 shadow-2xl flex flex-col gap-3.5 relative overflow-hidden">
       {/* Topology Header */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
-        <div className="flex items-center gap-2.5">
-          <div className="p-2 rounded-lg bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
+        <div className="flex items-center gap-3">
+          <div className="p-2.5 rounded-xl bg-gradient-to-br from-cyan-500/20 to-blue-600/20 text-cyan-300 border border-cyan-500/40 shadow-inner">
             <Network className="w-4 h-4" />
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-200">
+              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-100 font-sans">
                 Live Service Dependency Graph & Blast Radius
               </h3>
-              <span className="text-[10px] px-2 py-0.5 rounded bg-slate-800 text-cyan-300 border border-slate-700 font-mono flex items-center gap-1">
+              <span className="text-[10px] px-2.5 py-0.5 rounded-full bg-cyan-500/10 text-cyan-300 border border-cyan-500/30 font-mono flex items-center gap-1 font-semibold">
                 <Zap className="w-3 h-3 text-cyan-400" /> Real-Time Traffic Flow
               </span>
             </div>
-            <p className="text-[11px] text-slate-400">
+            <p className="text-[11px] text-slate-400 mt-0.5">
               Interactive topology map tracing request bottlenecks and cascading failure propagation.
             </p>
           </div>
         </div>
 
         {hasCascading && (
-          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded bg-red-950/70 border border-red-500/50 text-red-300 text-[11px] font-mono animate-pulse">
+          <div className="flex items-center gap-1.5 px-3 py-1 rounded-xl bg-red-950/70 border border-red-500/60 text-red-300 text-[11px] font-mono animate-pulse shadow-sm glow-red">
             <ShieldAlert className="w-3.5 h-3.5 text-red-400" />
-            <span>Cascading Blast Radius: {blastRadius.length} services</span>
+            <span className="font-bold">Cascading Blast Radius: {blastRadius.length} services</span>
           </div>
         )}
       </div>
 
       {/* SVG Dependency Graph Canvas */}
-      <div className="w-full bg-[#0b0f19] rounded-xl border border-slate-800/80 relative overflow-hidden h-[340px] flex items-center justify-center">
+      <div className="w-full bg-slate-950/80 rounded-xl border border-white/[0.06] relative overflow-hidden h-[340px] flex items-center justify-center shadow-inner">
         {/* Ambient Grid Pattern */}
         <svg className="absolute inset-0 w-full h-full pointer-events-none opacity-20">
           <defs>
