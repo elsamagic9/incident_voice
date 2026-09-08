@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Check, ChevronDown, ChevronUp, Wrench } from 'lucide-react';
+import { Check, ChevronDown, ChevronUp, Wrench, X } from 'lucide-react';
 import { ToolExecution } from '../types';
 
 interface Props {
@@ -43,9 +43,15 @@ export const ToolExecutionCard: React.FC<Props> = ({ tool }) => {
           {getActionBadge()}
         </div>
         <div className="flex items-center gap-2 text-slate-400">
-          <span className="text-[10px] flex items-center gap-1 text-emerald-400">
-            <Check className="w-3 h-3" /> success
-          </span>
+          {tool.result.error || tool.result.status === 'error' ? (
+            <span className="text-[10px] flex items-center gap-1 text-red-400">
+              <X className="w-3 h-3" /> error
+            </span>
+          ) : (
+            <span className="text-[10px] flex items-center gap-1 text-emerald-400">
+              <Check className="w-3 h-3" /> success
+            </span>
+          )}
           {expanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
         </div>
       </div>

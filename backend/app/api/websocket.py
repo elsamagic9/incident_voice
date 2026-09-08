@@ -508,6 +508,20 @@ async def voice_agent_websocket(websocket: WebSocket):
                         })
                         current_tts_task = asyncio.create_task(stream_tts_to_client(spoken_text))
 
+                    elif msg_type == "toggle_autopilot":
+                        enabled = data.get("enabled", False)
+                        agent_orchestrator.autopilot_mode = enabled
+                        mode_text = "Autopilot enabled. Remediation actions will auto-execute." if enabled else "Autopilot disabled. Manual confirmation required."
+                        await send_json_safe({
+                            "type": "turn",
+                            "speaker": "agent",
+                            "transcript": mode_text,
+                            "end_of_turn": True,
+                            "timestamp": time.time()
+                        })
+                        await send_json_safe({"type": "system", "message": mode_text})
+                        current_tts_task = asyncio.create_task(stream_tts_to_client(mode_text))
+
                 except json.JSONDecodeError:
                     pass
 

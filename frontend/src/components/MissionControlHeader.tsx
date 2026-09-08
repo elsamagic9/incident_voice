@@ -12,6 +12,8 @@ interface Props {
   dockerActive?: boolean;
   rbacRole?: string;
   clusterProvider?: string;
+  autopilotEnabled?: boolean;
+  onToggleAutopilot?: () => void;
   onSelectEngine: (engine: VoiceEngine) => void;
   onReset: () => void;
 }
@@ -25,6 +27,8 @@ export const MissionControlHeader: React.FC<Props> = ({
   dockerActive = false,
   rbacRole = 'SRE_COMMANDER',
   clusterProvider = 'Hybrid (K8s + Docker)',
+  autopilotEnabled = false,
+  onToggleAutopilot,
   onSelectEngine,
   onReset
 }) => {
@@ -177,6 +181,21 @@ export const MissionControlHeader: React.FC<Props> = ({
           </div>
 
           {getStatusBadge()}
+
+          {onToggleAutopilot && (
+            <button
+              onClick={onToggleAutopilot}
+              title="Toggle Autopilot Mode for autonomous self-healing"
+              className={`flex items-center gap-1 px-2.5 py-1 text-xs font-bold rounded border transition ${
+                autopilotEnabled
+                  ? 'bg-red-500/20 text-red-400 border-red-500/50 hover:bg-red-500/30'
+                  : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'
+              }`}
+            >
+              <Zap className={`w-3 h-3 ${autopilotEnabled ? 'text-red-400 animate-pulse' : ''}`} /> 
+              {autopilotEnabled ? 'AUTOPILOT ON' : 'AUTOPILOT'}
+            </button>
+          )}
 
           <button
             onClick={onReset}

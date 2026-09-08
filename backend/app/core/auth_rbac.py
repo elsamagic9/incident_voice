@@ -22,6 +22,8 @@ ROLE_PERMISSIONS: Dict[SRERole, List[str]] = {
         "flush_cache",
         "rollback_release",
         "scale_service",
+        "scale_replicas",
+        "failover_traffic",
         "cordon_node",
         "k8s_rollout_restart"
     ],
@@ -45,7 +47,7 @@ NATO_PHONETIC_WORDS = [
     "Alpha", "Bravo", "Charlie", "Delta", "Echo", "Foxtrot",
     "Golf", "Hotel", "India", "Juliet", "Kilo", "Lima",
     "Mike", "November", "Oscar", "Papa", "Quebec", "Romeo",
-    "Sierra", "Tango", "Uniform", "Victor", "Whiskey", "X-Ray",
+    "Sierra", "Tango", "Uniform", "Victor", "Whiskey", "Xray",
     "Yankee", "Zulu"
 ]
 

@@ -179,6 +179,14 @@ class ClusterState:
             svc.recent_logs.append("[INFO] Rolled back deployment to git commit sha-a49e10d (v2.14.0 stable)")
             result["details"] = f"Deployment for {service_name} rolled back to previous stable release."
 
+        elif action == "failover_traffic":
+            # Global failover affects all services positively
+            for s in self.services.values():
+                if s.status == "critical":
+                    s.status = "degraded"
+                    s.error_rate_pct = max(1.0, s.error_rate_pct / 3)
+            result["details"] = "Global DNS traffic shifted to failover region. Active region services stabilizing."
+
         # Check if all services healthy -> resolve incident
         critical_count = sum(1 for s in self.services.values() if s.status == "critical")
         if critical_count == 0:

@@ -118,7 +118,7 @@ async def test_two_phase_safety_guardrail_staging_and_confirmation():
     # Step 1: Request destructive rolling restart
     prompt, tools, _ = await agent_orchestrator.process_user_turn("Please restart payment-service pods")
     assert "Remediation staged: Rolling restart of payment-service" in prompt
-    assert "Say 'Confirm' or click Authorize to execute" in prompt
+    assert "Hardware MFA required" in prompt
     assert agent_orchestrator.awaiting_confirmation is True
     assert agent_orchestrator.staged_action is not None
     # Crucial: Service must NOT be healed yet!

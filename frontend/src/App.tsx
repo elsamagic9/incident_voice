@@ -10,13 +10,42 @@ import { IncidentTimeline } from './components/IncidentTimeline';
 import { ToolExecutionCard } from './components/ToolExecutionCard';
 import { PostMortemViewer } from './components/PostMortemViewer';
 import { LiveTelemetryDrawer } from './components/LiveTelemetryDrawer';
-import { Wrench, FileText, ShieldAlert, CheckCircle2, Network, LayoutGrid } from 'lucide-react';
+import { Wrench, FileText, ShieldAlert, Network, LayoutGrid } from 'lucide-react';
+
+class ErrorBoundary extends React.Component<{children: React.ReactNode}, {hasError: boolean, error: Error | null}> {
+  constructor(props: {children: React.ReactNode}) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, error };
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="min-h-screen bg-[#0a0d14] text-slate-200 flex flex-col items-center justify-center p-6 text-center font-sans">
+          <ShieldAlert className="w-12 h-12 text-red-500 mb-4" />
+          <h1 className="text-xl font-bold text-white mb-2">System Failure Detected</h1>
+          <p className="text-sm text-slate-400 mb-6 max-w-md">{this.state.error?.message || 'An unexpected error occurred in the mission control console.'}</p>
+          <button 
+            onClick={() => window.location.reload()} 
+            className="px-6 py-2 bg-slate-800 hover:bg-slate-700 rounded-lg text-sm font-semibold transition border border-slate-700"
+          >
+            Reload Interface
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 export const App: React.FC = () => {
   const {
     isConnected,
     agentStatus,
     activeEngine,
+    autopilotEnabled,
     stagedRemediation,
     dockerActive,
     rbacRole,
@@ -42,6 +71,7 @@ export const App: React.FC = () => {
     startRunbook,
     advanceRunbook,
     abortRunbook,
+    toggleAutopilot,
     closePostMortem
   } = useVoiceStream();
 
@@ -73,8 +103,9 @@ export const App: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-[#0a0d14] flex flex-col font-sans text-slate-100 selection:bg-cyan-500/30 selection:text-cyan-200">
-      {/* Top Header Bar with Dual-Engine Architecture Selector */}
+    <ErrorBoundary>
+      <div className="min-h-screen bg-[#0a0d14] flex flex-col font-sans text-slate-100 selection:bg-cyan-500/30 selection:text-cyan-200">
+        {/* Top Header Bar with Dual-Engine Architecture Selector */}
       <MissionControlHeader
         incident={incident}
         agentStatus={agentStatus}
@@ -84,6 +115,8 @@ export const App: React.FC = () => {
         dockerActive={dockerActive}
         rbacRole={rbacRole}
         clusterProvider={clusterProvider}
+        autopilotEnabled={autopilotEnabled}
+        onToggleAutopilot={toggleAutopilot}
         onSelectEngine={selectEngine}
         onReset={resetIncident}
       />
@@ -129,6 +162,12 @@ export const App: React.FC = () => {
                     Say &ldquo;Confirm&rdquo; or click Authorize to execute.
                   </p>
                 )}
+                {stagedRemediation.hardware_mfa_required && (
+                  <div className="mt-2 flex items-center gap-2 bg-red-950/80 p-1.5 rounded border border-red-500/50">
+                    <span className="text-xl animate-bounce">🔑</span>
+                    <span className="text-xs font-bold text-red-200">Hardware FIDO2 Security Key Required. Please touch your authenticator.</span>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -139,13 +178,22 @@ export const App: React.FC = () => {
               >
                 Cancel / Abort
               </button>
-              <button
-                onClick={authorizeRemediation}
-                className="px-4 py-2 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs shadow-lg shadow-amber-500/30 transition flex items-center gap-1.5"
-              >
-                <CheckCircle2 className="w-4 h-4" />
-                Authorize Remediation
-              </button>
+              {stagedRemediation.hardware_mfa_required ? (
+                <button
+                  onClick={authorizeRemediation}
+                  className="px-5 py-2 rounded-lg bg-red-600 hover:bg-red-500 text-white font-bold text-xs shadow-lg shadow-red-600/30 border border-red-500 transition animate-pulse flex items-center gap-2"
+                >
+                  <span>🔑 Touch Security Key to Authorize</span>
+                </button>
+              ) : (
+                <button
+                  onClick={authorizeRemediation}
+                  className="px-5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-lg shadow-emerald-600/30 border border-emerald-500 transition animate-pulse"
+                >
+                  Authorize Execution
+                </button>
+              )}
+
             </div>
           </div>
         )}
@@ -290,5 +338,6 @@ export const App: React.FC = () => {
         />
       )}
     </div>
+    </ErrorBoundary>
   );
 };

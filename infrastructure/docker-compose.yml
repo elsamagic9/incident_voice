@@ -23,7 +23,7 @@ services:
     ports:
       - "5433:5432"
     environment:
-      POSTGRES_USER: sre_user
-      POSTGRES_PASSWORD: secure_password
-      POSTGRES_DB: orders
+      POSTGRES_USER: ${POSTGRES_USER:-sre_admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-incident_secret}
+      POSTGRES_DB: ${POSTGRES_DB:-orders}
     restart: unless-stopped

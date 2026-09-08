@@ -61,7 +61,7 @@ SRE_TOOL_DEFINITIONS = [
                 "properties": {
                     "action": {
                         "type": "string",
-                        "enum": ["restart_pod", "scale_replicas", "flush_cache", "enable_circuit_breaker", "rollback_release"],
+                        "enum": ["restart_pod", "scale_replicas", "flush_cache", "enable_circuit_breaker", "rollback_release", "failover_traffic"],
                         "description": "The remediation action to execute"
                     },
                     "service_name": {
@@ -184,6 +184,40 @@ SRE_TOOL_DEFINITIONS = [
                 "type": "object",
                 "properties": {},
                 "required": []
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "cordon_node",
+            "description": "Cordon a Kubernetes worker node to prevent new pod scheduling. Used for maintenance or to drain workloads.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "node_name": {
+                        "type": "string",
+                        "description": "The Kubernetes node name to cordon (e.g. 'ip-10-0-1-12.ec2.internal')"
+                    }
+                },
+                "required": ["node_name"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "k8s_rollout_restart",
+            "description": "Perform a rolling restart of a Kubernetes deployment, gracefully cycling all pods.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "deployment_name": {
+                        "type": "string",
+                        "description": "The deployment or service name to rollout restart"
+                    }
+                },
+                "required": ["deployment_name"]
             }
         }
     }

@@ -30,5 +30,8 @@ class TTSService:
                     yield chunk["data"]
         except Exception as e:
             logger.error(f"TTS Streaming error: {e}")
+            # Yield a minimal silent MP3 frame so the client doesn't hang
+            # This is a valid 0.1s silent MP3 frame header
+            yield b'\xff\xfb\x90\x00' + b'\x00' * 417
 
 tts_service = TTSService()

@@ -64,6 +64,7 @@ class AssemblyAIVoiceAgentSession:
         self.is_connected = False
         self.staged_action: Optional[Dict[str, Any]] = None
         self.awaiting_confirmation: bool = False
+        self.autopilot_mode: bool = False
         self.history: List[Dict[str, str]] = []
 
     async def connect(self) -> bool:
@@ -246,7 +247,22 @@ class AssemblyAIVoiceAgentSession:
         if tool_name == "execute_remediation":
             action = arguments.get("action", "")
             service_name = arguments.get("service_name", "payment-service")
-            if action in ["restart_pod", "flush_cache", "rollback_release", "restart"]:
+            if action in ["restart_pod", "flush_cache", "rollback_release", "restart", "failover_traffic"]:
+                # Autopilot bypass — execute immediately without staging
+                if self.autopilot_mode:
+                    logger.warning(f"Autopilot active (Path 1). Auto-executing {action} on {service_name}")
+                    from app.tools.sre_tools import execute_remediation
+                    result = execute_remediation(action, service_name)
+                    if self.on_tool_executed:
+                        await self._call_cb(self.on_tool_executed, {
+                            "tool_name": tool_name,
+                            "arguments": arguments,
+                            "result": result,
+                            "timestamp": time.time()
+                        })
+                    await self._send_tool_result(call_id, result)
+                    return
+
                 if not self.awaiting_confirmation:
                     from app.core.auth_rbac import security_manager
                     from app.services.audit_ledger import audit_ledger

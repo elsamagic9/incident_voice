@@ -243,7 +243,7 @@ export const PostMortemViewer: React.FC<Props> = ({ data, onClose }) => {
   }, markers[0]);
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4" role="dialog" aria-modal="true">
       <div className="bg-[#101522] border border-cyan-500/40 rounded-2xl w-full max-w-4xl max-h-[92vh] flex flex-col shadow-2xl overflow-hidden glow-cyan">
         {/* Hidden Audio Element */}
         <audio

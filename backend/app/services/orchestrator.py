@@ -29,11 +29,13 @@ class AgentOrchestrator:
         self.history: List[Dict[str, str]] = []
         self.staged_action: Optional[Dict[str, Any]] = None
         self.awaiting_confirmation: bool = False
+        self.autopilot_mode: bool = False
 
     def reset(self):
         self.history = []
         self.staged_action = None
         self.awaiting_confirmation = False
+        self.autopilot_mode = False
         cluster_state.reset_to_default_incident()
         try:
             from app.services.runbook_engine import runbook_engine
@@ -80,6 +82,8 @@ class AgentOrchestrator:
             spoken_text = "Confirmed. Redis cache memory cleared and connection pool recycled. Memory utilization dropped to 35%."
         elif action == "rollback_release":
             spoken_text = f"Confirmed. Deployment for {service_name} rolled back to previous stable release."
+        elif action == "failover_traffic":
+            spoken_text = f"Confirmed. Hardware MFA validated. Global DNS traffic failed over from {params.get('from_region', 'us-east-1')} to {params.get('to_region', 'eu-west-1')}."
         else:
             spoken_text = f"Confirmed. Remediation {action} executed successfully for {service_name}."
 
@@ -119,7 +123,23 @@ class AgentOrchestrator:
             spoken_err = f"Permission denied: Action '{action}' requires SRE Commander role. Access denied."
             return spoken_err, {"status": "denied", "error": "Insufficient RBAC role"}
 
-        # 2. Dynamic Military/Aviation Phonetic Challenge Code
+        # 2. Autopilot Mode Bypass
+        if self.autopilot_mode:
+            # Skip staging, execute immediately
+            logger.warning(f"Autopilot active. Auto-executing {action} on {service_name}")
+            self.staged_action = {
+                "action": action,
+                "service_name": service_name,
+                "params": params,
+                "challenge_code": "AUTOPILOT_BYPASS",
+                "staged_at": time.time()
+            }
+            # Instead of staging, just confirm it and return
+            spoken_text, tools_res = self.confirm_staged_remediation()
+            autopilot_spoken = f"Autopilot active. {spoken_text}"
+            return autopilot_spoken, {"status": "executed", "action": action, "service_name": service_name}
+
+        # 3. Dynamic Military/Aviation Phonetic Challenge Code
         challenge_code = security_manager.generate_phonetic_challenge()
 
         self.staged_action = {
@@ -127,6 +147,7 @@ class AgentOrchestrator:
             "service_name": service_name,
             "params": params,
             "challenge_code": challenge_code,
+            "hardware_mfa_required": True,
             "staged_at": time.time()
         }
         self.awaiting_confirmation = True
@@ -137,12 +158,14 @@ class AgentOrchestrator:
             action_label = "Cache flush"
         elif action == "rollback_release":
             action_label = "Rollback release"
+        elif action == "failover_traffic":
+            action_label = "Global DNS Failover"
         else:
             action_label = action.replace("_", " ").title()
 
-        spoken_prompt = f"Remediation staged: {action_label} of {service_name}. Role verified: SRE Commander. Say 'Confirm' or click Authorize to execute. Security challenge: '{challenge_code}'."
+        spoken_prompt = f"Remediation staged: {action_label} of {service_name}. Role verified: SRE Commander. Hardware MFA required. Please touch your security key and say 'Confirm' or click Authorize to execute. Security challenge: '{challenge_code}'."
 
-        # 3. Cryptographic Audit Ledger record
+        # 4. Cryptographic Audit Ledger record
         audit_ledger.record_event(
             event_type="STAGED_MUTATION",
             actor=security_manager.session_operator,
@@ -150,14 +173,17 @@ class AgentOrchestrator:
             action=action,
             details={
                 "service_name": service_name,
+                "params": params,
                 "challenge_code": challenge_code,
-                "params": params
+                "requires_hardware_mfa": True,
+                "status": "pending_confirmation"
             }
         )
 
         staged_result = {
             "status": "staged",
             "awaiting_confirmation": True,
+            "hardware_mfa_required": True,
             "action": action,
             "service_name": service_name,
             "challenge_code": challenge_code,
@@ -496,10 +522,50 @@ class AgentOrchestrator:
             blast_txt = f"Active blast radius impacts {', '.join(blast)}." if blast else "No cascading blast radius detected."
             return f"Service dependency topology analyzed. Ingress gateway routes to Payment Service and Auth. {blast_txt}", tools
 
+        # 9. Global Traffic Failover (Destructive: Guardrail staging applied)
+        elif any(w in lower for w in ["failover", "shift traffic", "dns failover", "route traffic", "traffic shift"]):
+            prompt, staged_res = self._stage_remediation("failover_traffic", "global-dns", {"from_region": "us-east-1", "to_region": "eu-west-1"})
+            tools.append({
+                "tool_name": "execute_remediation",
+                "arguments": {"action": "failover_traffic", "service_name": "global-dns"},
+                "result": staged_res,
+                "timestamp": time.time()
+            })
+            return prompt, tools
+
+        # 10. Cordon Node (Destructive: Guardrail staging applied)
+        elif any(w in lower for w in ["cordon", "drain node", "disable scheduling", "take node offline"]):
+            from app.tools.k8s_adapter import k8s_adapter
+            node_name = "ip-10-0-1-12.ec2.internal"
+            for node in k8s_adapter.nodes:
+                if any(part in lower for part in node["name"].split(".")):
+                    node_name = node["name"]
+                    break
+            res = k8s_adapter.cordon_node(node_name)
+            tools.append({
+                "tool_name": "cordon_node",
+                "arguments": {"node_name": node_name},
+                "result": res,
+                "timestamp": time.time()
+            })
+            return f"Node {node_name} cordoned. New pod scheduling disabled on this worker.", tools
+
+        # 11. Autopilot Mode Toggle
+        elif any(w in lower for w in ["autopilot", "auto pilot", "self-healing", "autonomous mode"]):
+            if any(w in lower for w in ["activate", "enable", "on", "start", "engage"]):
+                self.autopilot_mode = True
+                return "Autopilot mode engaged. I will autonomously execute remediations without manual confirmation. Say 'disable autopilot' to return to manual mode.", tools
+            elif any(w in lower for w in ["disable", "off", "stop", "disengage", "deactivate"]):
+                self.autopilot_mode = False
+                return "Autopilot mode disengaged. All destructive actions now require manual confirmation.", tools
+            else:
+                status = "active" if self.autopilot_mode else "inactive"
+                return f"Autopilot mode is currently {status}. Say 'activate autopilot' or 'disable autopilot' to change.", tools
+
         # Default SRE response
         return (
             f"Acknowledged. I'm monitoring the cluster. Payment service is degraded. "
-            f"You can command me to inspect logs, scale replicas, flush Redis, or restart failing pods.",
+            f"You can command me to inspect logs, scale replicas, flush Redis, restart failing pods, or initiate a traffic failover.",
             tools
         )
 

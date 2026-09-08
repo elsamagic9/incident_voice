@@ -246,3 +246,28 @@ def test_enterprise_rest_endpoints():
     assert "chain_status" in audit_data
     assert "blocks" in audit_data
     assert audit_data["chain_status"] == "TAMPER_EVIDENT_VALID"
+
+def test_hardware_mfa_and_failover_traffic():
+    from app.services.orchestrator import AgentOrchestrator
+    from app.tools.sre_tools import execute_remediation
+    
+    orch = AgentOrchestrator()
+    spoken, staged = orch._stage_remediation("failover_traffic", "global-dns", {})
+    
+    assert staged["hardware_mfa_required"] == True
+    assert "Touch your security key" in spoken or "touch your security key" in spoken.lower()
+    assert staged["challenge_code"] is not None
+    assert staged["action"] == "failover_traffic"
+
+def test_autopilot_bypass():
+    from app.services.orchestrator import AgentOrchestrator
+    orch = AgentOrchestrator()
+    orch.autopilot_mode = True
+    
+    spoken, result = orch._stage_remediation("restart_pod", "payment-service", {})
+    
+    # In autopilot, it skips staging and executes immediately
+    assert result["status"] == "executed"
+    assert "Autopilot active" in spoken
+    assert orch.staged_action is None
+    assert orch.awaiting_confirmation == False

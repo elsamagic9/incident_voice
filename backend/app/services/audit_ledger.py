@@ -1,6 +1,7 @@
 import hashlib
 import json
 import time
+import threading
 from datetime import datetime, timezone
 from typing import Dict, Any, List, Optional, Tuple
 
@@ -9,11 +10,13 @@ class CryptographicAuditLedger:
     SOC-2 Type II / ISO-27001 Compliant Immutable Hash-Chained Audit Ledger.
     Every voice command, staged remediation, phonetic authorization, and
     infrastructure mutation is cryptographically linked using SHA-256 blocks.
+    Thread-safe via internal lock to prevent concurrent chain corruption.
     """
 
     GENESIS_HASH = "0" * 64
 
     def __init__(self):
+        self._lock = threading.Lock()
         self.blocks: List[Dict[str, Any]] = []
         # Create genesis block
         self._create_genesis_block()
@@ -56,25 +59,26 @@ class CryptographicAuditLedger:
         """
         Appends an event to the immutable hash chain.
         """
-        prev_block = self.blocks[-1]
-        prev_hash = prev_block["block_hash"]
-        block_index = len(self.blocks)
+        with self._lock:
+            prev_block = self.blocks[-1]
+            prev_hash = prev_block["block_hash"]
+            block_index = len(self.blocks)
 
-        block_payload = {
-            "block_index": block_index,
-            "timestamp_iso": datetime.now(timezone.utc).isoformat(),
-            "actor": actor,
-            "role": role,
-            "event_type": event_type,
-            "action": action,
-            "details": details or {},
-            "prev_hash": prev_hash
-        }
-        block_hash = self._compute_hash(block_payload)
-        block_payload["block_hash"] = block_hash
+            block_payload = {
+                "block_index": block_index,
+                "timestamp_iso": datetime.now(timezone.utc).isoformat(),
+                "actor": actor,
+                "role": role,
+                "event_type": event_type,
+                "action": action,
+                "details": details or {},
+                "prev_hash": prev_hash
+            }
+            block_hash = self._compute_hash(block_payload)
+            block_payload["block_hash"] = block_hash
 
-        self.blocks.append(block_payload)
-        return block_payload
+            self.blocks.append(block_payload)
+            return block_payload
 
     def verify_chain_integrity(self) -> Tuple[bool, int, Optional[str]]:
         """

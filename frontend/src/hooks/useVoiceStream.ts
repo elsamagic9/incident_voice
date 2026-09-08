@@ -15,6 +15,7 @@ export function useVoiceStream() {
   const [agentStatus, setAgentStatus] = useState<AgentStatus>('idle');
   const [activeEngine, setActiveEngine] = useState<VoiceEngine>('custom_stt_v3');
   const [stagedRemediation, setStagedRemediation] = useState<StagedRemediation | null>(null);
+  const [autopilotEnabled, setAutopilotEnabled] = useState(false);
   const [dockerActive, setDockerActive] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [turns, setTurns] = useState<Turn[]>([]);
@@ -37,6 +38,7 @@ export function useVoiceStream() {
   });
 
   const socketRef = useRef<WebSocket | null>(null);
+  const reconnectAttemptRef = useRef(0);
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const workletNodeRef = useRef<AudioWorkletNode | null>(null);
@@ -63,177 +65,188 @@ export function useVoiceStream() {
 
   // Connect WebSocket
   useEffect(() => {
-    const customWsBase = (import.meta as any).env?.VITE_WS_URL;
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const host = window.location.host;
-    const wsUrl = customWsBase
-      ? `${customWsBase}${customWsBase.includes('?') ? '&' : '?'}engine=${activeEngine}`
-      : `${protocol}//${host}/ws/agent?engine=${activeEngine}`;
+    let pingInterval: ReturnType<typeof setInterval>;
+    let ws: WebSocket;
+    let reconnectTimeout: ReturnType<typeof setTimeout>;
 
-    const ws = new WebSocket(wsUrl);
-    socketRef.current = ws;
+    const connect = () => {
+      const customWsBase = (import.meta as any).env?.VITE_WS_URL;
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const host = window.location.host;
+      const wsUrl = customWsBase
+        ? `${customWsBase}${customWsBase.includes('?') ? '&' : '?'}engine=${activeEngine}`
+        : `${protocol}//${host}/ws/agent?engine=${activeEngine}`;
 
-    // Heartbeat ping every 25s to keep cloud load balancers (Render/Fly.io) alive
-    const pingInterval = setInterval(() => {
-      if (ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({ type: 'ping' }));
-      }
-    }, 25000);
+      ws = new WebSocket(wsUrl);
+      socketRef.current = ws;
 
-    ws.onopen = () => {
-      console.log('Voice Agent WebSocket connected with engine:', activeEngine);
-      setIsConnected(true);
-      setAgentStatus('listening');
-    };
+      pingInterval = setInterval(() => {
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ type: 'ping' }));
+        }
+      }, 25000);
 
-    ws.onclose = () => {
-      console.log('Voice Agent WebSocket disconnected.');
-      setIsConnected(false);
-      setAgentStatus('idle');
-      clearInterval(pingInterval);
-    };
+      ws.onopen = () => {
+        console.log('Voice Agent WebSocket connected with engine:', activeEngine);
+        setIsConnected(true);
+        setAgentStatus('listening');
+        reconnectAttemptRef.current = 0;
+      };
 
-    ws.onerror = (err) => {
-      console.error('WebSocket error:', err);
-      setAgentStatus('error');
-    };
+      ws.onclose = () => {
+        console.log('Voice Agent WebSocket disconnected.');
+        setIsConnected(false);
+        setAgentStatus('idle');
+        clearInterval(pingInterval);
 
-    ws.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data);
+        if (reconnectAttemptRef.current < 3) {
+          const delay = Math.pow(2, reconnectAttemptRef.current) * 1000;
+          reconnectAttemptRef.current++;
+          reconnectTimeout = setTimeout(connect, delay);
+        }
+      };
 
-        switch (data.type) {
-          case 'engine_sync':
-            if (data.engine) {
-              setActiveEngine(data.engine);
-            }
-            break;
+      ws.onerror = (err) => {
+        console.error('WebSocket error:', err);
+        setAgentStatus('error');
+      };
 
-          case 'turn':
-            if (data.end_of_turn) {
-              setCurrentInterimTranscript('');
-              setTurns((prev) => [
-                ...prev,
-                {
-                  id: `${Date.now()}-${Math.random()}`,
-                  speaker: data.speaker,
-                  transcript: data.transcript,
-                  end_of_turn: true,
-                  confidence: data.confidence,
-                  timestamp: data.timestamp || Date.now()
+      ws.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+
+          switch (data.type) {
+            case 'engine_sync':
+              if (data.engine) {
+                setActiveEngine(data.engine);
+              }
+              break;
+
+            case 'turn':
+              if (data.end_of_turn) {
+                setCurrentInterimTranscript('');
+                setTurns((prev) => [
+                  ...prev,
+                  {
+                    id: `${Date.now()}-${Math.random()}`,
+                    speaker: data.speaker,
+                    transcript: data.transcript,
+                    end_of_turn: true,
+                    confidence: data.confidence,
+                    timestamp: data.timestamp || Date.now()
+                  }
+                ]);
+              } else {
+                setCurrentInterimTranscript(data.transcript);
+              }
+              break;
+
+            case 'agent_state':
+              setAgentStatus(data.state);
+              if (data.state === 'speaking') {
+                playSoundEffect(587, 'sine', 0.06);
+              } else if (data.state === 'interrupted') {
+                stopPlayback();
+                playSoundEffect(330, 'square', 0.05);
+              } else if (data.state === 'awaiting_confirmation') {
+                playSoundEffect(740, 'triangle', 0.15);
+                if (data.staged_action) {
+                  setStagedRemediation(data.staged_action);
                 }
-              ]);
-            } else {
-              // Interim streaming transcript
-              setCurrentInterimTranscript(data.transcript);
-            }
-            break;
+              }
+              break;
 
-          case 'agent_state':
-            setAgentStatus(data.state);
-            if (data.state === 'speaking') {
-              playSoundEffect(587, 'sine', 0.06);
-            } else if (data.state === 'interrupted') {
-              stopPlayback();
-              playSoundEffect(330, 'square', 0.05);
-            } else if (data.state === 'awaiting_confirmation') {
-              playSoundEffect(740, 'triangle', 0.15);
+            case 'remediation_staged':
               if (data.staged_action) {
                 setStagedRemediation(data.staged_action);
+                setAgentStatus('awaiting_confirmation');
+                playSoundEffect(740, 'triangle', 0.15);
               }
-            } else if (data.state === 'listening' && !data.staged_action) {
-              // If returned to normal listening
-            }
-            break;
+              break;
 
-          case 'remediation_staged':
-            if (data.staged_action) {
-              setStagedRemediation(data.staged_action);
-              setAgentStatus('awaiting_confirmation');
-              playSoundEffect(740, 'triangle', 0.15);
-            }
-            break;
-
-          case 'tool_executed':
-            playSoundEffect(1046, 'sine', 0.08);
-            if (data.result?.status === 'staged') {
-              setStagedRemediation({
-                action: data.result.action || data.arguments?.action,
-                service_name: data.result.service_name || data.arguments?.service_name,
-                params: data.arguments,
-                message: data.result.message
-              });
-              setAgentStatus('awaiting_confirmation');
-            } else {
-              // Action was executed -> clear staged state & restore status if needed
-              setStagedRemediation(null);
-              setAgentStatus((prev) => (prev === 'awaiting_confirmation' ? 'listening' : prev));
-            }
-
-            setExecutedTools((prev) => [
-              ...prev,
-              {
-                id: `${Date.now()}-${data.tool_name}`,
-                tool_name: data.tool_name,
-                arguments: data.arguments,
-                result: data.result,
-                timestamp: data.timestamp
+            case 'tool_executed':
+              playSoundEffect(1046, 'sine', 0.08);
+              if (data.result?.status === 'staged') {
+                setStagedRemediation({
+                  action: data.result.action || data.arguments?.action,
+                  service_name: data.result.service_name || data.arguments?.service_name,
+                  params: data.arguments,
+                  message: data.result.message
+                });
+                setAgentStatus('awaiting_confirmation');
+              } else {
+                setStagedRemediation(null);
+                setAgentStatus((prev) => (prev === 'awaiting_confirmation' ? 'listening' : prev));
               }
-            ]);
-            break;
 
-          case 'cluster_sync':
-            if (data.incident) setIncident(data.incident);
-            if (data.services) setServices(data.services);
-            if (data.docker_active !== undefined) setDockerActive(data.docker_active);
-            if (data.topology) setTopology(data.topology);
-            if (data.active_runbook !== undefined) setActiveRunbook(data.active_runbook);
-            if (data.rbac_role) setRbacRole(data.rbac_role);
-            if (data.cluster_provider) setClusterProvider(data.cluster_provider);
-            break;
+              setExecutedTools((prev) => [
+                ...prev,
+                {
+                  id: `${Date.now()}-${data.tool_name}`,
+                  tool_name: data.tool_name,
+                  arguments: data.arguments,
+                  result: data.result,
+                  timestamp: data.timestamp
+                }
+              ]);
+              break;
 
-          case 'runbook_sync':
-            if (data.session !== undefined) {
-              setActiveRunbook(data.session);
-            }
-            break;
+            case 'cluster_sync':
+              if (data.incident) setIncident(data.incident);
+              if (data.services) setServices(data.services);
+              if (data.docker_active !== undefined) setDockerActive(data.docker_active);
+              if (data.topology) setTopology(data.topology);
+              if (data.active_runbook !== undefined) setActiveRunbook(data.active_runbook);
+              if (data.rbac_role) setRbacRole(data.rbac_role);
+              if (data.cluster_provider) setClusterProvider(data.cluster_provider);
+              break;
 
-          case 'latency_breakdown':
-            if (data.stats) {
-              setLatency(data.stats);
-            }
-            break;
+            case 'runbook_sync':
+              if (data.session !== undefined) {
+                setActiveRunbook(data.session);
+              }
+              break;
 
-          case 'audio_stream':
-            if (data.data) {
-              enqueueBase64Chunk(data.data);
-            }
-            break;
+            case 'latency_breakdown':
+              if (data.stats) {
+                setLatency(data.stats);
+              }
+              break;
 
-          case 'audio_stream_end':
-            break;
+            case 'audio_stream':
+              if (data.data) {
+                enqueueBase64Chunk(data.data);
+              }
+              break;
 
-          case 'postmortem_ready':
-            if (data.data) {
-              playSoundEffect(1318, 'triangle', 0.25);
-              setPostMortem(data.data);
-            }
-            break;
+            case 'audio_stream_end':
+              break;
 
-          case 'system':
-            console.log('System:', data.message);
-            break;
+            case 'postmortem_ready':
+              if (data.data) {
+                playSoundEffect(1318, 'triangle', 0.25);
+                setPostMortem(data.data);
+              }
+              break;
+
+            case 'system':
+              console.log('System:', data.message);
+              break;
+          }
+        } catch (err) {
+          console.error('Error handling WebSocket message:', err);
         }
-      } catch (err) {
-        console.error('Error handling WebSocket message:', err);
-      }
+      };
     };
+
+    connect();
 
     return () => {
       clearInterval(pingInterval);
-      ws.close();
+      clearTimeout(reconnectTimeout);
+      if (ws) ws.close();
     };
-  }, [enqueueBase64Chunk, stopPlayback, playSoundEffect]);
+  }, [activeEngine, enqueueBase64Chunk, stopPlayback, playSoundEffect]);
 
   // Fallback downsampler for ScriptProcessor if AudioWorklet fails
   const downsampleTo16k = (buffer: Float32Array, sampleRate: number): Int16Array => {
@@ -457,10 +470,24 @@ export function useVoiceStream() {
     }
   }, [stopPlayback, playSoundEffect]);
 
+  const toggleAutopilot = useCallback(() => {
+    if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
+      const newState = !autopilotEnabled;
+      setAutopilotEnabled(newState);
+      socketRef.current.send(JSON.stringify({
+        type: 'toggle_autopilot',
+        enabled: newState
+      }));
+      playSoundEffect(newState ? 880 : 440, 'sine', 0.1);
+    }
+  }, [autopilotEnabled, playSoundEffect]);
+
+
   return {
     isConnected,
     agentStatus,
     activeEngine,
+    autopilotEnabled,
     stagedRemediation,
     dockerActive,
     rbacRole,
@@ -488,6 +515,7 @@ export function useVoiceStream() {
     startRunbook,
     advanceRunbook,
     abortRunbook,
+    toggleAutopilot,
     closePostMortem: () => setPostMortem(null)
   };
 }

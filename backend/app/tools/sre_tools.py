@@ -154,6 +154,22 @@ def execute_remediation(action: str, service_name: str, count: int = 4) -> Dict[
 
         # Also trigger Kubernetes deployment rollout restart
         k8s_rollout = k8s_adapter.rollout_restart_deployment(service_name)
+    elif action == "failover_traffic":
+        failover_result = k8s_adapter.failover_traffic("us-east-1", "eu-west-1")
+        audit_ledger.record_event(
+            event_type="INFRASTRUCTURE_MUTATION_EXECUTED",
+            actor="Commander-01 (Lead SRE)",
+            role="SRE_COMMANDER",
+            action="failover_traffic",
+            details={
+                "service_name": service_name,
+                "from_region": "us-east-1",
+                "to_region": "eu-west-1",
+                "remediation_status": "applied"
+            }
+        )
+        cluster_state.add_event("remediation", f"Global DNS failover executed: us-east-1 → eu-west-1")
+        return failover_result
 
     result = cluster_state.apply_remediation(action, service_name, params)
     if real_restarted and real_restarted.get("success"):
@@ -188,14 +204,23 @@ def query_host_telemetry() -> Dict[str, Any]:
 
 def trigger_pager(team: str, message: str) -> Dict[str, Any]:
     """Pages an on-call team via incident management escalation."""
+    from app.services.external_integrations import external_integrations
     timestamp = time.strftime("%H:%M:%S")
     cluster_state.add_event("pager", f"Paged {team} with message: {message}")
+    
+    # Trigger PagerDuty
+    pd_res = external_integrations.trigger_pagerduty_incident(title=message, severity="critical")
+    # Trigger Slack
+    slack_res = external_integrations.post_slack_message(channel=f"#incidents-{team}", message=f"@here {message}")
+    
     return {
         "status": "paged",
         "team": team,
         "timestamp": timestamp,
         "message": message,
-        "confirmation": f"Escalation acknowledged. On-call lead for {team} alerted via SMS/Call."
+        "confirmation": f"Escalation acknowledged. {pd_res['message']} Slack notification sent.",
+        "pagerduty": pd_res,
+        "slack": slack_res
     }
 
 def generate_postmortem() -> Dict[str, Any]:

@@ -65,6 +65,7 @@ export interface StagedRemediation {
   challenge_code?: string;
   staged_at?: number;
   message?: string;
+  hardware_mfa_required?: boolean;
 }
 
 export interface PostMortemData {

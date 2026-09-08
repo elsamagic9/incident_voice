@@ -353,7 +353,7 @@ class RunbookEngine:
         args = step.action_args or {}
 
         if action:
-            if action in ["restart_pod", "flush_cache", "scale_replicas", "enable_circuit_breaker"]:
+            if action in ["restart_pod", "flush_cache", "scale_replicas", "enable_circuit_breaker", "rollback_release", "failover_traffic"]:
                 svc = args.get("service_name", step.target_service)
                 count = args.get("count", 4)
                 res = execute_remediation(action, svc, count=count)
