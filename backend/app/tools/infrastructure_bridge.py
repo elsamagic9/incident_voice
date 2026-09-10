@@ -4,6 +4,8 @@ import subprocess
 import time
 from typing import Dict, Any, List, Optional
 import psutil
+import json
+from app.core.config import settings
 
 logger = logging.getLogger("infra_bridge")
 
@@ -14,6 +16,8 @@ class InfrastructureBridge:
     """
 
     def is_docker_available(self) -> bool:
+        if settings.infrastructure_mode != "docker":
+            return False
         try:
             res = subprocess.run(["docker", "info"], capture_output=True, text=True, timeout=2)
             return res.returncode == 0
@@ -56,7 +60,7 @@ class InfrastructureBridge:
                 ["docker", "logs", "--tail", str(lines), sanitized],
                 capture_output=True, text=True, timeout=4
             )
-            logs = res.stdout.strip().split("\n") if res.stdout.strip() else res.stderr.strip().split("\n")
+            logs = res.stdout.splitlines() + res.stderr.splitlines()
             return {
                 "container": sanitized,
                 "exit_code": res.returncode,
@@ -89,6 +93,20 @@ class InfrastructureBridge:
             return {"success": False, "error": res.stderr.strip()}
         except Exception as e:
             return {"success": False, "error": str(e)}
+
+    def inspect_container(self, container_name):
+        if not self.is_docker_available():
+            return {"success": False, "error": "Docker is unavailable"}
+        try:
+            res = subprocess.run(["docker", "inspect", container_name], capture_output=True, text=True, timeout=3)
+            if res.returncode:
+                return {"success": False, "error": res.stderr.strip()}
+            state = json.loads(res.stdout)[0]["State"]
+            health = state.get("Health", {}).get("Status")
+            return {"success": True, "running": state.get("Running", False), "health": health,
+                    "health_verified": health == "healthy"}
+        except (OSError, ValueError, KeyError, subprocess.TimeoutExpired) as exc:
+            return {"success": False, "error": str(exc)}
 
     def get_host_telemetry(self) -> Dict[str, Any]:
         """Reads real Linux CPU, Memory, Disk, and Load averages."""
@@ -142,7 +160,7 @@ class InfrastructureBridge:
         elif docker_ok:
             provider = "Docker Host Daemon"
         else:
-            provider = "Kubernetes (Virtual Mesh)"
+            provider = "Simulation" if settings.infrastructure_mode == "simulation" else "Disconnected"
 
         return {
             "orchestration_provider": provider,
@@ -153,4 +171,3 @@ class InfrastructureBridge:
         }
 
 infra_bridge = InfrastructureBridge()
-

@@ -1,5 +1,8 @@
-import React from 'react';
-import { ShieldAlert, Wifi, Radio, RefreshCw, Zap, Bot, Sparkles, CheckCircle2 } from 'lucide-react';
+import React, { useState } from 'react';
+import {
+  AudioLines, ChevronDown, Settings2, RefreshCw, Zap, Sliders,
+  ShieldCheck, Activity, Radio, Cpu
+} from 'lucide-react';
 import { AgentStatus, IncidentRecord, VoiceEngine } from '../types';
 import { LatencyStats } from '../hooks/useVoiceStream';
 
@@ -9,9 +12,9 @@ interface Props {
   isConnected: boolean;
   latency: LatencyStats;
   activeEngine: VoiceEngine;
-  dockerActive?: boolean;
+  infrastructureMode?: string;
   rbacRole?: string;
-  clusterProvider?: string;
+  busy?: boolean;
   autopilotEnabled?: boolean;
   onToggleAutopilot?: () => void;
   onSelectEngine: (engine: VoiceEngine) => void;
@@ -19,160 +22,243 @@ interface Props {
 }
 
 export const MissionControlHeader: React.FC<Props> = ({
-  incident,
-  agentStatus,
   isConnected,
   latency,
   activeEngine,
-  dockerActive = true,
-  rbacRole = 'SRE_COMMANDER',
-  clusterProvider = 'Hybrid (K8s + Docker)',
-  autopilotEnabled = false,
+  infrastructureMode,
+  rbacRole,
+  busy,
+  autopilotEnabled,
   onToggleAutopilot,
   onSelectEngine,
-  onReset
+  onReset,
+  agentStatus,
 }) => {
-  const isResolved = incident?.status === 'RESOLVED';
-  const sev = incident?.severity || 'SEV-1';
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const disabled = !isConnected || busy;
+
+  const isSpeaking = agentStatus === 'speaking';
+  const isThinking = agentStatus === 'thinking';
+  const isAwaiting = agentStatus === 'awaiting_confirmation';
+
+  const statusLabel = isSpeaking
+    ? 'Speaking'
+    : isThinking
+    ? 'Reasoning'
+    : isAwaiting
+    ? 'Awaiting Auth'
+    : isConnected
+    ? 'Standby'
+    : 'Offline';
+
+  const statusColorClass = isSpeaking
+    ? 'text-cyan-400 border-cyan-500/40 bg-cyan-500/10 shadow-[0_0_12px_rgba(6,182,212,0.25)]'
+    : isThinking || isAwaiting
+    ? 'text-amber-400 border-amber-500/40 bg-amber-500/10 shadow-[0_0_12px_rgba(245,158,11,0.2)]'
+    : isConnected
+    ? 'text-emerald-400 border-emerald-500/40 bg-emerald-500/10 shadow-[0_0_12px_rgba(16,185,129,0.2)]'
+    : 'text-slate-400 border-slate-700 bg-slate-800/50';
+
+  const statusDotColor = isSpeaking
+    ? 'bg-cyan-400 animate-ping'
+    : isThinking || isAwaiting
+    ? 'bg-amber-400 animate-pulse'
+    : isConnected
+    ? 'bg-emerald-400'
+    : 'bg-slate-500';
 
   return (
-    <header className="border-b border-white/[0.08] bg-[#070a14]/90 backdrop-blur-2xl sticky top-0 z-40 px-4 py-2.5 shadow-2xl">
-      <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-3">
-        {/* Left: Branding, Outage Status & Host Pillar */}
-        <div className="flex items-center gap-3 w-full md:w-auto justify-between md:justify-start">
-          <div className="flex items-center gap-3">
-            <div className="relative">
-              <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-cyan-400/20 via-blue-500/20 to-purple-600/20 border border-cyan-400/50 flex items-center justify-center text-cyan-300 shadow-lg glow-cyan">
-                <ShieldAlert className="w-5 h-5" />
-              </div>
-              <span
-                className={`absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full ${
-                  isResolved ? 'bg-emerald-400 shadow-[0_0_8px_#34d399]' : 'bg-red-500 shadow-[0_0_8px_#ef4444] animate-ping'
-                }`}
-              />
-            </div>
+    <header className="app-header">
+      <div className="header-inner">
+        {/* Brand */}
+        <div className="flex items-center gap-3 md:gap-5 min-w-0">
+          <a href="#workspace" className="brand" aria-label="IncidentVoice workspace">
+            <span className="brand-symbol">
+              <AudioLines size={22} className="brand-audio-icon" />
+            </span>
+            <span className="brand-text">
+              Incident<span className="brand-light">Voice</span>
+              <small className="brand-tagline">AUTONOMOUS SRE COMMANDER</small>
+            </span>
+          </a>
 
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="font-extrabold tracking-wider text-base text-white font-sans">
-                  INCIDENT<span className="bg-gradient-to-r from-cyan-400 via-sky-300 to-blue-400 bg-clip-text text-transparent">VOICE</span>
-                </span>
-
-                {/* Status Badge */}
-                {isResolved ? (
-                  <span className="flex items-center gap-1.5 px-3 py-0.5 rounded-full text-[10px] font-mono font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 shadow-sm glow-green">
-                    <CheckCircle2 className="w-3 h-3 text-emerald-400" /> ALL SYSTEMS NOMINAL
-                  </span>
-                ) : (
-                  <span className="flex items-center gap-1.5 px-3 py-0.5 rounded-full text-[10px] font-mono font-bold bg-red-500/20 text-red-300 border border-red-500/50 shadow-sm glow-red animate-pulse">
-                    <Radio className="w-3 h-3 text-red-400" /> {sev} ACTIVE OUTAGE
-                  </span>
-                )}
-              </div>
-              <div className="flex items-center gap-2 text-[11px] font-mono text-slate-400 mt-0.5">
-                <span className="flex items-center gap-1.5 text-emerald-400 font-medium">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shadow-[0_0_6px_#34d399]" />
-                  {dockerActive ? 'Docker Live (Host)' : 'Cloud Sandbox'}
-                </span>
-                <span className="text-slate-600">·</span>
-                <span className="text-slate-300">{clusterProvider}</span>
-                <span className="text-slate-600">·</span>
-                <span className="text-amber-300 font-semibold">{rbacRole}</span>
-              </div>
-            </div>
+          {/* AssemblyAI Official Badge */}
+          <div className="hidden lg:flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-medium tracking-wide bg-gradient-to-r from-blue-950/60 to-cyan-950/60 border border-cyan-500/30 text-cyan-300 shadow-[0_0_12px_rgba(6,182,212,0.15)]">
+            <Radio size={11} className="text-cyan-400 animate-pulse" />
+            <span>AssemblyAI Universal-3 Pro</span>
           </div>
         </div>
 
-        {/* Center: Dual-Engine Architecture Segmented Pill */}
-        <div className="flex items-center p-1 rounded-2xl bg-slate-900/90 border border-white/[0.08] shadow-inner">
+        {/* Center: Dual-Engine Switcher HUD */}
+        <div className="hidden md:flex items-center gap-1 p-1 bg-slate-900/80 border border-slate-800/90 rounded-xl shadow-inner backdrop-blur-md">
           <button
+            type="button"
+            disabled={disabled}
             onClick={() => onSelectEngine('voice_agent_api')}
-            title="Path 1: AssemblyAI Voice Agent API (wss://agents.assemblyai.com/v1/ws) with server-side LLM & JSON-Schema tool calling"
-            className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer ${
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all duration-200 ${
               activeEngine === 'voice_agent_api'
-                ? 'bg-gradient-to-r from-cyan-500 to-cyan-600 text-slate-950 font-bold shadow-md shadow-cyan-500/30'
-                : 'text-slate-400 hover:text-slate-200'
+                ? 'bg-gradient-to-r from-cyan-600 to-blue-600 text-white shadow-[0_0_15px_rgba(6,182,212,0.4)] border border-cyan-400/40'
+                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
             }`}
+            title="AssemblyAI End-to-End Voice Agent API"
           >
-            <Bot className="w-3.5 h-3.5" />
+            <Zap size={13} className={activeEngine === 'voice_agent_api' ? 'text-amber-300' : 'text-slate-400'} />
             <span>Path 1: Voice Agent API</span>
           </button>
+
           <button
+            type="button"
+            disabled={disabled}
             onClick={() => onSelectEngine('custom_stt_v3')}
-            title="Path 2: AssemblyAI Streaming v3 STT + Custom Dynamic Orchestrator + Multi-Artifact LeMUR"
-            className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer ${
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all duration-200 ${
               activeEngine === 'custom_stt_v3'
-                ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white font-bold shadow-md shadow-purple-600/30'
-                : 'text-slate-400 hover:text-slate-200'
+                ? 'bg-gradient-to-r from-indigo-600 to-cyan-600 text-white shadow-[0_0_15px_rgba(99,102,241,0.4)] border border-indigo-400/40'
+                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
             }`}
+            title="AssemblyAI Streaming v3 STT + Custom Tool Orchestrator + LeMUR"
           >
-            <Sparkles className="w-3.5 h-3.5 text-purple-200" />
-            <span>Path 2: STT v3 + LeMUR</span>
+            <Cpu size={13} className={activeEngine === 'custom_stt_v3' ? 'text-cyan-300' : 'text-slate-400'} />
+            <span>Path 2: Streaming v3 + LeMUR</span>
           </button>
         </div>
 
-        {/* Right: Latency Ticker, Autopilot Mode & Reset */}
-        <div className="flex items-center gap-2.5">
-          {/* Latency Ticker */}
-          <div className="hidden xl:flex items-center gap-2 bg-slate-900/80 px-3 py-1.5 rounded-xl border border-white/[0.08] text-[11px] font-mono shadow-inner">
-            <Wifi className={`w-3.5 h-3.5 ${isConnected ? 'text-emerald-400' : 'text-red-400'}`} />
-            <span className="text-slate-400">Latency:</span>
-            <span className="text-slate-300">STT <strong className="text-cyan-300">{latency.stt_ms.toFixed(0)}ms</strong></span>
-            <span className="text-slate-600">/</span>
-            <span className="text-slate-300">Tool <strong className="text-amber-300">{latency.tool_ms.toFixed(0)}ms</strong></span>
-            <span className="text-slate-600">/</span>
-            <span className="text-slate-300">TTS <strong className="text-emerald-300">{latency.tts_ms.toFixed(0)}ms</strong></span>
-            <span className="text-slate-600">=</span>
-            <span className="px-2 py-0.5 rounded-md bg-cyan-950 border border-cyan-500/60 text-cyan-200 font-bold glow-cyan">
-              {latency.total_ms.toFixed(0)}ms
+        {/* Right Header Actions & Live Telemetry Pills */}
+        <div className="header-actions">
+          {/* Live Agent Status Beacon */}
+          <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium border ${statusColorClass} backdrop-blur-md`}>
+            <span className="relative flex h-2 w-2">
+              <span className={`absolute inline-flex h-full w-full rounded-full opacity-75 ${statusDotColor}`} />
+              <span className={`relative inline-flex rounded-full h-2 w-2 ${isSpeaking ? 'bg-cyan-500' : isConnected ? 'bg-emerald-500' : 'bg-slate-500'}`} />
+            </span>
+            <span className="font-mono tracking-tight font-semibold uppercase text-[11px]">{statusLabel}</span>
+          </div>
+
+          {/* Real-time Latency counter */}
+          <div className="hidden xl:flex items-center gap-2 px-3 py-1 rounded-lg bg-slate-900/70 border border-slate-800 text-[11px] font-mono text-slate-300">
+            <span className="text-slate-500">STT:</span>
+            <span className={latency.stt_ms ? 'text-cyan-400 font-semibold' : 'text-slate-500'}>
+              {latency.stt_ms != null ? `${latency.stt_ms.toFixed(0)}ms` : '—'}
+            </span>
+            <span className="text-slate-700">|</span>
+            <span className="text-slate-500">Total:</span>
+            <span className={latency.total_ms ? 'text-emerald-400 font-semibold' : 'text-slate-500'}>
+              {latency.total_ms != null ? `${latency.total_ms.toFixed(0)}ms` : '—'}
             </span>
           </div>
 
-          {/* Agent Status Badge */}
-          <span
-            className={`hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-mono font-semibold border shadow-sm ${
-              agentStatus === 'speaking'
-                ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/50 glow-green animate-pulse'
-                : agentStatus === 'listening'
-                ? 'bg-red-500/20 text-red-300 border-red-500/50 glow-red'
-                : agentStatus === 'thinking'
-                ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/50 glow-cyan animate-pulse'
-                : agentStatus === 'awaiting_confirmation'
-                ? 'bg-amber-500/20 text-amber-300 border-amber-500/50 glow-amber animate-pulse'
-                : 'bg-slate-900/90 text-slate-400 border-white/[0.08]'
-            }`}
-          >
-            <Radio className="w-3 h-3" />
-            <span className="uppercase">{agentStatus}</span>
-          </span>
-
-          {/* Autopilot Self-Healing Toggle */}
+          {/* Autopilot quick toggle */}
           {onToggleAutopilot && (
             <button
+              type="button"
               onClick={onToggleAutopilot}
-              title="Toggle Autonomous Autopilot Mode to bypass manual confirmation gates"
-              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-mono font-bold rounded-xl border transition-all shadow-md cursor-pointer ${
+              disabled={disabled}
+              className={`hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-mono font-medium border transition-all duration-200 ${
                 autopilotEnabled
-                  ? 'bg-gradient-to-r from-red-600 to-rose-600 text-white border-red-400 shadow-red-600/40 glow-red animate-pulse'
-                  : 'bg-slate-900 hover:bg-slate-800 text-slate-300 border-white/[0.08] hover:border-white/20'
+                  ? 'bg-amber-500/15 border-amber-500/40 text-amber-300 shadow-[0_0_10px_rgba(245,158,11,0.2)]'
+                  : 'bg-slate-900/60 border-slate-800 text-slate-400 hover:text-slate-200 hover:border-slate-700'
               }`}
+              title="Toggle Autopilot (Automatic Remediation Execution)"
             >
-              <Zap className={`w-3.5 h-3.5 ${autopilotEnabled ? 'text-white fill-current' : 'text-slate-400'}`} />
-              <span>{autopilotEnabled ? 'AUTOPILOT ON' : 'AUTOPILOT'}</span>
+              <Activity size={12} className={autopilotEnabled ? 'text-amber-400 animate-spin' : 'text-slate-500'} />
+              <span>{autopilotEnabled ? 'AUTOPILOT ON' : 'MANUAL CONFIRM'}</span>
             </button>
           )}
 
-          {/* Reset Incident Session */}
+          {/* Settings / Deep Config Dropdown Toggle */}
           <button
-            onClick={onReset}
-            title="Reset Incident Session to Initial Broken State"
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white rounded-xl border border-white/[0.08] hover:border-white/20 transition shadow-sm cursor-pointer hover:scale-105 active:scale-95"
+            className={`button button-quiet ${settingsOpen ? 'is-active' : ''}`}
+            aria-expanded={settingsOpen}
+            aria-label="Settings"
+            aria-controls="workspace-settings"
+            onClick={() => setSettingsOpen(!settingsOpen)}
           >
-            <RefreshCw className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">Reset</span>
+            <Settings2 size={16} />
+            <span className="hidden sm:inline">Settings</span>
+            <ChevronDown size={14} className={`transition-transform duration-200 ${settingsOpen ? 'rotate-180' : ''}`} />
           </button>
         </div>
       </div>
+
+      {/* Expanded Settings & Diagnostics Panel */}
+      {settingsOpen && (
+        <section id="workspace-settings" className="settings-panel" aria-label="Workspace settings">
+          <div>
+            <label htmlFor="voice-engine" className="field-label flex items-center gap-2">
+              <Sliders size={14} className="text-cyan-400" />
+              Voice Orchestration Engine
+            </label>
+            <select
+              id="voice-engine"
+              disabled={disabled}
+              value={activeEngine}
+              onChange={event => onSelectEngine(event.target.value as VoiceEngine)}
+              className="mt-2 w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-xs text-slate-200 focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500"
+            >
+              <option value="voice_agent_api">Path 1 · AssemblyAI Voice Agent API (Managed WebRTC/WS)</option>
+              <option value="custom_stt_v3">Path 2 · Streaming v3 STT + Custom Tool Calling + LeMUR</option>
+            </select>
+            <p className="field-help mt-2">
+              Switching engines cleanly migrates session state and re-initializes audio streaming without losing incident context.
+            </p>
+          </div>
+
+          <div>
+            <p className="field-label flex items-center gap-2">
+              <ShieldCheck size={14} className="text-emerald-400" />
+              SRE Security & Autopilot
+            </p>
+            <div className="flex items-center gap-2 mt-2">
+              <span className="px-2.5 py-1 rounded bg-slate-800 border border-slate-700 font-mono text-xs text-cyan-300">
+                {rbacRole ? rbacRole.toUpperCase() : 'ANONYMOUS'}
+              </span>
+              <span className="text-xs text-slate-400">
+                {infrastructureMode === 'docker' ? 'Docker Host Bridge' : infrastructureMode === 'kubernetes' ? 'K8s Multi-Cluster' : 'Demo Simulator'}
+              </span>
+            </div>
+            {onToggleAutopilot && (
+              <label className="switch-label mt-3 flex items-center gap-2 text-xs text-slate-300 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={!!autopilotEnabled}
+                  disabled={disabled}
+                  onChange={onToggleAutopilot}
+                  className="rounded border-slate-700 text-cyan-500 focus:ring-cyan-500"
+                />
+                Auto-approve safe diagnostic and remediation actions
+              </label>
+            )}
+            <div className="mt-3 pt-2 border-t border-slate-800">
+              <button className="text-button text-xs text-rose-400 hover:text-rose-300 flex items-center gap-1.5" onClick={onReset} disabled={disabled}>
+                <RefreshCw size={13} />
+                Emergency Incident Reset
+              </button>
+            </div>
+          </div>
+
+          <div>
+            <p className="field-label flex items-center gap-2">
+              <Activity size={14} className="text-cyan-400" />
+              Sub-Second Acoustic Latency Profile
+            </p>
+            <dl className="latency-grid mt-2">
+              {([
+                ['Speech Recognition (STT)', latency.stt_ms],
+                ['LLM Reasoning & Tools', latency.tool_ms],
+                ['TTS Synthesis', latency.tts_ms],
+                ['Round-Trip End-to-End', latency.total_ms]
+              ] as const).map(([label, value]) => (
+                <div key={label} className="flex justify-between py-1 border-b border-slate-800/60 text-xs">
+                  <dt className="text-slate-400">{label}</dt>
+                  <dd className="font-mono text-cyan-300 font-medium">
+                    {value == null ? '—' : `${value.toFixed(0)} ms`}
+                  </dd>
+                </div>
+              ))}
+            </dl>
+            <p className="field-help mt-2">AssemblyAI Universal-3 Pro yields sub-300ms transcription turn-around.</p>
+          </div>
+        </section>
+      )}
     </header>
   );
 };

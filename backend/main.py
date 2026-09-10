@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from app.core.config import settings
 from app.api.routes import router as api_router
+from app.core.http_session import OperatorSessionMiddleware
 from app.api.websocket import router as ws_router
 
 logging.basicConfig(
@@ -26,6 +27,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+app.add_middleware(OperatorSessionMiddleware)
 
 app.include_router(api_router)
 app.include_router(ws_router)

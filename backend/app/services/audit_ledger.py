@@ -7,7 +7,7 @@ from typing import Dict, Any, List, Optional, Tuple
 
 class CryptographicAuditLedger:
     """
-    SOC-2 Type II / ISO-27001 Compliant Immutable Hash-Chained Audit Ledger.
+    In-memory, tamper-evident SHA-256 audit chain. Not a compliance certification.
     Every voice command, staged remediation, phonetic authorization, and
     infrastructure mutation is cryptographically linked using SHA-256 blocks.
     Thread-safe via internal lock to prevent concurrent chain corruption.
@@ -39,9 +39,9 @@ class CryptographicAuditLedger:
             "event_type": "AUDIT_LEDGER_INITIALIZED",
             "action": "INIT",
             "details": {
-                "compliance_standard": "SOC-2 Type II / ISO-27001 / FedRAMP",
-                "hashing_algorithm": "SHA-256-MerkleChained",
-                "zero_trust_policy": "Enforced"
+                "compliance_standard": "No compliance certification",
+                "hashing_algorithm": "SHA-256 hash chain",
+                "zero_trust_policy": "Session-scoped"
             },
             "prev_hash": self.GENESIS_HASH
         }
@@ -118,13 +118,13 @@ class CryptographicAuditLedger:
 
     def export_audit_manifest(self) -> Dict[str, Any]:
         """
-        Generates certified SOC-2 compliance audit manifest.
+        Exports the session hash chain and its current integrity result.
         """
         is_valid, count, failure = self.verify_chain_integrity()
         latest_hash = self.blocks[-1]["block_hash"] if self.blocks else None
 
         return {
-            "compliance_certification": "SOC-2 Type II Audit Verified",
+            "compliance_certification": "No compliance certification; in-memory hash chain",
             "chain_status": "TAMPER_EVIDENT_VALID" if is_valid else "TAMPERING_DETECTED",
             "total_cryptographic_blocks": count,
             "merkle_leaf_root_hash": latest_hash,
@@ -133,4 +133,5 @@ class CryptographicAuditLedger:
             "blocks": self.blocks
         }
 
-audit_ledger = CryptographicAuditLedger()
+from app.core.session import SessionLocal
+audit_ledger = SessionLocal("audit", CryptographicAuditLedger)

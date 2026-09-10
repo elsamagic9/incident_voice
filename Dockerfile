@@ -1,5 +1,5 @@
 # ==============================================================================
-# Stage 1: Build React 19 Frontend
+# Stage 1: Build React Frontend
 # ==============================================================================
 FROM node:20-alpine AS frontend-builder
 WORKDIR /app/frontend
@@ -13,7 +13,11 @@ RUN npm run build
 # ==============================================================================
 # Stage 2: Production Python Backend & Unified Server
 # ==============================================================================
+FROM docker:28-cli AS docker-cli
 FROM python:3.11-slim AS runner
+
+# The infrastructure bridge invokes this CLI against a mounted host socket.
+COPY --from=docker-cli /usr/local/bin/docker /usr/local/bin/docker
 
 # Install system dependencies (curl for healthchecks, procps for host stats)
 RUN apt-get update && apt-get install -y --no-install-recommends \

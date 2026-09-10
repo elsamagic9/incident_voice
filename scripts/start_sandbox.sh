@@ -13,4 +13,4 @@ docker compose up -d
 echo "✅ Real microservices active:"
 docker ps --filter "name=incident-"
 echo ""
-echo "IncidentVoice is now connected to real local containers!"
+echo "Set INFRASTRUCTURE_MODE=docker and OPERATOR_ACCESS_TOKEN in .env, then restart IncidentVoice to connect."

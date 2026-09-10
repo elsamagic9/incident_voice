@@ -5,7 +5,8 @@ export type VoiceEngine = 'voice_agent_api' | 'custom_stt_v3';
 export interface ServiceNode {
   id: string;
   name: string;
-  status: 'healthy' | 'degraded' | 'critical';
+  status: 'healthy' | 'degraded' | 'critical' | 'unknown';
+  metrics_available?: boolean;
   replicas: number;
   cpu_percent: number;
   memory_percent: number;
@@ -24,8 +25,8 @@ export interface TimelineEvent {
 export interface IncidentRecord {
   id: string;
   title: string;
-  severity: 'SEV-1' | 'SEV-2' | 'SEV-3';
-  status: 'INVESTIGATING' | 'IDENTIFIED' | 'MITIGATING' | 'RESOLVED';
+  severity: 'SEV-1' | 'SEV-2' | 'SEV-3' | 'UNASSESSED';
+  status: 'INVESTIGATING' | 'IDENTIFIED' | 'MITIGATING' | 'MITIGATED' | 'RESOLVED';
   started_at: number;
   resolved_at?: number | null;
   timeline_events: TimelineEvent[];
@@ -59,6 +60,9 @@ export interface ActionItemTicket {
 }
 
 export interface StagedRemediation {
+  id?: string;
+  expires_at?: number;
+  simulated?: boolean;
   action: string;
   service_name: string;
   params?: Record<string, any>;
@@ -69,11 +73,15 @@ export interface StagedRemediation {
 }
 
 export interface PostMortemData {
+  source?: string;
+  generation_warning?: string;
+  infrastructure_mode?: string;
+  incident_status?: string;
   incident_id: string;
   title: string;
   severity: string;
-  mttd_minutes: number;
-  mttr_minutes: number;
+  mttd_minutes: number | null;
+  mttr_minutes: number | null;
   executive_summary: string;
   root_cause: string;
   timeline: { time: string; event: string; type: string }[];
@@ -177,7 +185,9 @@ export interface BlackBoxMarker {
 export interface BlackBoxSession {
   incident_id: string;
   total_duration_seconds: number;
-  audio_url: string;
+  audio_url: string | null;
+  recorded_tracks?: string[];
+  recording_limited?: boolean;
   audio_data_uri?: string | null;
   waveform_peaks: number[];
   markers: BlackBoxMarker[];

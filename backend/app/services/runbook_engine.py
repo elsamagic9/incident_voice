@@ -56,7 +56,7 @@ def _build_builtin_runbooks() -> Dict[str, RunbookDefinition]:
                     target_service="order-db",
                     action="query_telemetry",
                     action_args={"service_name": "order-db"},
-                    verification_metric="latency_p99_ms <= 1500"
+                    verification_metric="alerts_checked"
                 ),
                 RunbookStep(
                     step_number=2,
@@ -194,7 +194,10 @@ def evaluate_telemetry_gate(step: RunbookStep) -> Tuple[bool, str]:
     gate = gate.strip()
     target_svc = cluster_state.services.get(step.target_service)
     if not target_svc:
-        return True, f"Service {step.target_service} checked."
+        return False, f"Service {step.target_service} is unavailable."
+
+    if not target_svc.metrics_available and gate != "status == healthy":
+        return False, "Application telemetry is unavailable; verification requires an external health check."
 
     # Parse operator expressions
     ops = ["<=", ">=", "==", "!=", "<", ">"]
@@ -256,211 +259,98 @@ def evaluate_telemetry_gate(step: RunbookStep) -> Tuple[bool, str]:
         alert_count = len(target_svc.active_alerts)
         return True, f"Gate PASSED: Telemetry audited for {step.target_service}. {alert_count} active alert(s) monitored."
 
-    return True, f"Gate verified: Telemetry for {step.target_service} nominal."
+    return False, f"Unknown telemetry gate: {gate}"
 
 class RunbookEngine:
     def __init__(self):
         self.definitions = _build_builtin_runbooks()
-        self.active_session: Optional[ActiveRunbookSession] = None
+        self.active_session = None
+        self.pending_action_id = None
 
     def reset(self):
         self.active_session = None
+        self.pending_action_id = None
 
-    def list_runbooks(self) -> List[Dict[str, Any]]:
-        """Returns catalog of available SRE Runbooks."""
+    def list_runbooks(self):
         return [rb.model_dump() for rb in self.definitions.values()]
 
-    def get_active_session(self) -> Optional[Dict[str, Any]]:
-        """Returns the currently executing runbook session, if any."""
-        if not self.active_session:
-            return None
-        return self.active_session.model_dump()
+    def get_active_session(self):
+        return self.active_session.model_dump() if self.active_session else None
 
-    def start_runbook(self, runbook_id: Optional[str] = "runbook-pg-pool") -> Tuple[str, Dict[str, Any]]:
-        """
-        Initiates a voice-guided runbook workflow.
-        Returns (spoken_guidance, active_runbook_dict).
-        """
-        if not runbook_id:
-            runbook_id = "runbook-pg-pool"
-        clean_id = str(runbook_id).strip().lower()
-        matched_id = None
-        for k in self.definitions:
-            if clean_id in k or k in clean_id or clean_id.replace(" ", "-") in k:
-                matched_id = k
-                break
-
-        if not matched_id:
-            # Fallback by keyword
-            if "postgres" in clean_id or "sql" in clean_id or "pool" in clean_id or "db" in clean_id:
-                matched_id = "runbook-pg-pool"
-            elif "redis" in clean_id or "cache" in clean_id or "eviction" in clean_id:
-                matched_id = "runbook-redis-eviction"
-            elif "ingress" in clean_id or "surge" in clean_id or "traffic" in clean_id or "spike" in clean_id:
-                matched_id = "runbook-ingress-surge"
-            else:
-                matched_id = "runbook-pg-pool"
-
-        definition = self.definitions[matched_id]
-
-        # Deep clone steps
-        steps = [step.model_copy(deep=True) for step in definition.steps]
+    def start_runbook(self, runbook_id):
+        from app.core.auth_rbac import security_manager
+        if not security_manager.is_action_permitted("start_runbook"):
+            return "Permission denied.", self.get_active_session()
+        if runbook_id not in self.definitions:
+            return "Runbook not found.", self.get_active_session()
+        from app.services.orchestrator import agent_orchestrator
+        if agent_orchestrator.staged_action:
+            return "Confirm or cancel the pending action before starting a runbook.", self.get_active_session()
+        definition = self.definitions[runbook_id]
+        steps = [s.model_copy(deep=True) for s in definition.steps]
         steps[0].status = "in_progress"
+        self.active_session = ActiveRunbookSession(runbook_id=runbook_id, title=definition.title, total_steps=len(steps), steps=steps)
+        self.pending_action_id = None
+        cluster_state.add_event("action", f"Runbook started: {definition.title}")
+        return f"Starting runbook: {definition.title}. Step 1: {steps[0].title}.", self.get_active_session()
 
-        self.active_session = ActiveRunbookSession(
-            runbook_id=definition.id,
-            title=definition.title,
-            current_step_index=0,
-            total_steps=len(steps),
-            started_at=time.time(),
-            status="active",
-            steps=steps
-        )
+    def _finish_step(self, result):
+        session = self.active_session
+        step = session.steps[session.current_step_index]
+        if result.get("success") is False or result.get("error"):
+            step.status = "failed"
+            step.verification_result = result.get("error", "Action failed")
+            return "Step failed. Review the error and retry; the runbook has not advanced."
+        passed, details = evaluate_telemetry_gate(step)
+        step.verification_result = details
+        step.status = "completed" if passed else "failed"
+        if not passed:
+            return "Verification failed. The runbook remains on this step."
+        completed = session.current_step_index + 1
+        if completed < session.total_steps:
+            session.current_step_index += 1
+            session.steps[session.current_step_index].status = "in_progress"
+            return f"Step {completed} complete. Next: {session.steps[session.current_step_index].title}."
+        session.status = "completed"
+        session.completed_at = time.time()
+        return "Runbook complete. Review remaining alerts before closing the incident."
 
-        # Disengage any stale staged guardrails from prior turns
-        try:
-            from app.services.orchestrator import agent_orchestrator
-            agent_orchestrator.staged_action = None
-            agent_orchestrator.awaiting_confirmation = False
-        except Exception:
-            pass
+    def complete_pending_step(self, action_id, result):
+        if self.pending_action_id != action_id or not self.active_session:
+            return
+        self.pending_action_id = None
+        self._finish_step(result)
 
-        cluster_state.add_event("action", f"Runbook started: '{definition.title}' ({len(steps)} steps)")
-
-        first_step = steps[0]
-        spoken = (
-            f"Starting SRE Runbook: {definition.title}. "
-            f"Step 1 of {len(steps)}: {first_step.title}. {first_step.description} "
-            f"Say 'Execute step' or click Advance to proceed."
-        )
-        return spoken, self.active_session.model_dump()
-
-    def advance_runbook(self, user_confirmed: bool = True) -> Tuple[str, Dict[str, Any], List[Dict[str, Any]]]:
-        """
-        Executes the current step's action, validates telemetry,
-        and advances to the next step.
-        Returns: (spoken_text, runbook_dict, executed_tools)
-        """
+    def advance_runbook(self, user_confirmed=False):
+        from app.core.auth_rbac import security_manager, MUTATIONS
+        from app.services.orchestrator import agent_orchestrator
+        if not security_manager.is_action_permitted("advance_runbook"):
+            return "Permission denied.", self.get_active_session(), []
         if not self.active_session or self.active_session.status != "active":
-            return "No active runbook session is currently executing. You can say 'Start runbook postgres' to begin.", {}, []
+            return "No active runbook. Start one first.", self.get_active_session(), []
+        step = self.active_session.steps[self.active_session.current_step_index]
+        if step.action in MUTATIONS:
+            if agent_orchestrator.staged_action:
+                return "An action is awaiting approval. Confirm or cancel it first.", self.get_active_session(), []
+            spoken, result = agent_orchestrator._stage_remediation(step.action, step.target_service, step.action_args)
+            if result.get("status") == "staged":
+                self.pending_action_id = result["id"]
+            elif result.get("success"):
+                spoken = self._finish_step(result)
+            tools = [{"tool_name": "execute_remediation", "arguments": step.action_args, "result": result, "timestamp": time.time()}]
+            return spoken, self.get_active_session(), tools
+        result = agent_orchestrator.dispatch_tool(step.action, step.action_args) if step.action else {"success": True}
+        tools = [{"tool_name": step.action, "arguments": step.action_args, "result": result, "timestamp": time.time()}] if step.action else []
+        return self._finish_step(result), self.get_active_session(), tools
 
-        curr_idx = self.active_session.current_step_index
-        step = self.active_session.steps[curr_idx]
-        executed_tools: List[Dict[str, Any]] = []
+    def abort_runbook(self):
+        from app.services.orchestrator import agent_orchestrator
+        if self.pending_action_id:
+            agent_orchestrator.cancel_staged_remediation(self.pending_action_id)
+        self.pending_action_id = None
+        if self.active_session:
+            self.active_session.status = "aborted"
+        return "Runbook aborted.", self.get_active_session()
 
-        # Execute action associated with step if present
-        action = step.action
-        args = step.action_args or {}
-
-        if action:
-            if action in ["restart_pod", "flush_cache", "scale_replicas", "enable_circuit_breaker", "rollback_release", "failover_traffic"]:
-                svc = args.get("service_name", step.target_service)
-                count = args.get("count", 4)
-                res = execute_remediation(action, svc, count=count)
-                executed_tools.append({
-                    "tool_name": "execute_remediation",
-                    "arguments": {"action": action, "service_name": svc, "count": count},
-                    "result": res,
-                    "timestamp": time.time()
-                })
-                # Clear any matching staged action so safety guardrail banner is not orphaned
-                try:
-                    from app.services.orchestrator import agent_orchestrator
-                    if agent_orchestrator.staged_action and agent_orchestrator.staged_action.get("service_name") == svc:
-                        agent_orchestrator.staged_action = None
-                        agent_orchestrator.awaiting_confirmation = False
-                except Exception:
-                    pass
-            elif action == "query_telemetry":
-                svc = args.get("service_name", step.target_service)
-                res = query_telemetry(svc)
-                executed_tools.append({
-                    "tool_name": "query_telemetry",
-                    "arguments": {"service_name": svc},
-                    "result": res,
-                    "timestamp": time.time()
-                })
-            elif action == "inspect_service_logs":
-                svc = args.get("service_name", step.target_service)
-                res = inspect_service_logs(svc, lines=args.get("lines", 4))
-                executed_tools.append({
-                    "tool_name": "inspect_service_logs",
-                    "arguments": {"service_name": svc},
-                    "result": res,
-                    "timestamp": time.time()
-                })
-            elif action == "get_cluster_health":
-                from app.tools.sre_tools import get_cluster_health
-                res = get_cluster_health()
-                executed_tools.append({
-                    "tool_name": "get_cluster_health",
-                    "arguments": {},
-                    "result": res,
-                    "timestamp": time.time()
-                })
-
-        # Telemetry verification check
-        gate_passed, gate_details = evaluate_telemetry_gate(step)
-        step.status = "completed" if gate_passed else "failed"
-        step.verification_result = gate_details
-
-        # Check if more steps remain
-        if curr_idx + 1 < self.active_session.total_steps:
-            self.active_session.current_step_index += 1
-            next_step = self.active_session.steps[curr_idx + 1]
-            next_step.status = "in_progress"
-
-            cluster_state.add_event(
-                "action",
-                f"Runbook Step {curr_idx + 1} completed: {step.title}. Telemetry gate: {gate_details}. Advancing to Step {curr_idx + 2}: {next_step.title}."
-            )
-
-            spoken = (
-                f"Step {curr_idx + 1} complete: {step.title}. "
-                f"{gate_details} "
-                f"Advancing to Step {curr_idx + 2} of {self.active_session.total_steps}: {next_step.title}. "
-                f"{next_step.description}"
-            )
-            return spoken, self.active_session.model_dump(), executed_tools
-        else:
-            # Runbook completed
-            self.active_session.status = "completed"
-            self.active_session.completed_at = time.time()
-
-            cluster_state.add_event(
-                "action",
-                f"Runbook '{self.active_session.title}' completed successfully. All steps executed and telemetry gates verified."
-            )
-
-            # Check if all services are healthy and update incident status
-            critical_count = sum(1 for s in cluster_state.services.values() if s.status == "critical")
-            if critical_count == 0:
-                cluster_state.incident.status = "MITIGATED"
-
-            spoken = (
-                f"Runbook complete: {self.active_session.title}. "
-                f"All {self.active_session.total_steps} operational procedures were executed and telemetry gates verified. "
-                f"{gate_details} Cluster services are returning to nominal state."
-            )
-            return spoken, self.active_session.model_dump(), executed_tools
-
-    def abort_runbook(self) -> Tuple[str, Dict[str, Any]]:
-        """Aborts the current active runbook session."""
-        if not self.active_session:
-            return "No active runbook is currently running.", {}
-
-        title = self.active_session.title
-        curr_step = self.active_session.current_step_index + 1
-        self.active_session.status = "aborted"
-        if self.active_session.steps and self.active_session.current_step_index < len(self.active_session.steps):
-            self.active_session.steps[self.active_session.current_step_index].status = "failed"
-
-        cluster_state.add_event("action", f"Runbook '{title}' aborted at Step {curr_step}.")
-        data = self.active_session.model_dump()
-        self.active_session = None
-
-        spoken = f"Runbook {title} aborted at step {curr_step}. Normal autonomous incident monitoring resumed."
-        return spoken, data
-
-# Global singleton
-runbook_engine = RunbookEngine()
+from app.core.session import SessionLocal
+runbook_engine = SessionLocal("runbook", RunbookEngine)

@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
+import { Activity, ArrowUpRight, FileText, FlaskConical, Layers, LockKeyhole, Network, RefreshCw, ShieldAlert, Wrench, X } from 'lucide-react';
 import { useVoiceStream } from './hooks/useVoiceStream';
 import { MissionControlHeader } from './components/MissionControlHeader';
 import { LiveTranscriptHUD } from './components/LiveTranscriptHUD';
@@ -9,378 +10,164 @@ import { IncidentTimeline } from './components/IncidentTimeline';
 import { ToolExecutionCard } from './components/ToolExecutionCard';
 import { PostMortemViewer } from './components/PostMortemViewer';
 import { LiveTelemetryDrawer } from './components/LiveTelemetryDrawer';
-import { Wrench, FileText, ShieldAlert, Network, LayoutGrid } from 'lucide-react';
+import { ApprovalCard } from './components/ApprovalCard';
 
-class ErrorBoundary extends React.Component<{children: React.ReactNode}, {hasError: boolean, error: Error | null}> {
-  constructor(props: {children: React.ReactNode}) {
-    super(props);
-    this.state = { hasError: false, error: null };
-  }
-  static getDerivedStateFromError(error: Error) {
-    return { hasError: true, error };
-  }
+class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean }> {
+  state = { hasError: false };
+  static getDerivedStateFromError() { return { hasError: true }; }
   render() {
-    if (this.state.hasError) {
-      return (
-        <div className="min-h-screen bg-[#0a0d14] text-slate-200 flex flex-col items-center justify-center p-6 text-center font-sans">
-          <ShieldAlert className="w-12 h-12 text-red-500 mb-4" />
-          <h1 className="text-xl font-bold text-white mb-2">System Failure Detected</h1>
-          <p className="text-sm text-slate-400 mb-6 max-w-md">{this.state.error?.message || 'An unexpected error occurred in the mission control console.'}</p>
-          <button 
-            onClick={() => window.location.reload()} 
-            className="px-6 py-2 bg-slate-800 hover:bg-slate-700 rounded-lg text-sm font-semibold transition border border-slate-700"
-          >
-            Reload Interface
-          </button>
-        </div>
-      );
-    }
+    if (this.state.hasError) return <main className="app-error"><ShieldAlert size={32} /><h1>Something went wrong</h1><p>Reload the workspace to reconnect to your session.</p><button className="button button-primary" onClick={() => window.location.reload()}>Reload workspace</button></main>;
     return this.props.children;
   }
 }
 
-export const App: React.FC = () => {
-  const {
-    isConnected,
-    agentStatus,
-    activeEngine,
-    autopilotEnabled,
-    stagedRemediation,
-    dockerActive,
-    rbacRole,
-    clusterProvider,
-    isRecording,
-    turns,
-    currentInterimTranscript,
-    executedTools,
-    incident,
-    services,
-    topology,
-    activeRunbook,
-    postMortem,
-    audioLevel,
-    latency,
-    toggleRecording,
-    sendTextCommand,
-    selectEngine,
-    authorizeRemediation,
-    cancelRemediation,
-    resetIncident,
-    bargeIn,
-    startRunbook,
-    advanceRunbook,
-    abortRunbook,
-    toggleAutopilot,
-    closePostMortem
-  } = useVoiceStream();
+type View = 'services' | 'runbooks' | 'topology' | 'demo';
 
-  const [isPostMortemOpen, setIsPostMortemOpen] = useState(false);
-  const [activeRightView, setActiveRightView] = useState<'topology' | 'matrix' | 'runbooks' | 'chaos'>('topology');
+function Workspace() {
+  const voice = useVoiceStream();
+  const [view, setView] = useState<View>('services');
+  const [activityView, setActivityView] = useState<'tools' | 'timeline'>('tools');
+  const [reportOpen, setReportOpen] = useState(false);
+  const [accessToken, setAccessToken] = useState('');
+  const [signingIn, setSigningIn] = useState(false);
+  const simulation = voice.operator?.infrastructure_mode === 'simulation';
+  const disabled = !voice.isConnected || voice.busy;
+  const services = Object.values(voice.services);
+  const critical = services.filter(service => service.status === 'critical').length;
+  const healthy = services.filter(service => service.status === 'healthy').length;
+  const unresolved = services.filter(service => ['critical', 'degraded'].includes(service.status)).length;
+  const status = voice.incident?.status;
 
-  // Automatically switch tab when runbook becomes active
   useEffect(() => {
-    if (activeRunbook && activeRunbook.status === 'active') {
-      setActiveRightView('runbooks');
-    }
-  }, [activeRunbook]);
+    if (voice.activeRunbook?.status === 'active') setView('runbooks');
+  }, [voice.activeRunbook?.runbook_id, voice.activeRunbook?.status]);
+  useEffect(() => { if (voice.postMortem) setReportOpen(true); }, [voice.postMortem]);
+  useEffect(() => { if (!simulation && view === 'demo') setView('services'); }, [simulation, view]);
 
-  // Automatically open modal when a new postmortem is synthesized
-  useEffect(() => {
-    if (postMortem) {
-      setIsPostMortemOpen(true);
-    }
-  }, [postMortem]);
+  const tabs = [
+    { id: 'services' as const, label: 'Services', icon: Layers },
+    { id: 'runbooks' as const, label: 'Runbooks', icon: Wrench },
+    { id: 'topology' as const, label: 'Topology', icon: Network },
+    ...(simulation ? [{ id: 'demo' as const, label: 'Demo lab', icon: FlaskConical }] : []),
+  ];
+  const report = () => voice.postMortem ? setReportOpen(true) : voice.sendTextCommand('Generate postmortem');
+  const reasoning = voice.activeEngine === 'voice_agent_api' ? 'AssemblyAI managed' : voice.reasoningProvider === 'scripted' ? 'Scripted fallback' : voice.reasoningProvider;
 
-  const handleTriggerChaos = (scenario: string) => {
-    switch (scenario) {
-      case 'crash_payment':
-        sendTextCommand("Simulate Sev-1 crash on payment service");
-        break;
-      case 'starve_db':
-        sendTextCommand("Simulate database connection pool exhaustion on order db");
-        break;
-      case 'traffic_spike':
-        sendTextCommand("Simulate traffic spike on ingress gateway");
-        break;
-      case 'heal_all':
-        sendTextCommand("Restart failing pods and restore all nominal health");
-        break;
-    }
-  };
+  return <div className="workspace-shell">
+    <a className="skip-link" href="#workspace">Skip to workspace</a>
+    <MissionControlHeader incident={voice.incident} agentStatus={voice.isPlaying ? 'speaking' : voice.agentStatus}
+      isConnected={voice.isConnected} latency={voice.latency} activeEngine={voice.activeEngine}
+      infrastructureMode={voice.operator?.infrastructure_mode} rbacRole={voice.operator?.role} busy={voice.busy}
+      autopilotEnabled={voice.autopilotEnabled} onToggleAutopilot={simulation ? voice.toggleAutopilot : undefined}
+      onSelectEngine={voice.selectEngine} onReset={voice.resetIncident} />
 
-  return (
-    <ErrorBoundary>
-      <div className="min-h-screen bg-[#06080e] flex flex-col font-sans text-slate-100 selection:bg-cyan-500/30 selection:text-cyan-200">
-        {/* Top Header Bar with Dual-Engine Architecture Selector */}
-        <MissionControlHeader
-          incident={incident}
-          agentStatus={agentStatus}
-          isConnected={isConnected}
-          latency={latency}
-          activeEngine={activeEngine}
-          dockerActive={dockerActive}
-          rbacRole={rbacRole}
-          clusterProvider={clusterProvider}
-          autopilotEnabled={autopilotEnabled}
-          onToggleAutopilot={toggleAutopilot}
-          onSelectEngine={selectEngine}
-          onReset={resetIncident}
-        />
+    <main id="workspace" className="workspace-main">
+      <section className="workspace-heading">
+        <div>
+          <p className="eyebrow">OPERATIONS / INCIDENT WORKSPACE</p>
+          <h1>Less typing. Faster triage<span className="accent-text">.</span></h1>
+          <p className="muted">Investigate together. Make the next move with confidence.</p>
+        </div>
+        <button className="button button-primary" disabled={disabled || !voice.incident} onClick={report}>
+          <FileText size={16} />
+          {voice.postMortem ? 'Open incident report' : 'Create incident report'}
+          <ArrowUpRight size={15} />
+        </button>
+      </section>
 
-        {/* Main Mission Control Cockpit */}
-        <main className="flex-1 max-w-7xl w-full mx-auto p-3 sm:p-5 flex flex-col gap-4">
-          {/* Two-Phase SRE Safety Guardrail Authorization Banner (Appears only when staged) */}
-          {stagedRemediation && (
-            <div className="bg-gradient-to-r from-amber-950/80 via-slate-900/90 to-amber-950/80 border-2 border-amber-500/80 p-4 sm:p-5 rounded-2xl shadow-2xl flex flex-col sm:flex-row items-center justify-between gap-4 backdrop-blur-xl glow-amber animate-pulse">
-              <div className="flex items-center gap-3.5 text-left">
-                <div className="p-3 rounded-2xl bg-amber-500/20 text-amber-300 border border-amber-500/50 shadow-inner">
-                  <ShieldAlert className="w-7 h-7 animate-bounce" />
-                </div>
-                <div>
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <h3 className="text-sm font-bold text-white tracking-wider uppercase font-mono">
-                      Two-Phase SRE Safety Guardrail Engaged
-                    </h3>
-                    <span className="text-[10px] px-2.5 py-0.5 rounded-full bg-amber-900/80 text-amber-200 border border-amber-500/60 font-mono font-bold shadow-sm">
-                      AWAITING OPERATOR VERIFICATION
-                    </span>
-                  </div>
-                  <p className="text-xs text-amber-100 mt-1 font-mono">
-                    Staged mutation: <strong className="text-white underline decoration-amber-400 font-semibold">{stagedRemediation.action}</strong> on <strong className="text-white underline decoration-amber-400 font-semibold">{stagedRemediation.service_name}</strong>.
-                  </p>
+      {voice.loginRequired && <section className="login-card" aria-labelledby="login-heading">
+        <div className="icon-tile"><LockKeyhole size={22} /></div>
+        <div><h2 id="login-heading">Connect to your workspace</h2><p className="muted">Enter your operator token to start investigating.</p></div>
+        <form onSubmit={async event => { event.preventDefault(); setSigningIn(true); try { await voice.login(accessToken); setAccessToken(''); } finally { setSigningIn(false); } }}>
+          <label className="sr-only" htmlFor="operator-token">Operator access token</label>
+          <input id="operator-token" type="password" placeholder="Operator access token" autoComplete="current-password" value={accessToken} onChange={event => setAccessToken(event.target.value)} required />
+          <button className="button button-primary" disabled={signingIn} type="submit">{signingIn ? 'Signing in…' : 'Sign in'}</button>
+        </form>
+      </section>}
 
-                  {stagedRemediation.challenge_code ? (
-                    <div className="mt-2.5 flex items-center gap-2 flex-wrap">
-                      <span className="text-[11px] font-bold text-amber-300 font-mono">Vocal Challenge:</span>
-                      <span className="px-3 py-1 rounded-xl bg-amber-900/90 text-amber-100 border border-amber-400 font-mono font-extrabold text-xs tracking-widest shadow-md glow-amber">
-                        {stagedRemediation.challenge_code}
-                      </span>
-                      <span className="text-[10px] text-amber-300/80 font-mono">(Speak NATO phonetic code or click Authorize)</span>
-                    </div>
-                  ) : (
-                    <p className="text-[11px] text-amber-300/80 mt-1.5 font-mono">
-                      Say &ldquo;Confirm&rdquo; or click Authorize to execute mutation.
-                    </p>
-                  )}
+      {voice.error && <div role="alert" className="message-banner message-error"><ShieldAlert size={18} /><p>{voice.error}</p><button className="icon-button" aria-label="Dismiss error" onClick={voice.clearError}><X size={16} /></button></div>}
+      {voice.notice && <div role="status" className="message-banner"><Activity size={18} /><p>{voice.notice}</p><button className="icon-button" aria-label="Dismiss notice" onClick={voice.clearNotice}><X size={16} /></button></div>}
 
-                  {stagedRemediation.hardware_mfa_required && (
-                    <div className="mt-2.5 flex items-center gap-2 bg-red-950/90 px-3 py-1.5 rounded-xl border border-red-500/60 text-xs text-red-200 font-mono">
-                      <span className="text-base animate-bounce">🔑</span>
-                      <span>Hardware FIDO2 Security Key Required. Touch your physical YubiKey authenticator.</span>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              <div className="flex items-center gap-3 w-full sm:w-auto justify-end flex-shrink-0">
-                <button
-                  onClick={cancelRemediation}
-                  className="px-4 py-2.5 rounded-xl bg-slate-800/90 hover:bg-slate-700 text-slate-300 hover:text-white border border-white/[0.08] text-xs font-semibold transition cursor-pointer"
-                >
-                  Cancel / Abort
-                </button>
-                {stagedRemediation.hardware_mfa_required ? (
-                  <button
-                    onClick={authorizeRemediation}
-                    className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 text-white font-bold text-xs shadow-lg shadow-red-600/40 border border-red-500 transition animate-pulse flex items-center gap-2 cursor-pointer hover:scale-105 active:scale-95"
-                  >
-                    <span>🔑 Touch Security Key</span>
-                  </button>
-                ) : (
-                  <button
-                    onClick={authorizeRemediation}
-                    className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 via-emerald-600 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white font-bold text-xs shadow-lg shadow-emerald-600/40 border border-emerald-400 transition animate-pulse cursor-pointer hover:scale-105 active:scale-95 glow-green"
-                  >
-                    Authorize Mutation
-                  </button>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* 2-Column High-Impact Cockpit Split */}
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 flex-1 items-stretch">
-            {/* Left Column: Voice Commander Terminal HUD */}
-            <div className="lg:col-span-5 min-h-[500px] lg:h-[720px]">
-              <LiveTranscriptHUD
-                turns={turns}
-                interimTranscript={currentInterimTranscript}
-                isRecording={isRecording}
-                audioLevel={audioLevel}
-                agentStatus={agentStatus}
-                onToggleRecording={toggleRecording}
-                onSendText={sendTextCommand}
-                onBargeIn={bargeIn}
-              />
-            </div>
-
-            {/* Right Column: SRE Diagnostic War Room & Orchestration */}
-            <div className="lg:col-span-7 flex flex-col gap-4 h-full">
-              {/* Unified 4-Tab Diagnostic Bar */}
-              <div className="glass-panel p-1.5 px-2 rounded-2xl flex items-center justify-between gap-2 overflow-x-auto border border-white/[0.08]">
-                <div className="flex items-center gap-1.5">
-                  <button
-                    onClick={() => setActiveRightView('topology')}
-                    className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-semibold transition cursor-pointer ${
-                      activeRightView === 'topology'
-                        ? 'bg-gradient-to-r from-cyan-500/20 via-blue-500/20 to-cyan-500/20 text-cyan-200 border border-cyan-500/50 shadow-md shadow-cyan-500/10 font-bold'
-                        : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
-                    }`}
-                  >
-                    <Network className="w-3.5 h-3.5" />
-                    <span>Dependency Topology</span>
-                  </button>
-
-                  <button
-                    onClick={() => setActiveRightView('matrix')}
-                    className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-semibold transition cursor-pointer ${
-                      activeRightView === 'matrix'
-                        ? 'bg-gradient-to-r from-cyan-500/20 via-blue-500/20 to-cyan-500/20 text-cyan-200 border border-cyan-500/50 shadow-md shadow-cyan-500/10 font-bold'
-                        : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
-                    }`}
-                  >
-                    <LayoutGrid className="w-3.5 h-3.5" />
-                    <span>Health Matrix</span>
-                  </button>
-
-                  <button
-                    onClick={() => setActiveRightView('runbooks')}
-                    className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-semibold transition relative cursor-pointer ${
-                      activeRightView === 'runbooks'
-                        ? 'bg-gradient-to-r from-cyan-500/20 via-blue-500/20 to-cyan-500/20 text-cyan-200 border border-cyan-500/50 shadow-md shadow-cyan-500/10 font-bold'
-                        : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
-                    }`}
-                  >
-                    <Wrench className="w-3.5 h-3.5" />
-                    <span>SRE Runbooks</span>
-                    {activeRunbook && activeRunbook.status === 'active' && (
-                      <span className="w-2 h-2 rounded-full bg-cyan-400 animate-ping" />
-                    )}
-                  </button>
-
-                  <button
-                    onClick={() => setActiveRightView('chaos')}
-                    className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-semibold transition cursor-pointer ${
-                      activeRightView === 'chaos'
-                        ? 'bg-gradient-to-r from-red-500/20 via-rose-500/20 to-red-500/20 text-red-300 border border-red-500/50 shadow-md shadow-red-500/10 font-bold'
-                        : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
-                    }`}
-                  >
-                    <ShieldAlert className="w-3.5 h-3.5 text-red-400" />
-                    <span>Chaos Simulator</span>
-                  </button>
-                </div>
-
-                <span className="text-[10px] font-mono text-slate-400 hidden sm:flex items-center gap-1.5 pr-2">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                  Multi-Cluster K8s Mesh
-                </span>
-              </div>
-
-              {/* Upper War Room Viewport (Interactive View) */}
-              <div className="min-h-[340px] flex-1">
-                {activeRightView === 'topology' && (
-                  <ServiceDependencyGraph
-                    topology={topology}
-                    onSendAction={sendTextCommand}
-                  />
-                )}
-
-                {activeRightView === 'matrix' && (
-                  <ServiceHealthMatrix services={services} />
-                )}
-
-                {activeRightView === 'runbooks' && (
-                  <RunbookWorkflowHUD
-                    activeRunbook={activeRunbook}
-                    onStartRunbook={startRunbook}
-                    onAdvanceRunbook={advanceRunbook}
-                    onAbortRunbook={abortRunbook}
-                  />
-                )}
-
-                {activeRightView === 'chaos' && (
-                  <LiveTelemetryDrawer
-                    onTriggerChaos={handleTriggerChaos}
-                    onLaunchDocker={() => {}}
-                  />
-                )}
-              </div>
-
-              {/* Lower Deck: Executed SRE Tools & Incident Timeline */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 h-[260px]">
-                {/* Executed Tools Feed */}
-                <div className="glass-panel rounded-2xl p-4 shadow-xl flex flex-col h-full border border-white/[0.08]">
-                  <div className="flex items-center justify-between mb-2.5 pb-2 border-b border-white/[0.06]">
-                    <div className="flex items-center gap-2">
-                      <Wrench className="w-4 h-4 text-cyan-400" />
-                      <h3 className="text-xs font-bold uppercase tracking-wider text-slate-200 font-sans">
-                        Executed Tools Stream
-                      </h3>
-                    </div>
-                    <span className="text-[10px] font-mono text-cyan-300 bg-cyan-500/10 border border-cyan-500/20 px-2.5 py-0.5 rounded-full font-semibold">
-                      {executedTools.length} calls
-                    </span>
-                  </div>
-
-                  <div className="flex-1 overflow-y-auto space-y-2 pr-1">
-                    {executedTools.length === 0 ? (
-                      <div className="h-full flex flex-col items-center justify-center text-center text-slate-500 text-xs font-mono">
-                        <span>Awaiting autonomous tool calls...</span>
-                      </div>
-                    ) : (
-                      executedTools.map((tool) => (
-                        <ToolExecutionCard key={tool.id} tool={tool} />
-                      ))
-                    )}
-                  </div>
-                </div>
-
-                {/* Incident Event Timeline */}
-                <div className="h-full">
-                  <IncidentTimeline incident={incident} />
-                </div>
-              </div>
-
-              {/* Quick Post-Mortem Action Banner */}
-              {postMortem && (
-                <div className="bg-gradient-to-r from-cyan-950/70 via-slate-900/90 to-purple-950/70 border border-cyan-400/50 p-3.5 rounded-2xl flex items-center justify-between shadow-2xl glow-cyan animate-in fade-in backdrop-blur-xl">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2.5 rounded-xl bg-cyan-500/20 text-cyan-300 border border-cyan-500/40">
-                      <FileText className="w-5 h-5" />
-                    </div>
-                    <div>
-                      <h4 className="text-xs font-bold text-white tracking-wide">
-                        Post-Incident Review & Acoustic Black Box Synthesized
-                      </h4>
-                      <p className="text-[11px] text-slate-300">
-                        4 Certified Artifacts: Markdown PIR, Jira Tickets, Slack Briefing & Audio Replay
-                      </p>
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => setIsPostMortemOpen(true)}
-                    className="px-4 py-2 rounded-xl bg-gradient-to-r from-cyan-400 to-blue-500 hover:from-cyan-300 hover:to-blue-400 text-slate-950 font-bold text-xs transition shadow-lg shadow-cyan-500/30 cursor-pointer hover:scale-105 active:scale-95"
-                  >
-                    Open Incident Review
-                  </button>
-                </div>
-              )}
-            </div>
+      <section className="incident-overview" aria-label="Incident overview">
+        <div className="incident-summary">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className={`status-tag ${status === 'RESOLVED' ? 'status-good' : voice.incident ? 'status-danger' : ''}`}>
+              <span className={`status-dot ${status === 'RESOLVED' ? 'dot-good' : voice.incident ? 'dot-warning animate-ping' : ''}`} />
+              {voice.incident?.severity ?? 'Awaiting session'}
+            </span>
+            <span className="mono text-slate-400 bg-slate-900/80 px-2 py-0.5 rounded border border-slate-800 text-xs">
+              {voice.incident?.id ?? 'INC-STANDBY'}
+            </span>
           </div>
-        </main>
+          <h2>{voice.incident?.title.replace(/^P\d:\s*/, '') ?? 'Your investigation starts here'}</h2>
+          <p>
+            <span className={`status-dot ${status === 'RESOLVED' ? 'dot-good' : voice.incident ? 'dot-warning' : ''}`} />
+            <span className="font-medium text-slate-200">
+              {status ? status.charAt(0) + status.slice(1).toLowerCase().replace(/_/g, ' ') : 'Session Standby'}
+            </span>
+            <span className="summary-separator">/</span>
+            <span>{simulation ? 'Demo simulation · no live changes' : voice.operator ? `${voice.operator.infrastructure_mode} infrastructure` : 'Connecting to server'}</span>
+          </p>
+        </div>
+        <div className="overview-stat">
+          <span className="eyebrow">NEEDS ATTENTION</span>
+          <strong className={unresolved ? 'text-amber-400' : 'text-slate-300'}>{services.length ? unresolved : '—'}</strong>
+          <span>{critical ? `${critical} active critical services` : 'Services requiring triage'}</span>
+        </div>
+        <div className="overview-stat">
+          <span className="eyebrow">CLUSTER HEALTH</span>
+          <strong className={healthy === services.length && services.length > 0 ? 'text-emerald-400' : 'text-slate-200'}>
+            {services.length ? <>{healthy}<small> / {services.length}</small></> : '—'}
+          </strong>
+          <span>Telemetry probes passing</span>
+        </div>
+      </section>
 
-        {/* Post-Mortem Fullscreen Modal with 4 Distinct Artifact Tabs */}
-        {isPostMortemOpen && (
-          <PostMortemViewer
-            data={postMortem}
-            onClose={() => {
-              setIsPostMortemOpen(false);
-              closePostMortem();
-            }}
-          />
-        )}
+      {voice.stagedRemediation && <ApprovalCard action={voice.stagedRemediation} disabled={disabled} onApprove={voice.authorizeRemediation} onCancel={voice.cancelRemediation} />}
+
+      <div className="workspace-grid">
+        <LiveTranscriptHUD turns={voice.turns} interimTranscript={voice.currentInterimTranscript} isRecording={voice.isRecording}
+          audioLevel={voice.audioLevel} agentStatus={voice.isPlaying ? 'speaking' : voice.agentStatus}
+          disabled={disabled} voiceAvailable={!!voice.operator?.assemblyai_configured} isConnected={voice.isConnected}
+          providerState={voice.providerState} providerMessage={voice.providerMessage}
+          onToggleRecording={voice.toggleRecording} onSendText={voice.sendTextCommand} onBargeIn={voice.bargeIn} />
+
+        <div className="diagnostics-column">
+          <section className="panel diagnostics-panel" aria-label="Investigation tools">
+            <div className="panel-heading"><div><p className="eyebrow">INVESTIGATE</p><h2>The bigger picture</h2></div><span className="small-count">{services.length} services</span></div>
+            <nav className="view-tabs" aria-label="Investigation views">{tabs.map(({ id, label, icon: Icon }) => <button key={id} aria-pressed={view === id} onClick={() => setView(id)}><Icon size={15} />{label}{id === 'runbooks' && voice.activeRunbook?.status === 'active' && <span className="status-dot dot-good" />}</button>)}</nav>
+            <div className="diagnostic-content">
+              {view === 'services' && <ServiceHealthMatrix services={voice.services} infrastructureMode={voice.operator?.infrastructure_mode} onInspect={service => voice.sendTextCommand(`Inspect logs for ${service}`)} disabled={disabled} />}
+              {view === 'topology' && <ServiceDependencyGraph topology={voice.topology} onSendAction={disabled ? undefined : voice.sendTextCommand} />}
+              {view === 'runbooks' && <RunbookWorkflowHUD activeRunbook={voice.activeRunbook} disabled={disabled || !!voice.stagedRemediation} onStartRunbook={voice.startRunbook} onAdvanceRunbook={voice.advanceRunbook} onAbortRunbook={voice.abortRunbook} />}
+              {view === 'demo' && simulation && <LiveTelemetryDrawer onTriggerChaos={voice.simulateScenario} disabled={disabled} />}
+            </div>
+          </section>
+
+          <section className="panel activity-panel" aria-label="Session activity">
+            <div className="activity-heading"><h2><Activity size={17} />Session activity</h2><div className="segmented-control"><button aria-pressed={activityView === 'tools'} onClick={() => setActivityView('tools')}>Actions <span>{voice.executedTools.length}</span></button><button aria-pressed={activityView === 'timeline'} onClick={() => setActivityView('timeline')}>Timeline</button></div></div>
+            <div className="activity-feed">
+              {activityView === 'timeline' ? <IncidentTimeline incident={voice.incident} /> : voice.executedTools.length ? [...voice.executedTools].reverse().map(tool => <ToolExecutionCard key={tool.id} tool={tool} />) : <div className="compact-empty"><Wrench size={20} /><div><h3>Your actions, in one place</h3><p>Checks and remediation results appear here as you investigate.</p></div></div>}
+            </div>
+          </section>
+        </div>
       </div>
-    </ErrorBoundary>
-  );
-};
+
+      <footer className="workspace-footer" aria-label="Connection and provider status">
+        <span>
+          <span className={`status-dot ${voice.isConnected ? 'dot-good' : ''}`} />
+          {voice.isConnected ? 'Mission Control Live' : 'Reconnecting to cluster...'}
+          <button className="text-button" onClick={voice.reconnect}><RefreshCw size={12} />Reconnect</button>
+        </span>
+        <span className="flex items-center gap-2 flex-wrap">
+          <span>Reasoning: <strong className="text-slate-200">{reasoning}</strong></span>
+          <span className="summary-separator">/</span>
+          <span className="text-cyan-400 font-medium">Powered by AssemblyAI Universal-3 Pro & LeMUR</span>
+        </span>
+      </footer>
+    </main>
+    {reportOpen && voice.postMortem && <PostMortemViewer data={voice.postMortem} onClose={() => setReportOpen(false)} />}
+  </div>;
+}
+
+export const App: React.FC = () => <ErrorBoundary><Workspace /></ErrorBoundary>;

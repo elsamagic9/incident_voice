@@ -1,294 +1,191 @@
+"""Read tools and a single guarded infrastructure mutation boundary."""
 import time
-from typing import Dict, Any, List
+from app.core.config import settings
 from app.core.state import cluster_state
+from app.core.auth_rbac import consume_mutation_grant, security_manager, MUTATIONS
 from app.tools.infrastructure_bridge import infra_bridge
 
-def get_cluster_health() -> Dict[str, Any]:
-    """
-    Returns real-time cluster health, degraded services, active alerts,
-    and incorporates live Docker container state and host telemetry.
-    """
-    critical_services = []
-    degraded_services = []
-    healthy_services = []
 
-    # Check for real Docker containers
-    real_containers = infra_bridge.list_running_containers()
+def resolve_service(name):
+    name = name.lower().strip()
+    return name if name in cluster_state.services else None
 
+
+def refresh_live_services():
+    if settings.infrastructure_mode == 'simulation': return
+    from app.tools.k8s_adapter import k8s_adapter
+    pods = k8s_adapter.list_pods() if settings.infrastructure_mode == 'kubernetes' else []
     for sid, svc in cluster_state.services.items():
-        summary = {
-            "id": svc.id,
-            "name": svc.name,
-            "status": svc.status,
-            "p99_latency": f"{svc.latency_p99_ms:.1f}ms",
-            "error_rate": f"{svc.error_rate_pct:.2f}%",
-            "alerts": svc.active_alerts,
-            "is_real_container": any(sid.replace("-", "") in c["name"].replace("-", "") for c in real_containers)
-        }
-        if svc.status == "critical":
-            critical_services.append(summary)
-        elif svc.status == "degraded":
-            degraded_services.append(summary)
-        else:
-            healthy_services.append(summary)
+        svc.metrics_available = False
+        svc.status = 'unknown'
+        svc.active_alerts = []
+        if settings.infrastructure_mode == 'docker' and sid in settings.docker_targets:
+            actual = infra_bridge.inspect_container(settings.docker_targets[sid])
+            if actual.get('success'):
+                svc.status = 'healthy' if actual.get('health_verified') else ('critical' if not actual.get('running') or actual.get('health') == 'unhealthy' else 'unknown')
+                svc.replicas = 1 if actual.get('running') else 0
+        elif settings.infrastructure_mode == 'kubernetes':
+            matches = [p for p in pods if p['name'].startswith(sid + '-')]
+            if matches:
+                svc.replicas = len(matches)
+                svc.status = 'healthy' if all(p.get('ready') is True for p in matches) else 'degraded'
 
-    host_info = infra_bridge.get_host_telemetry()
 
-    return {
-        "incident_id": cluster_state.incident.id,
-        "incident_title": cluster_state.incident.title,
-        "incident_status": cluster_state.incident.status,
-        "severity": cluster_state.incident.severity,
-        "critical_services": critical_services,
-        "degraded_services": degraded_services,
-        "healthy_services": healthy_services,
-        "total_active_alerts": sum(len(s.active_alerts) for s in cluster_state.services.values()),
-        "docker_active": infra_bridge.is_docker_available(),
-        "running_containers_count": len(real_containers),
-        "host_telemetry": host_info
-    }
+def get_cluster_health():
+    refresh_live_services()
+    groups = {'critical_services': [], 'degraded_services': [], 'healthy_services': [], 'unknown_services': []}
+    for svc in cluster_state.services.values():
+        key = {'critical': 'critical_services', 'degraded': 'degraded_services', 'healthy': 'healthy_services'}.get(svc.status, 'unknown_services')
+        groups[key].append({'id': svc.id, 'name': svc.name, 'status': svc.status,
+            'p99_latency': f'{svc.latency_p99_ms:.1f}ms' if svc.metrics_available else None,
+            'error_rate': f'{svc.error_rate_pct:.2f}%' if svc.metrics_available else None, 'alerts': svc.active_alerts})
+    return {'incident_id': cluster_state.incident.id, 'severity': cluster_state.incident.severity,
+            'incident_status': cluster_state.incident.status, 'source': settings.infrastructure_mode,
+            'total_active_alerts': sum(len(s.active_alerts) for s in cluster_state.services.values()),
+            'docker_active': infra_bridge.is_docker_available(), **groups}
 
-def inspect_service_logs(service_name: str, lines: int = 5) -> Dict[str, Any]:
-    """
-    Retrieves recent error and warning logs for a specific service.
-    If a matching Docker container is running locally, fetches REAL live container logs.
-    """
-    service_name = service_name.lower().strip()
 
-    # Check if a real docker container matches
-    real_containers = infra_bridge.list_running_containers()
-    matched_container = None
-    for c in real_containers:
-        c_name = c["name"].lower()
-        if service_name in c_name or c_name in service_name:
-            matched_container = c["name"]
-            break
+def inspect_service_logs(service_name, lines=5):
+    service_name = resolve_service(service_name)
+    if not service_name: return {'success': False, 'error': 'Service not found'}
+    lines = max(1, min(int(lines), 100))
+    if settings.infrastructure_mode == 'docker':
+        target = settings.docker_targets.get(service_name)
+        if not target: return {'success': False, 'error': 'No Docker target configured for this service'}
+        result = infra_bridge.inspect_container_logs(target, lines)
+        if result.get('exit_code', 0) != 0 or 'error' in result:
+            return {'success': False, 'error': result.get('error') or '\n'.join(result.get('lines', []))}
+        logs = result.get('lines', [])
+    elif settings.infrastructure_mode == 'kubernetes':
+        from app.tools.k8s_adapter import k8s_adapter
+        result = k8s_adapter.get_pod_logs('deployment/' + service_name, lines=lines)
+        if not result.get('success'): return result
+        logs = result.get('lines', [])
+    else:
+        logs = cluster_state.services[service_name].recent_logs[-lines:]
+    return {'service': service_name, 'source': settings.infrastructure_mode, 'logs': logs, 'log_count': len(logs)}
 
-    if matched_container:
-        docker_log_res = infra_bridge.inspect_container_logs(matched_container, lines)
-        if "lines" in docker_log_res and docker_log_res["lines"]:
-            return {
-                "service": service_name,
-                "container": matched_container,
-                "source": "live_docker_daemon",
-                "status": "active",
-                "log_count": len(docker_log_res["lines"]),
-                "logs": docker_log_res["lines"]
-            }
 
-    # Fallback to cluster state digital twin
-    if service_name not in cluster_state.services:
-        matched = [k for k in cluster_state.services if service_name in k]
-        if matched:
-            service_name = matched[0]
-        else:
-            return {"error": f"Service '{service_name}' not found. Available: {list(cluster_state.services.keys())}"}
-
+def query_telemetry(service_name):
+    service_name = resolve_service(service_name)
+    if not service_name: return {'success': False, 'error': 'Service not found'}
+    refresh_live_services()
     svc = cluster_state.services[service_name]
-    logs = svc.recent_logs[-lines:] if svc.recent_logs else ["No recent log entries."]
-    return {
-        "service": service_name,
-        "source": "cluster_telemetry_stream",
-        "status": svc.status,
-        "log_count": len(logs),
-        "logs": logs
-    }
+    return {'service': svc.name, 'source': settings.infrastructure_mode, 'status': svc.status,
+            'replicas': svc.replicas, 'cpu_utilization': svc.cpu_percent if svc.metrics_available else None,
+            'memory_utilization': svc.memory_percent if svc.metrics_available else None,
+            'error_rate': svc.error_rate_pct if svc.metrics_available else None,
+            'latency_p99': svc.latency_p99_ms if svc.metrics_available else None, 'alerts': svc.active_alerts}
 
-def query_telemetry(service_name: str) -> Dict[str, Any]:
-    """Retrieves CPU, RAM, RPS, P99 latency, and replicas for a service, plus host metrics."""
-    service_name = service_name.lower().strip()
-    if service_name not in cluster_state.services:
-        matched = [k for k in cluster_state.services if service_name in k]
-        if matched:
-            service_name = matched[0]
-        else:
-            return {"error": f"Service '{service_name}' not found."}
 
-    svc = cluster_state.services[service_name]
-    host = infra_bridge.get_host_telemetry()
-
-    return {
-        "service": svc.name,
-        "replicas": svc.replicas,
-        "cpu_utilization": f"{svc.cpu_percent}%",
-        "memory_utilization": f"{svc.memory_percent}%",
-        "error_rate": f"{svc.error_rate_pct}%",
-        "latency_p99": f"{svc.latency_p99_ms}ms",
-        "alerts": svc.active_alerts,
-        "host_cpu_pct": host.get("host_cpu_percent", 0),
-        "host_memory_pct": host.get("host_memory_percent", 0)
-    }
-
-def execute_remediation(action: str, service_name: str, count: int = 4) -> Dict[str, Any]:
-    """
-    Executes a governed remediation action on a service.
-    Supports both real Docker container restarts and Kubernetes deployment rollouts.
-    """
+def execute_remediation(action, service_name, count=4):
     from app.services.audit_ledger import audit_ledger
     from app.tools.k8s_adapter import k8s_adapter
-
-    action = action.lower().strip()
-    service_name = service_name.lower().strip()
-    if service_name not in cluster_state.services:
-        matched = [k for k in cluster_state.services if service_name in k]
-        if matched:
-            service_name = matched[0]
+    if action not in MUTATIONS:
+        return {'success': False, 'error': 'Unsupported mutation'}
+    if not consume_mutation_grant(action, service_name):
+        return {'success': False, 'status': 'denied', 'error': 'Explicit, current operator authorization is required'}
+    if settings.infrastructure_mode != 'simulation':
+        from app.core.session import current_session
+        session = current_session.get()
+        if not settings.operator_access_token or not session or not session.authenticated:
+            return {'success': False, 'status': 'denied', 'error': 'Live operations require an authenticated operator'}
+    if action != 'cordon_node' and not resolve_service(service_name):
+        return {'success': False, 'error': 'Service not found'}
+    if isinstance(count, bool) or not isinstance(count, int) or not 1 <= count <= 50:
+        return {'success': False, 'error': 'Replica count must be an integer from 1 to 50'}
+    started = time.perf_counter()
+    if settings.infrastructure_mode == 'simulation':
+        if action == 'cordon_node':
+            result = k8s_adapter.cordon_node(service_name)
         else:
-            return {"error": f"Service '{service_name}' not recognized."}
-
-    params = {}
-    if action == "scale_replicas":
-        params["count"] = count
-
-    # If action is restart, check if real container is active and restart it
-    real_restarted = None
-    k8s_rollout = None
-    if action in ["restart_pod", "restart", "k8s_rollout_restart"]:
-        normalized_target = service_name.replace("-service", "").replace("_service", "").replace("-core", "")
-        real_containers = infra_bridge.list_running_containers()
-        for c in real_containers:
-            c_name = c["name"].lower()
-            if normalized_target in c_name or c_name in normalized_target:
-                real_restarted = infra_bridge.restart_container(c["name"])
-                break
-
-        # Also trigger Kubernetes deployment rollout restart
-        k8s_rollout = k8s_adapter.rollout_restart_deployment(service_name)
-    elif action == "failover_traffic":
-        failover_result = k8s_adapter.failover_traffic("us-east-1", "eu-west-1")
-        audit_ledger.record_event(
-            event_type="INFRASTRUCTURE_MUTATION_EXECUTED",
-            actor="Commander-01 (Lead SRE)",
-            role="SRE_COMMANDER",
-            action="failover_traffic",
-            details={
-                "service_name": service_name,
-                "from_region": "us-east-1",
-                "to_region": "eu-west-1",
-                "remediation_status": "applied"
-            }
-        )
-        cluster_state.add_event("remediation", f"Global DNS failover executed: us-east-1 → eu-west-1")
-        return failover_result
-
-    result = cluster_state.apply_remediation(action, service_name, params)
-    if real_restarted and real_restarted.get("success"):
-        result["real_docker_restart"] = real_restarted
-    if k8s_rollout and k8s_rollout.get("success"):
-        result["k8s_rollout"] = k8s_rollout
-
-    # Log to cryptographic audit ledger
-    audit_ledger.record_event(
-        event_type="INFRASTRUCTURE_MUTATION_EXECUTED",
-        actor="Commander-01 (Lead SRE)",
-        role="SRE_COMMANDER",
-        action=action,
-        details={
-            "service_name": service_name,
-            "remediation_status": result.get("status", "applied"),
-            "real_docker_restart": bool(real_restarted and real_restarted.get("success")),
-            "k8s_rollout": bool(k8s_rollout and k8s_rollout.get("success"))
-        }
-    )
-
+            result = cluster_state.apply_remediation('restart_pod' if action == 'k8s_rollout_restart' else action, service_name, {'count': count})
+        result['simulated'] = True
+        result['message'] = result.get('details') or result.get('message', 'Simulation updated.')
+    elif settings.infrastructure_mode == 'docker':
+        target = settings.docker_targets.get(service_name)
+        if action != 'restart_pod' or not target:
+            result = {'success': False, 'error': 'Only restarts of configured Docker targets are supported in Docker mode'}
+        else:
+            result = infra_bridge.restart_container(target)
+            if result.get('success'):
+                verification = infra_bridge.inspect_container(target)
+                result['health_verified'] = verification.get('health_verified', False)
+                result['message'] = 'Container restarted. ' + ('Health check passed.' if result['health_verified'] else 'Application recovery is not yet verified.')
+    else:
+        if action in {'restart_pod', 'k8s_rollout_restart'}:
+            result = k8s_adapter.rollout_restart_deployment(service_name)
+        elif action == 'cordon_node': result = k8s_adapter.cordon_node(service_name)
+        else: result = {'success': False, 'error': 'This action has no configured live Kubernetes implementation'}
+    result['duration_ms'] = round((time.perf_counter() - started) * 1000, 1)
+    result['source'] = settings.infrastructure_mode
+    if settings.infrastructure_mode != 'simulation':
+        cluster_state.add_event('action' if result.get('success') else 'error', f'{action} on {service_name}: {result.get("message") or result.get("error")}')
+    audit_ledger.record_event('MUTATION_EXECUTED' if result.get('success') else 'MUTATION_FAILED', security_manager.session_operator,
+                             security_manager.current_role.value, action, {'service_name': service_name, 'result': result})
     return result
 
-def query_host_telemetry() -> Dict[str, Any]:
-    """Directly inspects Linux host operating system telemetry and top CPU processes."""
-    host = infra_bridge.get_host_telemetry()
-    top_procs = infra_bridge.get_top_processes(limit=5)
-    return {
-        "host_metrics": host,
-        "top_processes": top_procs
-    }
 
-def trigger_pager(team: str, message: str) -> Dict[str, Any]:
-    """Pages an on-call team via incident management escalation."""
-    from app.services.external_integrations import external_integrations
-    timestamp = time.strftime("%H:%M:%S")
-    cluster_state.add_event("pager", f"Paged {team} with message: {message}")
-    
-    # Trigger PagerDuty
-    pd_res = external_integrations.trigger_pagerduty_incident(title=message, severity="critical")
-    # Trigger Slack
-    slack_res = external_integrations.post_slack_message(channel=f"#incidents-{team}", message=f"@here {message}")
-    
-    return {
-        "status": "paged",
-        "team": team,
-        "timestamp": timestamp,
-        "message": message,
-        "confirmation": f"Escalation acknowledged. {pd_res['message']} Slack notification sent.",
-        "pagerduty": pd_res,
-        "slack": slack_res
-    }
+def query_host_telemetry():
+    from app.core.session import current_session
+    if not current_session.get().authenticated:
+        return {'source': 'unavailable', 'message': 'Host telemetry requires operator authentication.'}
+    return {'source': 'backend_host', 'host_metrics': infra_bridge.get_host_telemetry(), 'top_processes': infra_bridge.get_top_processes()}
 
-def generate_postmortem() -> Dict[str, Any]:
-    """Synthesizes structured multi-artifact Post-Mortem Report."""
+
+def trigger_pager(team, message):
+    cluster_state.add_event('pager', f'Escalation draft for {team}: {message}')
+    return {'status': 'draft', 'simulated': True, 'team': team, 'message': message,
+            'confirmation': 'Escalation draft prepared. No external notification was sent.'}
+
+
+def generate_postmortem():
     from app.services.lemur_service import lemur_service
-    return lemur_service._build_structured_fallback(
-        incident_id=cluster_state.incident.id,
-        timeline_events=cluster_state.incident.timeline_events
-    )
+    return lemur_service._build_structured_fallback(cluster_state.incident.id, timeline_events=cluster_state.incident.timeline_events)
 
-def list_runbooks() -> Dict[str, Any]:
-    """Lists all available standard operating procedure SRE runbooks."""
+
+def list_runbooks():
     from app.services.runbook_engine import runbook_engine
-    return {"runbooks": runbook_engine.list_runbooks()}
+    return {'runbooks': runbook_engine.list_runbooks()}
 
-def start_runbook(runbook_id: str = "runbook-pg-pool") -> Dict[str, Any]:
-    """Starts a guided SRE runbook workflow."""
+
+def start_runbook(runbook_id='runbook-pg-pool'):
     from app.services.runbook_engine import runbook_engine
-    spoken, data = runbook_engine.start_runbook(runbook_id)
-    return {"spoken": spoken, "session": data}
+    spoken, session = runbook_engine.start_runbook(runbook_id)
+    return {'spoken': spoken, 'session': session}
 
-def advance_runbook() -> Dict[str, Any]:
-    """Advances the active SRE runbook to the next step, executing actions and verifying telemetry."""
+
+def advance_runbook():
     from app.services.runbook_engine import runbook_engine
-    spoken, data, tools = runbook_engine.advance_runbook()
-    return {"spoken": spoken, "session": data, "executed_tools": tools}
+    spoken, session, tools = runbook_engine.advance_runbook()
+    return {'spoken': spoken, 'session': session, 'executed_tools': tools}
 
-def abort_runbook() -> Dict[str, Any]:
-    """Aborts the currently running SRE runbook."""
+
+def abort_runbook():
     from app.services.runbook_engine import runbook_engine
-    spoken, data = runbook_engine.abort_runbook()
-    return {"spoken": spoken, "session": data}
+    spoken, session = runbook_engine.abort_runbook()
+    return {'spoken': spoken, 'session': session}
 
-def get_service_topology() -> Dict[str, Any]:
-    """Returns live service dependency graph, real-time traffic flow, and blast radius."""
-    from app.core.topology import get_service_topology as _get_topo
-    return _get_topo()
 
-def k8s_rollout_restart(deployment_name: str, namespace: str = "production") -> Dict[str, Any]:
-    """Rollout restarts a Kubernetes deployment."""
+def get_service_topology():
+    from app.core.topology import get_service_topology as topology
+    return topology() if settings.infrastructure_mode == 'simulation' else {'nodes': [], 'edges': [], 'source': 'unavailable'}
+
+
+def k8s_list_pods(namespace='production'):
     from app.tools.k8s_adapter import k8s_adapter
-    return k8s_adapter.rollout_restart_deployment(deployment_name, namespace)
+    return {'pods': k8s_adapter.list_pods(namespace)}
 
-def k8s_list_pods(namespace: str = "production") -> Dict[str, Any]:
-    """Lists pods in a Kubernetes namespace."""
-    from app.tools.k8s_adapter import k8s_adapter
-    return {"pods": k8s_adapter.list_pods(namespace)}
 
-def k8s_cordon_node(node_name: str) -> Dict[str, Any]:
-    """Cordons a Kubernetes worker node."""
-    from app.tools.k8s_adapter import k8s_adapter
-    return k8s_adapter.cordon_node(node_name)
+def k8s_rollout_restart(deployment_name, namespace='production'):
+    return execute_remediation('k8s_rollout_restart', deployment_name)
 
-# Mapping of function names to implementations
-SRE_TOOL_MAP = {
-    "get_cluster_health": get_cluster_health,
-    "inspect_service_logs": inspect_service_logs,
-    "query_telemetry": query_telemetry,
-    "execute_remediation": execute_remediation,
-    "query_host_telemetry": query_host_telemetry,
-    "trigger_pager": trigger_pager,
-    "generate_postmortem": generate_postmortem,
-    "list_runbooks": list_runbooks,
-    "start_runbook": start_runbook,
-    "advance_runbook": advance_runbook,
-    "abort_runbook": abort_runbook,
-    "get_service_topology": get_service_topology,
-    "k8s_rollout_restart": k8s_rollout_restart,
-    "k8s_list_pods": k8s_list_pods,
-    "k8s_cordon_node": k8s_cordon_node
-}
+
+def k8s_cordon_node(node_name):
+    return execute_remediation('cordon_node', node_name)
+
+SRE_TOOL_MAP = {name: globals()[name] for name in ['get_cluster_health', 'inspect_service_logs', 'query_telemetry',
+    'execute_remediation', 'query_host_telemetry', 'trigger_pager', 'generate_postmortem', 'list_runbooks',
+    'start_runbook', 'advance_runbook', 'abort_runbook', 'get_service_topology', 'k8s_rollout_restart', 'k8s_list_pods']}
+SRE_TOOL_MAP['cordon_node'] = k8s_cordon_node
+SRE_TOOL_MAP['k8s_cordon_node'] = k8s_cordon_node

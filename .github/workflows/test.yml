@@ -22,10 +22,7 @@ jobs:
       - name: Install Dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install poetry
-          cd backend
-          poetry export -f requirements.txt --output requirements.txt --without-hashes --with dev
-          pip install -r requirements.txt
+          pip install -r backend/requirements.txt
 
       - name: Run Pytest Suite
         run: |
@@ -54,3 +51,7 @@ jobs:
         run: |
           cd frontend
           npm run build
+
+      - name: Frontend regression tests
+        working-directory: frontend
+        run: npm test

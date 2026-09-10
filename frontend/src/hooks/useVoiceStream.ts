@@ -1,521 +1,258 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { AgentStatus, IncidentRecord, ServiceNode, Turn, ToolExecution, PostMortemData, VoiceEngine, StagedRemediation, ActiveRunbookSession, ServiceTopology } from '../types';
 import { useAudioPlayer } from './useAudioPlayer';
 
-export interface LatencyStats {
-  stt_ms: number;
-  tool_ms: number;
-  llm_ms: number;
-  tts_ms: number;
-  total_ms: number;
-}
+export interface LatencyStats { stt_ms: number | null; tool_ms: number | null; llm_ms: number | null; tts_ms: number | null; total_ms: number | null; }
+export interface Operator { operator: string; role: string; infrastructure_mode: string; authenticated: boolean; assemblyai_configured: boolean; tts_provider: string; }
 
 export function useVoiceStream() {
+  const [operator, setOperator] = useState<Operator | null>(null);
+  const [loginRequired, setLoginRequired] = useState(false);
+  const [sessionVersion, setSessionVersion] = useState(0);
   const [isConnected, setIsConnected] = useState(false);
   const [agentStatus, setAgentStatus] = useState<AgentStatus>('idle');
   const [activeEngine, setActiveEngine] = useState<VoiceEngine>('custom_stt_v3');
+  const [providerState, setProviderState] = useState('idle');
+  const [providerMessage, setProviderMessage] = useState('');
+  const [reasoningProvider, setReasoningProvider] = useState('scripted');
   const [stagedRemediation, setStagedRemediation] = useState<StagedRemediation | null>(null);
   const [autopilotEnabled, setAutopilotEnabled] = useState(false);
-  const [dockerActive, setDockerActive] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [turns, setTurns] = useState<Turn[]>([]);
-  const [currentInterimTranscript, setCurrentInterimTranscript] = useState<string>('');
+  const [currentInterimTranscript, setCurrentInterimTranscript] = useState('');
   const [executedTools, setExecutedTools] = useState<ToolExecution[]>([]);
   const [incident, setIncident] = useState<IncidentRecord | null>(null);
   const [services, setServices] = useState<Record<string, ServiceNode>>({});
   const [topology, setTopology] = useState<ServiceTopology | null>(null);
   const [activeRunbook, setActiveRunbook] = useState<ActiveRunbookSession | null>(null);
   const [postMortem, setPostMortem] = useState<PostMortemData | null>(null);
-  const [rbacRole, setRbacRole] = useState<string>('SRE_COMMANDER');
-  const [clusterProvider, setClusterProvider] = useState<string>('Hybrid (K8s + Docker)');
-  const [audioLevel, setAudioLevel] = useState<number>(0);
-  const [latency, setLatency] = useState<LatencyStats>({
-    stt_ms: 120,
-    tool_ms: 45,
-    llm_ms: 110,
-    tts_ms: 85,
-    total_ms: 360
-  });
+  const [audioLevel, setAudioLevel] = useState(0);
+  const [notice, setNotice] = useState('');
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [latency, setLatency] = useState<LatencyStats>({ stt_ms: null, tool_ms: null, llm_ms: null, tts_ms: null, total_ms: null });
+  const socket = useRef<WebSocket | null>(null);
+  const media = useRef<MediaStream | null>(null);
+  const captureContext = useRef<AudioContext | null>(null);
+  const captureNode = useRef<AudioWorkletNode | null>(null);
+  const captureGeneration = useRef(0);
+  const wantsRecording = useRef(false);
+  const mounted = useRef(true);
+  const loginAttempt = useRef(0);
+  const audioEpoch = useRef(0);
+  const suppressAudio = useRef(false);
+  const { enqueueAudio, stopPlayback, getAudioContext, isPlaying } = useAudioPlayer(setError);
 
-  const socketRef = useRef<WebSocket | null>(null);
-  const reconnectAttemptRef = useRef(0);
-  const mediaStreamRef = useRef<MediaStream | null>(null);
-  const audioContextRef = useRef<AudioContext | null>(null);
-  const workletNodeRef = useRef<AudioWorkletNode | null>(null);
-  const scriptProcessorRef = useRef<ScriptProcessorNode | null>(null);
-  const { enqueueBase64Chunk, stopPlayback } = useAudioPlayer();
-
-  // Web Audio UI feedback beep
-  const playSoundEffect = useCallback((freq = 880, type: OscillatorType = 'sine', duration = 0.08) => {
-    try {
-      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
-      const ctx = new AudioCtx();
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.type = type;
-      osc.frequency.setValueAtTime(freq, ctx.currentTime);
-      gain.gain.setValueAtTime(0.04, ctx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + duration);
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.start();
-      osc.stop(ctx.currentTime + duration);
-    } catch (e) {}
-  }, []);
-
-  // Connect WebSocket
-  useEffect(() => {
-    let pingInterval: ReturnType<typeof setInterval>;
-    let ws: WebSocket;
-    let reconnectTimeout: ReturnType<typeof setTimeout>;
-
-    const connect = () => {
-      const customWsBase = (import.meta as any).env?.VITE_WS_URL;
-      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const host = window.location.host;
-      const wsUrl = customWsBase
-        ? `${customWsBase}${customWsBase.includes('?') ? '&' : '?'}engine=${activeEngine}`
-        : `${protocol}//${host}/ws/agent?engine=${activeEngine}`;
-
-      ws = new WebSocket(wsUrl);
-      socketRef.current = ws;
-
-      pingInterval = setInterval(() => {
-        if (ws.readyState === WebSocket.OPEN) {
-          ws.send(JSON.stringify({ type: 'ping' }));
-        }
-      }, 25000);
-
-      ws.onopen = () => {
-        console.log('Voice Agent WebSocket connected with engine:', activeEngine);
-        setIsConnected(true);
-        setAgentStatus('listening');
-        reconnectAttemptRef.current = 0;
-      };
-
-      ws.onclose = () => {
-        console.log('Voice Agent WebSocket disconnected.');
-        setIsConnected(false);
-        setAgentStatus('idle');
-        clearInterval(pingInterval);
-
-        if (reconnectAttemptRef.current < 3) {
-          const delay = Math.pow(2, reconnectAttemptRef.current) * 1000;
-          reconnectAttemptRef.current++;
-          reconnectTimeout = setTimeout(connect, delay);
-        }
-      };
-
-      ws.onerror = (err) => {
-        console.error('WebSocket error:', err);
-        setAgentStatus('error');
-      };
-
-      ws.onmessage = (event) => {
-        try {
-          const data = JSON.parse(event.data);
-
-          switch (data.type) {
-            case 'engine_sync':
-              if (data.engine) {
-                setActiveEngine(data.engine);
-              }
-              break;
-
-            case 'turn':
-              if (data.end_of_turn) {
-                setCurrentInterimTranscript('');
-                setTurns((prev) => [
-                  ...prev,
-                  {
-                    id: `${Date.now()}-${Math.random()}`,
-                    speaker: data.speaker,
-                    transcript: data.transcript,
-                    end_of_turn: true,
-                    confidence: data.confidence,
-                    timestamp: data.timestamp || Date.now()
-                  }
-                ]);
-              } else {
-                setCurrentInterimTranscript(data.transcript);
-              }
-              break;
-
-            case 'agent_state':
-              setAgentStatus(data.state);
-              if (data.state === 'speaking') {
-                playSoundEffect(587, 'sine', 0.06);
-              } else if (data.state === 'interrupted') {
-                stopPlayback();
-                playSoundEffect(330, 'square', 0.05);
-              } else if (data.state === 'awaiting_confirmation') {
-                playSoundEffect(740, 'triangle', 0.15);
-                if (data.staged_action) {
-                  setStagedRemediation(data.staged_action);
-                }
-              }
-              break;
-
-            case 'remediation_staged':
-              if (data.staged_action) {
-                setStagedRemediation(data.staged_action);
-                setAgentStatus('awaiting_confirmation');
-                playSoundEffect(740, 'triangle', 0.15);
-              }
-              break;
-
-            case 'tool_executed':
-              playSoundEffect(1046, 'sine', 0.08);
-              if (data.result?.status === 'staged') {
-                setStagedRemediation({
-                  action: data.result.action || data.arguments?.action,
-                  service_name: data.result.service_name || data.arguments?.service_name,
-                  params: data.arguments,
-                  message: data.result.message
-                });
-                setAgentStatus('awaiting_confirmation');
-              } else {
-                setStagedRemediation(null);
-                setAgentStatus((prev) => (prev === 'awaiting_confirmation' ? 'listening' : prev));
-              }
-
-              setExecutedTools((prev) => [
-                ...prev,
-                {
-                  id: `${Date.now()}-${data.tool_name}`,
-                  tool_name: data.tool_name,
-                  arguments: data.arguments,
-                  result: data.result,
-                  timestamp: data.timestamp
-                }
-              ]);
-              break;
-
-            case 'cluster_sync':
-              if (data.incident) setIncident(data.incident);
-              if (data.services) setServices(data.services);
-              if (data.docker_active !== undefined) setDockerActive(data.docker_active);
-              if (data.topology) setTopology(data.topology);
-              if (data.active_runbook !== undefined) setActiveRunbook(data.active_runbook);
-              if (data.rbac_role) setRbacRole(data.rbac_role);
-              if (data.cluster_provider) setClusterProvider(data.cluster_provider);
-              break;
-
-            case 'runbook_sync':
-              if (data.session !== undefined) {
-                setActiveRunbook(data.session);
-              }
-              break;
-
-            case 'latency_breakdown':
-              if (data.stats) {
-                setLatency(data.stats);
-              }
-              break;
-
-            case 'audio_stream':
-              if (data.data) {
-                enqueueBase64Chunk(data.data);
-              }
-              break;
-
-            case 'audio_stream_end':
-              break;
-
-            case 'postmortem_ready':
-              if (data.data) {
-                playSoundEffect(1318, 'triangle', 0.25);
-                setPostMortem(data.data);
-              }
-              break;
-
-            case 'system':
-              console.log('System:', data.message);
-              break;
-          }
-        } catch (err) {
-          console.error('Error handling WebSocket message:', err);
-        }
-      };
-    };
-
-    connect();
-
-    return () => {
-      clearInterval(pingInterval);
-      clearTimeout(reconnectTimeout);
-      if (ws) ws.close();
-    };
-  }, [activeEngine, enqueueBase64Chunk, stopPlayback, playSoundEffect]);
-
-  // Fallback downsampler for ScriptProcessor if AudioWorklet fails
-  const downsampleTo16k = (buffer: Float32Array, sampleRate: number): Int16Array => {
-    const ratio = sampleRate / 16000;
-    const newLength = Math.round(buffer.length / ratio);
-    const result = new Int16Array(newLength);
-    let offsetResult = 0;
-    let offsetBuffer = 0;
-
-    while (offsetResult < result.length) {
-      const nextOffsetBuffer = Math.round((offsetResult + 1) * ratio);
-      let accum = 0;
-      let count = 0;
-      for (let i = offsetBuffer; i < nextOffsetBuffer && i < buffer.length; i++) {
-        accum += buffer[i];
-        count++;
-      }
-      const avg = count > 0 ? accum / count : 0;
-      const s = Math.max(-1, Math.min(1, avg));
-      result[offsetResult] = s < 0 ? s * 0x8000 : s * 0x7FFF;
-      offsetResult++;
-      offsetBuffer = nextOffsetBuffer;
+  const releaseMicrophone = useCallback(() => {
+    captureGeneration.current++;
+    wantsRecording.current = false;
+    if (captureNode.current) {
+      captureNode.current.port.onmessage = null;
+      captureNode.current.disconnect();
+      captureNode.current = null;
     }
-    return result;
-  };
-
-  const startRecording = useCallback(async () => {
-    try {
-      stopPlayback(); // Instant barge-in if agent was speaking
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          channelCount: 1,
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true
-        }
-      });
-      mediaStreamRef.current = stream;
-
-      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
-      const audioCtx = new AudioCtx();
-      audioContextRef.current = audioCtx;
-      const source = audioCtx.createMediaStreamSource(stream);
-
-      // Attempt high-performance AudioWorklet first
-      let workletInitialized = false;
-      try {
-        await audioCtx.audioWorklet.addModule('/audio-processor.js');
-        const workletNode = new AudioWorkletNode(audioCtx, 'pcm-processor');
-        workletNodeRef.current = workletNode;
-
-        workletNode.port.onmessage = (e) => {
-          if (e.data.type === 'pcm_chunk') {
-            setAudioLevel(Math.min(1, e.data.volume * 5));
-            if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
-              socketRef.current.send(e.data.buffer);
-            }
-          }
-        };
-
-        source.connect(workletNode);
-        workletNode.connect(audioCtx.destination);
-        workletInitialized = true;
-        console.log('Using high-performance AudioWorklet for 16kHz PCM streaming.');
-      } catch (workletErr) {
-        console.warn('AudioWorklet initialization failed, falling back to ScriptProcessor:', workletErr);
-      }
-
-      // Fallback to ScriptProcessor if AudioWorklet was blocked
-      if (!workletInitialized) {
-        const processor = audioCtx.createScriptProcessor(4096, 1, 1);
-        scriptProcessorRef.current = processor;
-
-        processor.onaudioprocess = (e) => {
-          const inputData = e.inputBuffer.getChannelData(0);
-          let sum = 0;
-          for (let i = 0; i < inputData.length; i++) {
-            sum += inputData[i] * inputData[i];
-          }
-          const rms = Math.sqrt(sum / inputData.length);
-          setAudioLevel(Math.min(1, rms * 5));
-
-          const pcm16 = downsampleTo16k(inputData, audioCtx.sampleRate);
-          if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
-            socketRef.current.send(pcm16.buffer);
-          }
-        };
-
-        source.connect(processor);
-        processor.connect(audioCtx.destination);
-      }
-
-      setIsRecording(true);
-      setAgentStatus('listening');
-      playSoundEffect(784, 'sine', 0.08);
-    } catch (err) {
-      console.error('Error opening microphone:', err);
-    }
-  }, [stopPlayback, playSoundEffect]);
-
-  const stopRecording = useCallback(() => {
-    if (workletNodeRef.current) {
-      workletNodeRef.current.disconnect();
-      workletNodeRef.current = null;
-    }
-    if (scriptProcessorRef.current) {
-      scriptProcessorRef.current.disconnect();
-      scriptProcessorRef.current = null;
-    }
-    if (mediaStreamRef.current) {
-      mediaStreamRef.current.getTracks().forEach((track) => track.stop());
-      mediaStreamRef.current = null;
-    }
-    if (audioContextRef.current) {
-      audioContextRef.current.close();
-      audioContextRef.current = null;
-    }
+    media.current?.getTracks().forEach(t => t.stop());
+    media.current = null;
+    if (captureContext.current) void captureContext.current.close().catch(() => {});
+    captureContext.current = null;
     setIsRecording(false);
     setAudioLevel(0);
-    playSoundEffect(440, 'sine', 0.05);
-  }, [playSoundEffect]);
+  }, []);
 
-  const toggleRecording = useCallback(() => {
-    if (isRecording) {
-      stopRecording();
-    } else {
-      startRecording();
+  const send = useCallback((type: string, values: Record<string, unknown> = {}) => {
+    if (socket.current?.readyState !== WebSocket.OPEN) {
+      setError('The server is disconnected. Reconnect before sending a command.');
+      return;
     }
-  }, [isRecording, startRecording, stopRecording]);
+    if (!['ping', 'barge_in'].includes(type)) setBusy(true);
+    socket.current.send(JSON.stringify({ type, request_id: crypto.randomUUID(), ...values }));
+  }, []);
 
-  const sendTextCommand = useCallback((text: string) => {
-    if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
-      stopPlayback();
-      socketRef.current.send(JSON.stringify({
-        type: 'text_command',
-        text
-      }));
+  const beginCapture = useCallback(async (sampleRate: number) => {
+    const gen = captureGeneration.current;
+    if (!wantsRecording.current || !media.current) return;
+    try {
+      const ctx = new AudioContext();
+      captureContext.current = ctx;
+      await ctx.resume();
+      await ctx.audioWorklet.addModule('/audio-processor.js');
+      if (gen !== captureGeneration.current || !wantsRecording.current || !media.current) {
+        if (ctx.state !== 'closed') await ctx.close();
+        return;
+      }
+      const node = new AudioWorkletNode(ctx, 'pcm-processor', { processorOptions: { targetSampleRate: sampleRate } });
+      captureNode.current = node;
+      node.port.onmessage = event => {
+        if (gen !== captureGeneration.current) return;
+        setAudioLevel(Math.min(1, event.data.volume * 6));
+        if (socket.current?.readyState === WebSocket.OPEN && socket.current.bufferedAmount < 256000) socket.current.send(event.data.buffer);
+      };
+      ctx.createMediaStreamSource(media.current).connect(node);
+      node.connect(ctx.destination);
+      setIsRecording(true);
+    } catch {
+      releaseMicrophone();
+      send('stop_voice');
+      setError('Microphone capture could not start. Use a current browser on HTTPS or localhost.');
     }
-  }, [stopPlayback]);
+  }, [releaseMicrophone, send]);
 
-  const selectEngine = useCallback((engine: VoiceEngine) => {
-    if (engine === activeEngine) return;
-    stopPlayback();
-    setActiveEngine(engine);
-    if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
-      socketRef.current.send(JSON.stringify({
-        type: 'select_engine',
-        engine
-      }));
+  const login = useCallback(async (accessToken = '') => {
+    const attempt = ++loginAttempt.current;
+    setError('');
+    try {
+      const result = await fetch('/api/session', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ access_token: accessToken }), credentials: 'same-origin' });
+      if (!mounted.current || attempt !== loginAttempt.current) return;
+      if (!result.ok) {
+        if (result.status === 401) { setLoginRequired(true); if (accessToken) setError('That access token was not accepted.'); return; }
+        throw new Error((await result.json()).detail || 'Could not open an operator session.');
+      }
+      const nextOperator = await result.json();
+      if (!mounted.current || attempt !== loginAttempt.current) return;
+      setOperator(nextOperator);
+      setLoginRequired(false);
+      setSessionVersion(v => v + 1);
+    } catch (err) { if (mounted.current && attempt === loginAttempt.current) setError(err instanceof Error ? err.message : 'Server unavailable. Check that the backend is running.'); }
+  }, []);
+
+  useEffect(() => {
+    mounted.current = true;
+    void login();
+    return () => { mounted.current = false; loginAttempt.current++; releaseMicrophone(); };
+  }, [login, releaseMicrophone]);
+
+  useEffect(() => {
+    if (!sessionVersion) return;
+    let disposed = false;
+    let retries = 0;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let ping: ReturnType<typeof setInterval> | undefined;
+    let ws: WebSocket | null = null;
+    const connect = () => {
+      if (disposed) return;
+      const scheme = location.protocol === 'https:' ? 'wss:' : 'ws:';
+      ws = new WebSocket(`${scheme}//${location.host}/ws/agent`);
+      socket.current = ws;
+      ws.onopen = () => {
+        if (disposed) return;
+        setIsConnected(true); setAgentStatus('listening'); retries = 0;
+        audioEpoch.current = 0; suppressAudio.current = false;
+        ping = setInterval(() => { if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'ping' })); }, 20000);
+      };
+      ws.onclose = event => {
+        clearInterval(ping);
+        if (disposed) return;
+        releaseMicrophone(); stopPlayback(); setIsConnected(false); setBusy(false); setStagedRemediation(null);
+        setProviderState('idle');
+        if (event.code === 4401) { setLoginRequired(true); setOperator(null); return; }
+        if (event.code === 4409) { setError('This session is open in another tab. Close that connection and reconnect here.'); return; }
+        if (retries < 5) timer = setTimeout(connect, Math.min(1000 * 2 ** retries++, 12000));
+        else setError('Connection lost. Use Reconnect to try again.');
+      };
+      ws.onerror = () => { if (!disposed) setError('Unable to reach the incident server.'); };
+      ws.onmessage = event => {
+        if (disposed) return;
+        try {
+          const data = JSON.parse(event.data);
+          switch (data.type) {
+            case 'engine_sync': setActiveEngine(data.engine); break;
+            case 'provider_status':
+              setProviderState(data.state); setProviderMessage(data.message || '');
+              if (['error', 'unconfigured'].includes(data.state)) releaseMicrophone();
+              break;
+            case 'voice_ready': void beginCapture(data.sample_rate); break;
+            case 'reasoning_status': setReasoningProvider(data.provider); if (data.message) setNotice(data.message); break;
+            case 'turn':
+              if (data.speaker === 'user' && isPlaying) {
+                const words = data.transcript.trim().split(/\s+/);
+                const isInterrupt = /^(stop|wait|cancel|hold on|pause|abort|no|hush)\b/i.test(data.transcript.trim());
+                if (words.length >= 2 || isInterrupt) {
+                  suppressAudio.current = true;
+                  stopPlayback();
+                  if (ws?.readyState === WebSocket.OPEN) {
+                    ws.send(JSON.stringify({ type: 'barge_in', request_id: crypto.randomUUID() }));
+                  }
+                }
+              }
+              if (data.end_of_turn) {
+                setCurrentInterimTranscript('');
+                setTurns(prev => [...prev.slice(-199), { id: crypto.randomUUID(), speaker: data.speaker, transcript: data.transcript, end_of_turn: true, timestamp: data.timestamp || Date.now() / 1000 }]);
+              } else if (data.speaker === 'user') setCurrentInterimTranscript(data.transcript);
+              break;
+            case 'cluster_sync':
+              setIncident(data.incident); setServices(data.services || {}); setTopology(data.topology); setActiveRunbook(data.active_runbook);
+              setOperator(previous => previous ? { ...previous, role: data.rbac_role, infrastructure_mode: data.infrastructure_mode } : previous);
+              setAutopilotEnabled(!!data.autopilot_enabled); break;
+            case 'staging_sync': setStagedRemediation(data.staged_action || null); break;
+            case 'tool_executed':
+              setExecutedTools(prev => [...prev.slice(-99), { ...data, id: crypto.randomUUID() }]); break;
+            case 'agent_state': setAgentStatus(data.state); break;
+            case 'interrupt':
+              audioEpoch.current = data.epoch; suppressAudio.current = false; stopPlayback(); break;
+            case 'audio_stream':
+              if (!suppressAudio.current && data.epoch === audioEpoch.current) enqueueAudio(data); break;
+            case 'latency_breakdown': setLatency(data.stats); break;
+            case 'postmortem_ready': setPostMortem(data.data); break;
+            case 'notice': setNotice(data.message); break;
+            case 'error': setError(data.message); break;
+            case 'command_complete': setBusy(false); break;
+            case 'session_reset':
+              releaseMicrophone(); stopPlayback(); setTurns([]); setExecutedTools([]); setPostMortem(null); setStagedRemediation(null);
+              setActiveRunbook(null); setNotice('A fresh incident session is ready.'); setCurrentInterimTranscript(''); setAutopilotEnabled(false);
+              setLatency({ stt_ms: null, tool_ms: null, llm_ms: null, tts_ms: null, total_ms: null }); break;
+          }
+        } catch { setError('The server returned an invalid response.'); }
+      };
+    };
+    connect();
+    return () => {
+      disposed = true;
+      clearTimeout(timer); clearInterval(ping);
+      if (ws) { ws.onclose = null; ws.onmessage = null; ws.onerror = null; ws.close(); }
+      socket.current = null;
+      releaseMicrophone(); stopPlayback();
+    };
+  }, [sessionVersion, beginCapture, enqueueAudio, releaseMicrophone, stopPlayback]);
+
+  const stopRecording = useCallback(() => { releaseMicrophone(); send('stop_voice'); }, [releaseMicrophone, send]);
+  const startRecording = useCallback(async () => {
+    if (wantsRecording.current) return;
+    if (socket.current?.readyState !== WebSocket.OPEN) { setError('Reconnect before starting the microphone.'); return; }
+    setError('');
+    getAudioContext();
+    wantsRecording.current = true;
+    const gen = ++captureGeneration.current;
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true } });
+      if (!mounted.current || !wantsRecording.current || gen !== captureGeneration.current) { stream.getTracks().forEach(t => t.stop()); return; }
+      media.current = stream;
+      send('start_voice');
+    } catch {
+      releaseMicrophone();
+      setError('Microphone access was denied or no microphone is available. You can still type a command.');
     }
-    playSoundEffect(880, 'sine', 0.1);
-  }, [activeEngine, stopPlayback, playSoundEffect]);
+  }, [getAudioContext, releaseMicrophone, send]);
 
-  const authorizeRemediation = useCallback(() => {
-    if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
-      stopPlayback();
-      socketRef.current.send(JSON.stringify({ type: 'authorize_remediation' }));
-      setStagedRemediation(null);
-      playSoundEffect(1046, 'sine', 0.12);
-    }
-  }, [stopPlayback, playSoundEffect]);
+  const stopAudio = useCallback(() => { suppressAudio.current = true; stopPlayback(); }, [stopPlayback]);
+  const command = useCallback((type: string, args: Record<string, unknown> = {}) => {
+    getAudioContext(); stopAudio(); send(type, args);
+  }, [getAudioContext, stopAudio, send]);
 
-  const cancelRemediation = useCallback(() => {
-    if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
-      stopPlayback();
-      socketRef.current.send(JSON.stringify({ type: 'cancel_remediation' }));
-      setStagedRemediation(null);
-      playSoundEffect(440, 'sine', 0.08);
-    }
-  }, [stopPlayback, playSoundEffect]);
-
-  const resetIncident = useCallback(() => {
-    if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
-      socketRef.current.send(JSON.stringify({ type: 'reset_incident' }));
-      setTurns([]);
-      setExecutedTools([]);
-      setPostMortem(null);
-      setStagedRemediation(null);
-      setActiveRunbook(null);
-      setAgentStatus('listening');
-      playSoundEffect(659, 'triangle', 0.1);
-    }
-  }, [playSoundEffect]);
-
-  const bargeIn = useCallback(() => {
-    stopPlayback();
-    if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
-      socketRef.current.send(JSON.stringify({ type: 'barge_in' }));
-    }
-  }, [stopPlayback]);
-
-  const startRunbook = useCallback((runbookId: string) => {
-    if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
-      stopPlayback();
-      socketRef.current.send(JSON.stringify({
-        type: 'start_runbook',
-        runbook_id: runbookId
-      }));
-      playSoundEffect(880, 'sine', 0.1);
-    }
-  }, [stopPlayback, playSoundEffect]);
-
-  const advanceRunbook = useCallback(() => {
-    if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
-      stopPlayback();
-      socketRef.current.send(JSON.stringify({
-        type: 'advance_runbook'
-      }));
-      playSoundEffect(1046, 'sine', 0.1);
-    }
-  }, [stopPlayback, playSoundEffect]);
-
-  const abortRunbook = useCallback(() => {
-    if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
-      stopPlayback();
-      socketRef.current.send(JSON.stringify({
-        type: 'abort_runbook'
-      }));
-      setActiveRunbook(null);
-      playSoundEffect(440, 'sine', 0.08);
-    }
-  }, [stopPlayback, playSoundEffect]);
-
-  const toggleAutopilot = useCallback(() => {
-    if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
-      const newState = !autopilotEnabled;
-      setAutopilotEnabled(newState);
-      socketRef.current.send(JSON.stringify({
-        type: 'toggle_autopilot',
-        enabled: newState
-      }));
-      playSoundEffect(newState ? 880 : 440, 'sine', 0.1);
-    }
-  }, [autopilotEnabled, playSoundEffect]);
-
-
-  return {
-    isConnected,
-    agentStatus,
-    activeEngine,
-    autopilotEnabled,
-    stagedRemediation,
-    dockerActive,
-    rbacRole,
-    clusterProvider,
-    isRecording,
-    turns,
-    currentInterimTranscript,
-    executedTools,
-    incident,
-    services,
-    topology,
-    activeRunbook,
-    postMortem,
-    audioLevel,
-    latency,
-    startRecording,
-    stopRecording,
-    toggleRecording,
-    sendTextCommand,
-    selectEngine,
-    authorizeRemediation,
-    cancelRemediation,
-    resetIncident,
-    bargeIn,
-    startRunbook,
-    advanceRunbook,
-    abortRunbook,
-    toggleAutopilot,
-    closePostMortem: () => setPostMortem(null)
+  return { operator, loginRequired, login, reconnect: () => void login(), isConnected, agentStatus, activeEngine,
+    providerState, providerMessage, reasoningProvider, stagedRemediation, autopilotEnabled, isRecording, isPlaying,
+    turns, currentInterimTranscript, executedTools, incident, services, topology, activeRunbook, postMortem,
+    audioLevel, latency, error, notice, busy, clearError: () => setError(''), clearNotice: () => setNotice(''),
+    startRecording, stopRecording, toggleRecording: () => (isRecording || wantsRecording.current) ? stopRecording() : void startRecording(),
+    sendTextCommand: (text: string) => command('text_command', { text }),
+    selectEngine: (engine: VoiceEngine) => { releaseMicrophone(); command('select_engine', { engine }); },
+    authorizeRemediation: () => command('authorize_remediation', { action_id: stagedRemediation?.id }),
+    cancelRemediation: () => command('cancel_remediation', { action_id: stagedRemediation?.id }),
+    resetIncident: () => { releaseMicrophone(); command('reset_incident'); },
+    bargeIn: () => command('barge_in'),
+    startRunbook: (runbook_id: string) => command('start_runbook', { runbook_id }),
+    advanceRunbook: () => command('advance_runbook'), abortRunbook: () => command('abort_runbook'),
+    toggleAutopilot: () => command('toggle_autopilot', { enabled: !autopilotEnabled }),
+    simulateScenario: (scenario: string) => command('simulate_scenario', { scenario }),
+    closePostMortem: () => setPostMortem(null),
   };
 }

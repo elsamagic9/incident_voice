@@ -1,47 +1,55 @@
 import pytest
 from app.core.state import cluster_state
-from app.tools.sre_tools import (
-    get_cluster_health,
-    inspect_service_logs,
-    query_telemetry,
-    execute_remediation,
-    trigger_pager
-)
+from app.core.auth_rbac import authorized_mutation
+from app.services.orchestrator import agent_orchestrator
+from app.tools.sre_tools import get_cluster_health, inspect_service_logs, query_telemetry, execute_remediation, trigger_pager
 
-def setup_function():
-    cluster_state.reset_to_default_incident()
 
-def test_get_cluster_health():
+def test_health_groups_and_metric_evidence():
     health = get_cluster_health()
-    assert health["incident_id"] == "INC-8942"
-    assert health["severity"] == "SEV-1"
-    assert len(health["critical_services"]) >= 1
+    assert health['source'] == 'simulation'
+    assert {s['id'] for s in health['critical_services']} == {'payment-service', 'order-db'}
+    assert health['docker_active'] is False
+    assert query_telemetry('payment-service')['error_rate'] == 42.6
+    assert any('DBConnectionPoolTimeout' in line for line in inspect_service_logs('payment-service')['logs'])
 
-def test_inspect_service_logs():
-    logs = inspect_service_logs("payment-service")
-    assert logs["service"] == "payment-service"
-    assert logs["log_count"] > 0
-    assert any("DBConnectionPoolTimeout" in line for line in logs["logs"])
 
-def test_query_telemetry():
-    metrics = query_telemetry("payment-service")
-    assert metrics["service"] == "Payment Processing Core"
-    assert "error_rate" in metrics
+@pytest.mark.parametrize('tool', [inspect_service_logs, query_telemetry])
+def test_unknown_services_are_rejected(tool):
+    assert tool('missing')['success'] is False
 
-def test_remediation_scaling():
-    res = execute_remediation("scale_replicas", "payment-service", 6)
-    assert res["success"] is True
-    svc = cluster_state.services["payment-service"]
-    assert svc.replicas == 6
 
-def test_remediation_pod_restart_heals_service():
-    res = execute_remediation("restart_pod", "payment-service")
-    assert res["success"] is True
-    svc = cluster_state.services["payment-service"]
-    assert svc.status == "healthy"
-    assert svc.error_rate_pct < 1.0
+@pytest.mark.parametrize('action', ['restart_pod', 'scale_replicas', 'flush_cache', 'rollback_release'])
+def test_direct_mutations_require_authorization(action):
+    assert execute_remediation(action, 'payment-service')['status'] == 'denied'
+    assert cluster_state.services['payment-service'].status == 'critical'
 
-def test_trigger_pager():
-    res = trigger_pager("infra-team", "Storage volume near threshold")
-    assert res["status"] == "paged"
-    assert res["team"] == "infra-team"
+
+def test_mutation_grant_is_target_bound_and_single_use():
+    with authorized_mutation('restart_pod', 'payment-service'):
+        assert execute_remediation('restart_pod', 'order-db')['success'] is False
+        assert execute_remediation('restart_pod', 'payment-service')['success'] is True
+        assert execute_remediation('restart_pod', 'payment-service')['success'] is False
+
+
+@pytest.mark.parametrize('count', [0, 51, True, '6'])
+def test_invalid_replica_counts_never_stage(count):
+    result = agent_orchestrator.dispatch_tool('execute_remediation', {'action': 'scale_replicas', 'service_name': 'payment-service', 'count': count})
+    assert result['success'] is False
+    assert agent_orchestrator.staged_action is None
+
+
+def test_scaling_changes_only_after_matching_approval():
+    result = agent_orchestrator.dispatch_tool('execute_remediation', {'action': 'scale_replicas', 'service_name': 'payment-service', 'count': 8})
+    assert cluster_state.services['payment-service'].replicas == 2
+    assert agent_orchestrator.confirm_staged_remediation('wrong-id')[1] == []
+    _, events = agent_orchestrator.confirm_staged_remediation(result['id'])
+    assert events[0]['result']['success'] is True
+    assert cluster_state.services['payment-service'].replicas == 8
+    assert agent_orchestrator.confirm_staged_remediation(result['id'])[1] == []
+
+
+def test_escalation_is_a_draft():
+    result = trigger_pager('infra-team', 'Storage near threshold')
+    assert result['status'] == 'draft'
+    assert 'No external notification' in result['confirmation']

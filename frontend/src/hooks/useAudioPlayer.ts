@@ -1,165 +1,99 @@
-import { useRef, useCallback, useEffect } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
-/**
- * High-performance Web Audio playback hook.
- * Reliably handles:
- *  1. Raw PCM16 audio chunks (from AssemblyAI Voice Agent API)
- *  2. Containerized MP3 / WAV audio chunks (from Edge-TTS / Neural TTS)
- *  3. Instant barge-in cancellation and queue flushing
- *  4. Browser autoplay policy auto-resume on first interaction
- */
-export function useAudioPlayer() {
-  const audioContextRef = useRef<AudioContext | null>(null);
-  const audioQueueRef = useRef<ArrayBuffer[]>([]);
-  const isPlayingRef = useRef<boolean>(false);
-  const currentSourceRef = useRef<AudioBufferSourceNode | null>(null);
+export interface AudioChunk {
+  encoding: 'pcm_s16le' | 'mp3' | 'browser';
+  data?: string;
+  text?: string;
+  sample_rate?: number;
+}
+
+export function useAudioPlayer(onError?: (message: string) => void) {
+  const context = useRef<AudioContext | null>(null);
+  const sources = useRef(new Set<AudioBufferSourceNode>());
+  const generation = useRef(0);
+  const playhead = useRef(0);
+  const pending = useRef(Promise.resolve());
+  const [isPlaying, setIsPlaying] = useState(false);
+  const errorRef = useRef(onError);
+  errorRef.current = onError;
 
   const getAudioContext = useCallback(() => {
-    if (!audioContextRef.current) {
-      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
-      audioContextRef.current = new AudioCtx();
-    }
-    if (audioContextRef.current.state === 'suspended') {
-      audioContextRef.current.resume().catch(() => {});
-    }
-    return audioContextRef.current;
+    if (!context.current || context.current.state === 'closed') context.current = new AudioContext();
+    void context.current.resume().catch(() => errorRef.current?.('Click the sound button to allow audio playback.'));
+    return context.current;
   }, []);
-
-  // Browser Autoplay Policy listener: auto-resume AudioContext on first user touch/click/key
-  useEffect(() => {
-    const handleFirstGesture = () => {
-      if (audioContextRef.current && audioContextRef.current.state === 'suspended') {
-        audioContextRef.current.resume().catch(() => {});
-      }
-    };
-    window.addEventListener('pointerdown', handleFirstGesture, { passive: true });
-    window.addEventListener('keydown', handleFirstGesture, { passive: true });
-    return () => {
-      window.removeEventListener('pointerdown', handleFirstGesture);
-      window.removeEventListener('keydown', handleFirstGesture);
-      if (audioContextRef.current) {
-        audioContextRef.current.close().catch(() => {});
-        audioContextRef.current = null;
-      }
-    };
-  }, []);
-
-  /**
-   * Converts raw linear PCM16 ArrayBuffer into a playable AudioBuffer.
-   */
-  const pcm16ToAudioBuffer = (ctx: AudioContext, arrayBuffer: ArrayBuffer, sampleRate = 16000): AudioBuffer => {
-    const int16Array = new Int16Array(arrayBuffer);
-    const audioBuffer = ctx.createBuffer(1, int16Array.length, sampleRate);
-    const channelData = audioBuffer.getChannelData(0);
-    for (let i = 0; i < int16Array.length; i++) {
-      channelData[i] = int16Array[i] / 32768.0;
-    }
-    return audioBuffer;
-  };
-
-  /**
-   * Determines if the buffer contains containerized audio headers (RIFF/WAV or MP3 sync/ID3).
-   */
-  const isContainerizedAudio = (bytes: Uint8Array): boolean => {
-    if (bytes.length < 4) return false;
-    // RIFF (WAV) header
-    if (bytes[0] === 0x52 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x46) {
-      return true;
-    }
-    // ID3 (MP3) header
-    if (bytes[0] === 0x49 && bytes[1] === 0x44 && bytes[2] === 0x33) {
-      return true;
-    }
-    // MP3 Frame Sync: 11 bits set (0xFF followed by 0xEx)
-    if (bytes[0] === 0xff && (bytes[1] & 0xe0) === 0xe0) {
-      return true;
-    }
-    return false;
-  };
-
-  const playNextChunk = useCallback(async () => {
-    if (audioQueueRef.current.length === 0) {
-      isPlayingRef.current = false;
-      return;
-    }
-
-    isPlayingRef.current = true;
-    const ctx = getAudioContext();
-    const arrayBuffer = audioQueueRef.current.shift()!;
-    const bytes = new Uint8Array(arrayBuffer);
-
-    let audioBuffer: AudioBuffer | null = null;
-
-    try {
-      if (isContainerizedAudio(bytes)) {
-        // Decode containerized MP3 or WAV
-        audioBuffer = await ctx.decodeAudioData(arrayBuffer);
-      } else {
-        // Raw linear PCM16 from Voice Agent API
-        audioBuffer = pcm16ToAudioBuffer(ctx, arrayBuffer, 16000);
-      }
-    } catch (err) {
-      // Fallback attempt: if decodeAudioData failed, try PCM16 interpretation
-      try {
-        audioBuffer = pcm16ToAudioBuffer(ctx, arrayBuffer, 16000);
-      } catch (fallbackErr) {
-        audioBuffer = null;
-      }
-    }
-
-    if (!audioBuffer) {
-      playNextChunk();
-      return;
-    }
-
-    try {
-      const source = ctx.createBufferSource();
-      source.buffer = audioBuffer;
-      source.connect(ctx.destination);
-      currentSourceRef.current = source;
-
-      source.onended = () => {
-        playNextChunk();
-      };
-
-      source.start(0);
-    } catch (err) {
-      playNextChunk();
-    }
-  }, [getAudioContext]);
-
-  const enqueueBase64Chunk = useCallback(async (base64String: string) => {
-    try {
-      const binaryString = window.atob(base64String);
-      const bytes = new Uint8Array(binaryString.length);
-      for (let i = 0; i < binaryString.length; i++) {
-        bytes[i] = binaryString.charCodeAt(i);
-      }
-      audioQueueRef.current.push(bytes.buffer);
-      if (!isPlayingRef.current) {
-        playNextChunk();
-      }
-    } catch (err) {
-      console.error('Failed to parse audio chunk:', err);
-    }
-  }, [playNextChunk]);
 
   const stopPlayback = useCallback(() => {
-    // Instant Barge-In mute
-    audioQueueRef.current = [];
-    if (currentSourceRef.current) {
-      try {
-        currentSourceRef.current.stop();
-        currentSourceRef.current.disconnect();
-      } catch (e) {}
-      currentSourceRef.current = null;
+    generation.current++;
+    for (const source of sources.current) {
+      source.onended = null;
+      try { source.stop(); source.disconnect(); } catch { /* Already stopped. */ }
     }
-    isPlayingRef.current = false;
+    sources.current.clear();
+    window.speechSynthesis?.cancel();
+    playhead.current = 0;
+    pending.current = Promise.resolve();
+    setIsPlaying(false);
   }, []);
 
-  return {
-    enqueueBase64Chunk,
-    stopPlayback,
-    getAudioContext
-  };
+  const enqueueAudio = useCallback((chunk: AudioChunk) => {
+    const epoch = generation.current;
+    if (chunk.encoding === 'browser') {
+      if (!window.speechSynthesis || !chunk.text) {
+        errorRef.current?.('Speech playback is unavailable in this browser. The response is available in the transcript.');
+        return;
+      }
+      const utterance = new SpeechSynthesisUtterance(chunk.text);
+      utterance.rate = 1.02;
+      utterance.onstart = () => { if (generation.current === epoch) setIsPlaying(true); };
+      utterance.onend = () => { if (generation.current === epoch) setIsPlaying(false); };
+      utterance.onerror = (event) => {
+        if (generation.current !== epoch) return;
+        setIsPlaying(false);
+        if (!['canceled', 'interrupted'].includes(event.error)) errorRef.current?.('Browser speech failed. Read the response in the transcript.');
+      };
+      window.speechSynthesis.speak(utterance);
+      return;
+    }
+    pending.current = pending.current.then(async () => {
+      if (generation.current !== epoch || !chunk.data) return;
+      const ctx = getAudioContext();
+      const bytes = Uint8Array.from(atob(chunk.data), c => c.charCodeAt(0));
+      let buffer: AudioBuffer;
+      if (chunk.encoding === 'mp3') {
+        buffer = await ctx.decodeAudioData(bytes.buffer);
+      } else if (chunk.encoding === 'pcm_s16le') {
+        if (bytes.length % 2 || !chunk.sample_rate) throw new Error('Invalid PCM frame');
+        buffer = ctx.createBuffer(1, bytes.length / 2, chunk.sample_rate);
+        const view = new DataView(bytes.buffer);
+        const channel = buffer.getChannelData(0);
+        for (let i = 0; i < channel.length; i++) channel[i] = view.getInt16(i * 2, true) / 32768;
+      } else throw new Error('Unsupported audio format');
+      if (generation.current !== epoch) return;
+      const source = ctx.createBufferSource();
+      source.buffer = buffer;
+      source.connect(ctx.destination);
+      sources.current.add(source);
+      source.onended = () => {
+        sources.current.delete(source);
+        source.disconnect();
+        if (!sources.current.size && generation.current === epoch) setIsPlaying(false);
+      };
+      const start = Math.max(ctx.currentTime + 0.015, playhead.current);
+      playhead.current = start + buffer.duration;
+      source.start(start);
+      setIsPlaying(true);
+    }).catch(() => {
+      if (generation.current === epoch) errorRef.current?.('Could not decode speech audio. The response is available in the transcript.');
+    });
+  }, [getAudioContext]);
+
+  useEffect(() => () => {
+    stopPlayback();
+    const ctx = context.current;
+    context.current = null;
+    if (ctx && ctx.state !== 'closed') void ctx.close();
+  }, [stopPlayback]);
+
+  return { enqueueAudio, stopPlayback, getAudioContext, isPlaying };
 }

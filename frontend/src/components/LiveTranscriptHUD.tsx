@@ -1,7 +1,9 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { Mic, MicOff, Send, User, Bot, Sparkles, VolumeX, Radio, Zap } from 'lucide-react';
-import { Turn, AgentStatus } from '../types';
-import { AudioOscilloscope } from './AudioOscilloscope';
+import React, { useEffect, useRef, useState } from 'react';
+import {
+  ArrowRight, AudioLines, Bot, CornerDownLeft, Mic, MicOff, Send,
+  Square, User, Terminal, ShieldAlert
+} from 'lucide-react';
+import type { AgentStatus, Turn } from '../types';
 
 interface Props {
   turns: Turn[];
@@ -12,7 +14,26 @@ interface Props {
   onToggleRecording: () => void;
   onSendText: (text: string) => void;
   onBargeIn: () => void;
+  disabled?: boolean;
+  voiceAvailable?: boolean;
+  isConnected?: boolean;
+  providerState?: string;
+  providerMessage?: string;
 }
+
+const welcomePrompts = [
+  { title: 'Identify Active Outage', text: 'What alerts are firing right now?', icon: '01' },
+  { title: 'Investigate Container Logs', text: 'Inspect logs for payment-service', icon: '02' },
+  { title: 'Execute Runbook Workflow', text: 'Start runbook postgres connection pool', icon: '03' },
+];
+
+const quickChips = [
+  'What alerts are firing?',
+  'Inspect payment-service',
+  'Show dependency topology',
+  'Restart payment-service',
+  'Generate postmortem',
+];
 
 export const LiveTranscriptHUD: React.FC<Props> = ({
   turns,
@@ -22,229 +43,289 @@ export const LiveTranscriptHUD: React.FC<Props> = ({
   agentStatus,
   onToggleRecording,
   onSendText,
-  onBargeIn
+  onBargeIn,
+  disabled = false,
+  voiceAvailable = false,
+  isConnected = false,
+  providerState,
+  providerMessage,
 }) => {
-  const [inputText, setInputText] = useState('');
-  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const [input, setInput] = useState('');
+  const scroll = useRef<HTMLDivElement>(null);
+  const followLatest = useRef(true);
+
+  const connecting = providerState === 'connecting';
+  const speaking = agentStatus === 'speaking';
+  const thinking = agentStatus === 'thinking';
+  const awaiting = agentStatus === 'awaiting_confirmation';
+
+  const label = speaking
+    ? 'Speaking response...'
+    : awaiting
+    ? 'Awaiting Voice Authorization...'
+    : thinking
+    ? 'Reasoning over telemetry...'
+    : connecting
+    ? 'Connecting to AssemblyAI...'
+    : isRecording
+    ? 'Listening (Speak now)'
+    : 'Copilot Standby';
 
   useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
+    if (followLatest.current) {
+      scroll.current?.scrollTo({
+        top: scroll.current.scrollHeight,
+        behavior: window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
+      });
     }
-  }, [turns, interimTranscript]);
+  }, [turns, interimTranscript, thinking, awaiting]);
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (inputText.trim()) {
-      onSendText(inputText.trim());
-      setInputText('');
-    }
-  };
-
-  const samplePrompts = [
-    "What alerts are firing right now?",
-    "Inspect logs for payment-service",
-    "Scale payment-service to 5 replicas",
-    "Restart failing pods for payment-service",
-    "Wrap up incident and generate post-mortem"
-  ];
-
-  const getStatusBadge = () => {
-    switch (agentStatus) {
-      case 'speaking':
-        return (
-          <span className="flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-mono font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/50 glow-green animate-pulse">
-            <Radio className="w-3 h-3 text-emerald-400" /> SPEAKING
-          </span>
-        );
-      case 'thinking':
-        return (
-          <span className="flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-mono font-bold bg-cyan-500/20 text-cyan-300 border border-cyan-500/50 glow-cyan animate-pulse">
-            <Zap className="w-3 h-3 text-cyan-400" /> REASONING
-          </span>
-        );
-      case 'listening':
-        return (
-          <span className="flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-mono font-bold bg-red-500/20 text-red-300 border border-red-500/50 glow-red">
-            <span className="w-2 h-2 rounded-full bg-red-400 animate-ping" /> LISTENING
-          </span>
-        );
-      case 'awaiting_confirmation':
-        return (
-          <span className="flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-mono font-bold bg-amber-500/20 text-amber-300 border border-amber-500/60 glow-amber animate-pulse">
-            LOCKED
-          </span>
-        );
-      default:
-        return (
-          <span className="flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-mono text-slate-400 bg-slate-800/80 border border-white/[0.08]">
-            <span className="w-1.5 h-1.5 rounded-full bg-slate-500" /> STANDBY
-          </span>
-        );
-    }
+  const send = (event: React.FormEvent) => {
+    event.preventDefault();
+    if (disabled || !input.trim()) return;
+    followLatest.current = true;
+    onSendText(input.trim());
+    setInput('');
   };
 
   return (
-    <div className="flex flex-col h-full glass-panel rounded-2xl overflow-hidden shadow-2xl border border-white/[0.08]">
-      {/* HUD Header */}
-      <div className="px-4 py-3 border-b border-white/[0.08] flex items-center justify-between bg-slate-900/50 backdrop-blur-xl">
-        <div className="flex items-center gap-3">
-          <div className="p-2 rounded-xl bg-gradient-to-br from-cyan-500/20 to-blue-600/20 border border-cyan-500/40 text-cyan-400 shadow-inner">
-            <Sparkles className="w-4 h-4" />
-          </div>
-          <div>
-            <span className="text-xs font-bold uppercase tracking-wider text-slate-100 block font-sans">
-              Voice Commander Terminal
-            </span>
-            <span className="text-[10px] font-mono text-slate-400">Universal-3.5 Pro · 16kHz Duplex · JSON-Schema</span>
+    <section className="panel conversation-panel" aria-labelledby="conversation-heading">
+      {/* Header */}
+      <div className="panel-heading">
+        <div className="flex gap-3 items-center min-w-0">
+          <span className="assistant-symbol">
+            <AudioLines size={20} className={speaking || isRecording ? 'animate-pulse text-cyan-400' : ''} />
+          </span>
+          <div className="min-w-0">
+            <h2 id="conversation-heading" className="truncate">Voice SRE Incident Copilot</h2>
+            <p className="muted truncate">Speak naturally. Stay in control.</p>
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
-          {getStatusBadge()}
-          {agentStatus === 'speaking' && (
-            <button
-              onClick={onBargeIn}
-              className="flex items-center gap-1 text-[11px] px-2.5 py-1 rounded-lg bg-amber-500/20 text-amber-300 border border-amber-500/40 hover:bg-amber-500/30 transition shadow-sm"
-              title="Interrupt speech (Barge-In)"
-            >
-              <VolumeX className="w-3 h-3" /> Interrupt
-            </button>
-          )}
-        </div>
-      </div>
-
-      {/* Integrated Audio Oscilloscope Strip */}
-      <div className="px-3 pt-2.5 pb-1">
-        <AudioOscilloscope
-          isRecording={isRecording}
-          audioLevel={audioLevel}
-          agentSpeaking={agentStatus === 'speaking'}
-          compact={true}
-        />
-      </div>
-
-      {/* Message Stream */}
-      <div ref={scrollRef} className="flex-1 p-4 overflow-y-auto space-y-3 font-sans text-sm">
-        {turns.length === 0 && !interimTranscript && (
-          <div className="h-full flex flex-col items-center justify-center text-center p-6 text-slate-400">
-            <div className="relative mb-4">
-              <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-cyan-500/20 to-blue-600/20 border border-cyan-500/40 flex items-center justify-center text-cyan-300 shadow-xl glow-cyan">
-                <Mic className="w-8 h-8 animate-bounce" />
-              </div>
-              <div className="absolute inset-0 rounded-2xl border border-cyan-400/40 pulse-ring pointer-events-none" />
-            </div>
-            <p className="font-bold text-white text-base tracking-tight">Voice Triage Commander Ready</p>
-            <p className="text-xs text-slate-400 mt-1.5 max-w-xs leading-relaxed">
-              Click the microphone to speak naturally in real-time, or choose any operational runbook prompt below.
-            </p>
-            <div className="mt-3 flex items-center gap-2">
-              <span className="text-[10px] font-mono px-2.5 py-1 rounded-full bg-cyan-500/10 text-cyan-300 border border-cyan-500/30">
-                16kHz PCM Full Duplex
-              </span>
-              <span className="text-[10px] font-mono px-2.5 py-1 rounded-full bg-purple-500/10 text-purple-300 border border-purple-500/30">
-                Barge-In Enabled
-              </span>
-            </div>
-          </div>
-        )}
-
-        {turns.map((turn) => (
-          <div
-            key={turn.id}
-            className={`flex gap-3 ${turn.speaker === 'user' ? 'justify-end' : 'justify-start'} animate-in fade-in duration-200`}
-          >
-            {turn.speaker !== 'user' && (
-              <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-cyan-950 to-slate-900 border border-cyan-500/40 flex items-center justify-center flex-shrink-0 text-cyan-400 shadow-md">
-                <Bot className="w-4 h-4" />
-              </div>
-            )}
-            <div
-              className={`max-w-[85%] rounded-2xl px-4 py-3 leading-relaxed text-sm shadow-md transition-all ${
-                turn.speaker === 'user'
-                  ? 'bg-gradient-to-br from-cyan-600 via-cyan-600 to-blue-600 text-white border border-cyan-400/30 shadow-lg shadow-cyan-950/40 rounded-br-xs'
-                  : 'glass-panel-subtle text-slate-100 border border-white/[0.08] rounded-bl-xs shadow-lg'
-              }`}
-            >
-              <div className="text-[10px] font-mono opacity-80 mb-1 flex items-center justify-between gap-4">
-                <span className="font-bold tracking-wider">{turn.speaker === 'user' ? 'SRE COMMANDER' : 'INCIDENTVOICE CORE'}</span>
-                {turn.confidence && <span className="text-[9px] px-1.5 py-0.2 rounded bg-slate-950/50 font-semibold text-cyan-300">{(turn.confidence * 100).toFixed(0)}% confidence</span>}
-              </div>
-              <p className="text-[13px] leading-relaxed select-text">{turn.transcript}</p>
-            </div>
-            {turn.speaker === 'user' && (
-              <div className="w-8 h-8 rounded-xl bg-slate-800 border border-white/[0.1] flex items-center justify-center flex-shrink-0 text-cyan-300 shadow-md">
-                <User className="w-4 h-4" />
-              </div>
-            )}
-          </div>
-        ))}
-
-        {/* Interim Streaming Speech HUD */}
-        {interimTranscript && (
-          <div className="flex gap-3 justify-end animate-in fade-in duration-150">
-            <div className="max-w-[85%] rounded-2xl px-4 py-2.5 bg-cyan-950/60 border border-cyan-500/50 text-cyan-100 rounded-br-xs shadow-xl glow-cyan backdrop-blur-md">
-              <div className="text-[10px] font-mono text-cyan-400 mb-0.5 flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-full bg-cyan-400 animate-ping" />
-                Live AssemblyAI Streaming STT...
-              </div>
-              <p className="italic text-xs text-cyan-200">{interimTranscript} ...</p>
-            </div>
-            <div className="w-8 h-8 rounded-xl bg-cyan-900/60 border border-cyan-500 flex items-center justify-center flex-shrink-0 text-cyan-300">
-              <User className="w-4 h-4" />
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Suggested Voice Prompts */}
-      <div className="px-3 py-2 border-t border-white/[0.06] bg-slate-950/50 backdrop-blur-md flex items-center gap-2 overflow-x-auto text-[11px] whitespace-nowrap">
-        <span className="text-slate-400 font-mono text-[10px] flex-shrink-0 uppercase tracking-wider pl-1 font-bold">
-          Quick Prompts:
+        <span className="conversation-status">
+          <span
+            className={`status-dot ${
+              isRecording
+                ? 'bg-emerald-400 shadow-[0_0_8px_#34d399]'
+                : speaking
+                ? 'bg-cyan-400 shadow-[0_0_8px_#38bdf8] animate-ping'
+                : thinking || awaiting
+                ? 'bg-amber-400 shadow-[0_0_8px_#fbbf24] animate-pulse'
+                : 'bg-slate-500'
+            }`}
+          />
+          <span className="font-mono text-[11px] text-slate-300 font-medium">{label}</span>
         </span>
-        {samplePrompts.map((p, idx) => (
+      </div>
+
+      {/* Messages Scroll Area */}
+      <div
+        className="conversation-scroll"
+        ref={scroll}
+        onScroll={() => {
+          const element = scroll.current;
+          if (element) {
+            followLatest.current = element.scrollHeight - element.scrollTop - element.clientHeight < 90;
+          }
+        }}
+        role="log"
+        aria-label="Conversation"
+        aria-live="polite"
+        aria-relevant="additions text"
+      >
+        {!turns.length && !interimTranscript ? (
+          <div className="conversation-welcome">
+            <div className="welcome-symbol">
+              <AudioLines size={34} strokeWidth={1.75} />
+            </div>
+            <p className="eyebrow">READY FOR TRIAGE</p>
+            <h3>How can I assist your incident?</h3>
+            <p className="muted">
+              Speak naturally via microphone or pick an action below.
+              The agent investigates live metrics and stages changes for your voice authorization.
+            </p>
+
+            <div className="starter-prompts">
+              {welcomePrompts.map(prompt => (
+                <button
+                  key={prompt.icon}
+                  disabled={disabled}
+                  onClick={() => onSendText(prompt.text)}
+                  className="group"
+                >
+                  <span className="prompt-number">{prompt.icon}</span>
+                  <span>
+                    <strong>{prompt.title}</strong>
+                    <small>“{prompt.text}”</small>
+                  </span>
+                  <ArrowRight size={16} />
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <div className="conversation-messages">
+            {turns.map(turn => (
+              <article
+                className={`chat-message ${turn.speaker === 'user' ? 'chat-user' : 'chat-agent'}`}
+                key={turn.id}
+              >
+                <span className="chat-avatar">
+                  {turn.speaker === 'user' ? <User size={15} /> : <Bot size={15} />}
+                </span>
+                <div>
+                  <div className="chat-meta">
+                    <strong>
+                      {turn.speaker === 'user'
+                        ? 'Operator'
+                        : turn.speaker === 'system'
+                        ? 'System Monitor'
+                        : 'IncidentVoice SRE'}
+                    </strong>
+                    <time>
+                      {new Date(turn.timestamp * 1000).toLocaleTimeString([], {
+                        hour: '2-digit',
+                        minute: '2-digit',
+                        second: '2-digit',
+                      })}
+                    </time>
+                  </div>
+                  <p>{turn.transcript}</p>
+                </div>
+              </article>
+            ))}
+
+            {interimTranscript && (
+              <div className="interim-message">
+                <Mic size={15} className="animate-pulse text-cyan-400" />
+                <p className="font-mono text-cyan-200">{interimTranscript}</p>
+                <span className="text-[10px] uppercase font-mono tracking-widest text-cyan-500 font-semibold">
+                  Transcribing...
+                </span>
+              </div>
+            )}
+
+            {thinking && (
+              <div className="thinking-message">
+                <span className="thinking-dots">
+                  <i /><i /><i />
+                </span>
+                <span>Evaluating telemetry & reasoning over SRE tools...</span>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Quick Action Chips */}
+      <div className="px-5 py-2 flex items-center gap-1.5 overflow-x-auto no-scrollbar border-t border-slate-800/60 bg-slate-950/40">
+        <span className="text-[10px] font-mono uppercase text-slate-500 font-semibold mr-1 flex items-center gap-1 shrink-0">
+          <Terminal size={11} /> Quick
+        </span>
+        {quickChips.map(chip => (
           <button
-            key={idx}
-            onClick={() => onSendText(p)}
-            className="px-3 py-1 rounded-lg bg-slate-900/80 hover:bg-slate-800 text-slate-300 hover:text-cyan-300 border border-white/[0.06] hover:border-cyan-500/40 transition text-[11px] font-mono shadow-sm hover:scale-[1.02] active:scale-95"
+            key={chip}
+            type="button"
+            disabled={disabled}
+            onClick={() => onSendText(chip)}
+            className="shrink-0 px-2.5 py-1 rounded-md text-[11px] font-medium bg-slate-800/80 hover:bg-slate-700/90 text-slate-300 hover:text-cyan-300 border border-slate-700/60 transition-colors"
           >
-            "{p}"
+            {chip}
           </button>
         ))}
       </div>
 
-      {/* Voice / Mic Controls Bar */}
-      <div className="p-3 border-t border-white/[0.08] bg-[#090e18] flex items-center gap-3">
-        <button
-          onClick={onToggleRecording}
-          className={`relative flex items-center justify-center w-12 h-12 rounded-2xl transition-all shadow-xl flex-shrink-0 cursor-pointer ${
-            isRecording
-              ? 'bg-gradient-to-br from-red-500 to-rose-600 text-white shadow-red-500/50 glow-red animate-pulse'
-              : 'bg-gradient-to-br from-cyan-400 via-cyan-500 to-blue-500 hover:from-cyan-300 hover:to-blue-400 text-slate-950 font-bold shadow-cyan-500/40 glow-cyan hover:scale-105 active:scale-95'
-          }`}
-          title={isRecording ? "Mute Microphone (Click to stop)" : "Activate Live Voice Streaming"}
-        >
-          {isRecording && <span className="absolute inset-0 rounded-2xl border-2 border-red-400 pulse-ring pointer-events-none" />}
-          {isRecording ? <MicOff className="w-5 h-5 animate-pulse" /> : <Mic className="w-5 h-5" />}
-        </button>
+      {/* Conversation Controls */}
+      <div className="conversation-controls">
+        <div className="voice-control-row">
+          <button
+            className={`button voice-button ${isRecording ? 'voice-active' : ''}`}
+            onClick={onToggleRecording}
+            disabled={!isRecording && (disabled || !voiceAvailable || connecting)}
+          >
+            {isRecording ? <MicOff size={18} /> : <Mic size={18} />}
+            <span>{isRecording ? 'Stop microphone' : connecting ? 'Connecting…' : 'Start voice'}</span>
+          </button>
 
-        <form onSubmit={handleSubmit} className="flex-1 flex items-center gap-2">
+          {/* Equalizer Visualizer */}
+          <div className="voice-level" aria-hidden="true">
+            {Array.from({ length: 18 }, (_, i) => {
+              const height = isRecording
+                ? 4 + Math.max(0, Math.min(1, audioLevel)) * (14 + 16 * Math.sin((i + 1) * 1.6) ** 2)
+                : 4;
+              return (
+                <span
+                  key={i}
+                  style={{ height: `${height}px` }}
+                />
+              );
+            })}
+          </div>
+
+          {/* Barge-in Button */}
+          {speaking && (
+            <button
+              className="button button-secondary interrupt-button flex items-center gap-1.5 text-rose-300 hover:text-rose-200 border-rose-500/40 hover:border-rose-500/80 bg-rose-950/30"
+              onClick={onBargeIn}
+            >
+              <Square size={13} className="fill-current" />
+              <span>Stop reply</span>
+            </button>
+          )}
+
+          <span className="voice-hint">
+            {isRecording ? '● MIC ACTIVE · 16KHZ PCM' : '○ MIC STANDBY'}
+          </span>
+        </div>
+
+        {providerMessage && (
+          <p role="status" className={`voice-provider-note ${providerState === 'error' ? 'text-amber-300' : ''}`}>
+            {providerMessage}
+          </p>
+        )}
+
+        {!voiceAvailable && !providerMessage && (
+          <p className="voice-provider-note">
+            Voice requires an AssemblyAI server key. Text input remains active below.
+          </p>
+        )}
+
+        {/* Text Composer */}
+        <form className="command-composer" onSubmit={send}>
+          <label className="sr-only" htmlFor="sre-command">SRE command</label>
           <input
-            type="text"
-            value={inputText}
-            onChange={(e) => setInputText(e.target.value)}
-            placeholder={isRecording ? "Listening to your voice in real-time..." : "Click mic to speak, or type SRE command..."}
-            className="flex-1 bg-slate-900/80 border border-white/[0.08] rounded-xl px-4 py-2.5 text-xs text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-cyan-500/70 focus:ring-1 focus:ring-cyan-500/50 font-sans transition shadow-inner"
+            id="sre-command"
+            value={input}
+            maxLength={4000}
+            onChange={event => setInput(event.target.value)}
+            placeholder={
+              !isConnected
+                ? 'Connect to start investigating…'
+                : disabled
+                ? 'Working on your request…'
+                : 'Type SRE command or speak into mic…'
+            }
+            disabled={disabled}
+            autoComplete="off"
           />
           <button
             type="submit"
-            disabled={!inputText.trim()}
-            className="p-2.5 rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white disabled:opacity-30 transition shadow-md flex-shrink-0 cursor-pointer disabled:cursor-not-allowed hover:scale-105 active:scale-95"
+            className="send-button"
+            aria-label="Send command"
+            disabled={disabled || !input.trim()}
           >
-            <Send className="w-4 h-4" />
+            <Send size={16} />
           </button>
         </form>
+
+        <div className="composer-caption">
+          <span><CornerDownLeft size={11} />Press Return to execute</span>
+          <span className="text-amber-400/90 font-medium">
+            <ShieldAlert size={11} className="inline mr-1" />
+            Destructive actions require explicit voice confirmation
+          </span>
+        </div>
       </div>
-    </div>
+    </section>
   );
 };

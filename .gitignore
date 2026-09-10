@@ -52,3 +52,4 @@ Thumbs.db
 # Logs and runtime artifacts
 logs/
 *.log
+.agents/

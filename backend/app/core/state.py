@@ -6,6 +6,7 @@ class ServiceNode(BaseModel):
     id: str
     name: str
     status: str = "healthy"  # "healthy", "degraded", "critical"
+    metrics_available: bool = True
     replicas: int = 3
     cpu_percent: float = 24.5
     memory_percent: float = 48.0
@@ -119,6 +120,18 @@ class ClusterState:
             )
         }
 
+        from app.core.config import settings
+        if settings.infrastructure_mode != "simulation":
+            self.incident = IncidentRecord(title="Live infrastructure investigation", severity="UNASSESSED")
+            for svc in self.services.values():
+                svc.status = "unknown"
+                svc.metrics_available = False
+                svc.replicas = 0
+                svc.cpu_percent = svc.memory_percent = svc.error_rate_pct = svc.latency_p99_ms = 0.0
+                svc.active_alerts = []
+                svc.recent_logs = []
+            self.add_event("system", "Operator started an infrastructure investigation. Severity and root cause are unassessed.")
+
     def add_event(self, event_type: str, text: str):
         self.incident.timeline_events.append({
             "timestamp": time.time(),
@@ -127,6 +140,9 @@ class ClusterState:
         })
 
     def apply_remediation(self, action: str, service_name: str, params: Dict[str, Any] = None) -> Dict[str, Any]:
+        from app.core.config import settings
+        if settings.infrastructure_mode != "simulation":
+            return {"success": False, "error": "Simulation mutations are disabled in live mode"}
         params = params or {}
         timestamp = time.time()
         result = {"success": True, "action": action, "service": service_name, "details": ""}
@@ -147,11 +163,12 @@ class ClusterState:
             result["details"] = f"Graceful rolling restart executed for {service_name}. Clean pods spawned."
 
         elif action == "scale_replicas":
+            old_count = svc.replicas
             new_count = params.get("count", svc.replicas + 3)
             svc.replicas = new_count
             svc.cpu_percent = max(15.0, svc.cpu_percent / 2)
             svc.error_rate_pct = max(0.1, svc.error_rate_pct / 3)
-            result["details"] = f"Scaled {service_name} from {svc.replicas - 3} to {new_count} replicas."
+            result["details"] = f"Scaled {service_name} from {old_count} to {new_count} replicas."
 
         elif action == "flush_cache":
             if "redis-cache" in self.services:
@@ -187,6 +204,9 @@ class ClusterState:
                     s.error_rate_pct = max(1.0, s.error_rate_pct / 3)
             result["details"] = "Global DNS traffic shifted to failover region. Active region services stabilizing."
 
+        else:
+            return {"success": False, "error": f"Unsupported action: {action}"}
+
         # Check if all services healthy -> resolve incident
         critical_count = sum(1 for s in self.services.values() if s.status == "critical")
         if critical_count == 0:
@@ -212,6 +232,7 @@ class ClusterState:
                 svc.active_alerts = ["PodCrashLoopBackoff", "PostgresPoolExhausted"]
                 svc.recent_logs.append("[FATAL] OOMKilled and connection starvation simulated on payment-service.")
             self.incident.status = "INVESTIGATING"
+            self.incident.resolved_at = None
             self.incident.severity = "SEV-1"
             self.add_event("alert", "Simulated Chaos: Sev-1 crash injected on payment-service.")
             return {"status": "injected", "scenario": "crash_payment", "details": "Payment service crashed with 42.6% error rate."}
@@ -224,6 +245,7 @@ class ClusterState:
                 db.active_alerts = ["ConnectionCountMaxed", "SlowQueryLockWait"]
                 db.recent_logs.append("[WARN] postgres: max_connections limit 200 reached.")
             self.incident.status = "INVESTIGATING"
+            self.incident.resolved_at = None
             self.add_event("alert", "Simulated Chaos: Database connection pool exhaustion on order-db.")
             return {"status": "injected", "scenario": "starve_db", "details": "Database connection pool exhausted at 200 handles."}
 
@@ -235,6 +257,8 @@ class ClusterState:
                 gw.latency_p99_ms = 680.0
                 gw.active_alerts = ["HighDownstream5xxRate"]
                 gw.recent_logs.append("[WARN] Ingress: 10k RPS traffic surge exceeding capacity.")
+            self.incident.status = "INVESTIGATING"
+            self.incident.resolved_at = None
             self.add_event("alert", "Simulated Chaos: Ingress gateway traffic spike.")
             return {"status": "injected", "scenario": "traffic_spike", "details": "Traffic spike injected on Ingress gateway."}
 
@@ -253,4 +277,5 @@ class ClusterState:
         return {"status": "unknown", "scenario": scenario, "details": "No matching chaos scenario."}
 
 # Global singleton
-cluster_state = ClusterState()
+from app.core.session import SessionLocal
+cluster_state = SessionLocal("cluster", ClusterState)

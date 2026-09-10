@@ -1,247 +1,92 @@
-import logging
+"""Explicit Kubernetes adapter: live failures never fall back to simulation."""
+import json
 import re
+import shutil
 import subprocess
-import time
-from typing import Dict, Any, List, Optional
-
-logger = logging.getLogger("k8s_adapter")
+from app.core.config import settings
+from app.core.session import SessionLocal
 
 class KubernetesAdapter:
-    """
-    Enterprise Kubernetes & Multi-Cluster Infrastructure Adapter.
-    Communicates with live Kubernetes clusters via kubectl / Kube API,
-    or operates in high-fidelity Virtual Enterprise Cluster mode ('cluster-us-east-1').
-    """
-
     def __init__(self):
-        self.cluster_name = "cluster-us-east-1.k8s.enterprise.internal"
-        self.namespace = "production"
-        self._virtual_pods = [
-            {
-                "name": "payment-service-6b9c7487fd-m8x9p",
-                "ready": "1/1",
-                "status": "Running",
-                "restarts": 3,
-                "age": "4h12m",
-                "node": "ip-10-0-1-12.ec2.internal",
-                "ip": "10.244.1.42",
-                "namespace": "production"
-            },
-            {
-                "name": "order-db-primary-0",
-                "ready": "1/1",
-                "status": "Running",
-                "restarts": 0,
-                "age": "24h",
-                "node": "ip-10-0-2-45.ec2.internal",
-                "ip": "10.244.2.19",
-                "namespace": "production"
-            },
-            {
-                "name": "redis-cache-master-0",
-                "ready": "1/1",
-                "status": "Running",
-                "restarts": 1,
-                "age": "18h",
-                "node": "ip-10-0-3-88.ec2.internal",
-                "ip": "10.244.3.05",
-                "namespace": "production"
-            },
-            {
-                "name": "api-gateway-55f69c5d79-q4t21",
-                "ready": "2/2",
-                "status": "Running",
-                "restarts": 0,
-                "age": "3d",
-                "node": "ip-10-0-1-12.ec2.internal",
-                "ip": "10.244.1.09",
-                "namespace": "production"
-            }
-        ]
-        self._virtual_nodes = [
-            {"name": "ip-10-0-1-12.ec2.internal", "status": "Ready", "roles": "worker", "version": "v1.30.2"},
-            {"name": "ip-10-0-2-45.ec2.internal", "status": "Ready", "roles": "worker", "version": "v1.30.2"},
-            {"name": "ip-10-0-3-88.ec2.internal", "status": "Ready", "roles": "worker", "version": "v1.30.2"}
-        ]
+        self.namespace = settings.kubernetes_namespace
+        self.cluster_name = 'configured-kubernetes-context'
+        self._virtual_nodes = [{'name': 'demo-worker-1', 'status': 'Ready', 'roles': 'worker'}]
+        self._virtual_pods = [{'name': f'{name}-demo', 'namespace': self.namespace, 'ready': '1/1', 'status': 'Running', 'restarts': 0}
+                              for name in settings.docker_targets]
 
     @property
-    def nodes(self) -> List[Dict[str, Any]]:
-        return self._virtual_nodes
-
+    def nodes(self): return self._virtual_nodes
     @property
-    def pods(self) -> List[Dict[str, Any]]:
-        return self._virtual_pods
+    def pods(self): return self._virtual_pods
 
-    def get_cluster_info(self) -> Dict[str, Any]:
-        info = self.get_cluster_status()
-        info["nodes"] = self._virtual_nodes
-        info["pods"] = self.list_pods()
-        return info
+    def is_kubectl_available(self): return bool(shutil.which('kubectl'))
 
-    def is_kubectl_available(self) -> bool:
-        """Checks if kubectl CLI is present on the host system."""
+    def _run(self, args, timeout=10):
         try:
-            res = subprocess.run(["kubectl", "version", "--client"], capture_output=True, text=True, timeout=2)
-            return res.returncode == 0
-        except Exception:
-            return False
+            res = subprocess.run(['kubectl', *args], capture_output=True, text=True, timeout=timeout)
+            return {'success': res.returncode == 0, 'output': res.stdout.strip(), 'error': res.stderr.strip() if res.returncode else None}
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            return {'success': False, 'error': str(exc)}
 
-    def is_live_cluster_connected(self) -> bool:
-        """Checks if kubectl can actively reach a live Kubernetes API server."""
-        if not self.is_kubectl_available():
-            return False
-        try:
-            res = subprocess.run(["kubectl", "cluster-info"], capture_output=True, text=True, timeout=2)
-            return res.returncode == 0
-        except Exception:
-            return False
+    def is_live_cluster_connected(self):
+        return settings.infrastructure_mode == 'kubernetes' and self._run(['cluster-info', '--request-timeout=2s'], 3)['success']
 
-    def get_cluster_status(self) -> Dict[str, Any]:
-        """Returns cluster operational status and topology summary."""
-        is_live = self.is_live_cluster_connected()
-        return {
-            "cluster_name": self.cluster_name,
-            "provider": "Kubernetes (EKS/GKE Native)" if is_live else "Kubernetes (Virtual Enterprise Mesh)",
-            "is_live": is_live,
-            "namespace": self.namespace,
-            "nodes_count": len(self._virtual_nodes),
-            "total_pods": len(self._virtual_pods),
-            "control_plane": "Healthy",
-            "api_version": "apps/v1"
-        }
+    def get_cluster_status(self):
+        live = self.is_live_cluster_connected()
+        simulated = settings.infrastructure_mode == 'simulation'
+        return {'cluster_name': 'Demo cluster' if simulated else self.cluster_name, 'provider': 'Simulation' if simulated else 'Kubernetes' if live else 'Unavailable',
+                'is_live': live, 'namespace': self.namespace, 'control_plane': 'Connected' if live else 'Not connected'}
 
-    def list_pods(self, namespace: Optional[str] = None) -> List[Dict[str, Any]]:
-        """Lists active pods in target namespace."""
-        target_ns = namespace or self.namespace
-        if self.is_live_cluster_connected():
-            try:
-                res = subprocess.run(
-                    ["kubectl", "get", "pods", "-n", target_ns, "-o", "json"],
-                    capture_output=True, text=True, timeout=4
-                )
-                if res.returncode == 0:
-                    import json
-                    data = json.loads(res.stdout)
-                    pods = []
-                    for item in data.get("items", []):
-                        pods.append({
-                            "name": item["metadata"]["name"],
-                            "status": item["status"].get("phase", "Unknown"),
-                            "namespace": item["metadata"]["namespace"],
-                            "node": item["spec"].get("nodeName", "unassigned")
-                        })
-                    return pods
-            except Exception as e:
-                logger.error(f"Live kubectl failed: {e}")
+    def get_cluster_info(self):
+        return {**self.get_cluster_status(), 'nodes': self.nodes if settings.infrastructure_mode == 'simulation' else [], 'pods': self.list_pods()}
 
-        # Return virtual enterprise pods
-        return [p for p in self._virtual_pods if p["namespace"] == target_ns or target_ns == "all"]
+    def list_pods(self, namespace=None):
+        if settings.infrastructure_mode == 'simulation':
+            return self._virtual_pods
+        if settings.infrastructure_mode != 'kubernetes': return []
+        result = self._run(['get', 'pods', '-n', namespace or self.namespace, '-o', 'json'])
+        if not result['success']: return []
+        return [{'name': p['metadata']['name'], 'namespace': p['metadata']['namespace'],
+                 'status': p.get('status', {}).get('phase', 'Unknown'),
+                 'ready': p.get('status', {}).get('phase') == 'Running'
+                     and not p['metadata'].get('deletionTimestamp')
+                     and bool(p.get('status', {}).get('containerStatuses'))
+                     and all(c.get('ready') is True for c in p['status']['containerStatuses'])}
+                for p in json.loads(result['output']).get('items', [])]
 
-    def rollout_restart_deployment(self, deployment_name: str, namespace: Optional[str] = None) -> Dict[str, Any]:
-        """
-        Executes a rolling zero-downtime restart of a Kubernetes Deployment.
-        """
-        target_ns = namespace or self.namespace
-        sanitized = re.sub(r'[^a-zA-Z0-9_\-]', '', deployment_name)
+    def rollout_restart_deployment(self, deployment_name, namespace=None):
+        if not re.fullmatch(r'[a-z0-9][a-z0-9.-]*', deployment_name):
+            return {'success': False, 'error': 'Invalid deployment name'}
+        if settings.infrastructure_mode == 'simulation':
+            for pod in self._virtual_pods:
+                if pod['name'].startswith(deployment_name): pod['restarts'] += 1
+            return {'success': True, 'simulated': True, 'message': f'Simulated restart of {deployment_name}.'}
+        if settings.infrastructure_mode != 'kubernetes':
+            return {'success': False, 'error': 'Kubernetes mode is not enabled'}
+        result = self._run(['rollout', 'restart', f'deployment/{deployment_name}', '-n', namespace or self.namespace])
+        if not result['success']: return result
+        check = self._run(['rollout', 'status', f'deployment/{deployment_name}', '-n', namespace or self.namespace, '--timeout=20s'], 22)
+        return {**check, 'simulated': False, 'health_verified': check['success'], 'message': 'Deployment rollout completed.' if check['success'] else 'Restart requested; rollout verification failed.'}
 
-        if self.is_live_cluster_connected():
-            try:
-                start_t = time.time()
-                res = subprocess.run(
-                    ["kubectl", "rollout", "restart", f"deployment/{sanitized}", "-n", target_ns],
-                    capture_output=True, text=True, timeout=8
-                )
-                duration = time.time() - start_t
-                if res.returncode == 0:
-                    return {
-                        "success": True,
-                        "orchestrator": "kubernetes-live",
-                        "deployment": sanitized,
-                        "namespace": target_ns,
-                        "duration_seconds": round(duration, 2),
-                        "message": f"Deployment '{sanitized}' rollout restart successfully initiated in {round(duration, 2)}s."
-                    }
-            except Exception as e:
-                logger.error(f"kubectl rollout failed: {e}")
+    def get_pod_logs(self, pod_name, namespace=None, lines=10):
+        if settings.infrastructure_mode == 'simulation':
+            return {'simulated': True, 'lines': ['Demo log: connection pool exhausted.']}
+        res = self._run(['logs', pod_name, '-n', namespace or self.namespace, '--tail', str(lines)])
+        return {**res, 'lines': res.get('output', '').splitlines()}
 
-        # Virtual cluster rolling restart execution
-        start_t = time.time()
-        time.sleep(0.05)  # Fast simulated cluster API latency
-        duration = 1.34
+    def cordon_node(self, node_name):
+        if not re.fullmatch(r'[a-z0-9][a-z0-9.-]*', node_name): return {'success': False, 'error': 'Invalid node name'}
+        if settings.infrastructure_mode == 'simulation':
+            node = next((n for n in self._virtual_nodes if n['name'] == node_name), None)
+            if not node: return {'success': False, 'error': 'Node not found'}
+            node['status'] = 'Ready,SchedulingDisabled'
+            return {'success': True, 'simulated': True, 'status': 'SchedulingDisabled'}
+        if settings.infrastructure_mode != 'kubernetes': return {'success': False, 'error': 'Kubernetes mode is not enabled'}
+        return self._run(['cordon', node_name])
 
-        # Update virtual pod age and restarts
-        for pod in self._virtual_pods:
-            if sanitized in pod["name"]:
-                pod["restarts"] += 1
-                pod["age"] = "10s"
-                pod["status"] = "Running"
+    def failover_traffic(self, from_region, to_region):
+        if settings.infrastructure_mode != 'simulation':
+            return {'success': False, 'error': 'No live DNS failover integration is configured'}
+        return {'success': True, 'simulated': True, 'from_region': from_region, 'to_region': to_region, 'message': 'Simulated traffic failover.'}
 
-        return {
-            "success": True,
-            "orchestrator": "kubernetes-enterprise",
-            "cluster": self.cluster_name,
-            "deployment": sanitized,
-            "namespace": target_ns,
-            "duration_seconds": duration,
-            "strategy": "RollingUpdate",
-            "max_unavailable": "0%",
-            "max_surge": "25%",
-            "message": f"Kubernetes deployment/{sanitized} rolled out restart in {duration}s across namespace '{target_ns}'."
-        }
-
-    def get_pod_logs(self, pod_name: str, namespace: Optional[str] = None, lines: int = 10) -> Dict[str, Any]:
-        """Extracts pod logs with regex error extraction."""
-        target_ns = namespace or self.namespace
-        sanitized = re.sub(r'[^a-zA-Z0-9_\-]', '', pod_name)
-
-        if self.is_live_cluster_connected():
-            try:
-                res = subprocess.run(
-                    ["kubectl", "logs", sanitized, "-n", target_ns, "--tail", str(lines)],
-                    capture_output=True, text=True, timeout=4
-                )
-                if res.returncode == 0:
-                    return {
-                        "pod": sanitized,
-                        "namespace": target_ns,
-                        "lines": [l for l in res.stdout.strip().split("\n") if l.strip()]
-                    }
-            except Exception as e:
-                logger.error(f"kubectl logs failed: {e}")
-
-        return {
-            "pod": sanitized,
-            "namespace": target_ns,
-            "lines": [
-                f"[k8s-ingress] GET /api/v1/checkout - 504 Gateway Timeout (upstream: {sanitized})",
-                f"[connection-pool] WARN pool_size=10 exhausted; 120 threads blocked waiting for db connection",
-                f"[health-check] Liveness probe failed: HTTP 500 Internal Server Error"
-            ]
-        }
-
-    def cordon_node(self, node_name: str) -> Dict[str, Any]:
-        """Cordons a node to prevent new pod scheduling."""
-        sanitized = re.sub(r'[^a-zA-Z0-9_\-\.]', '', node_name)
-        for node in self._virtual_nodes:
-            if node["name"] == sanitized:
-                node["status"] = "Ready,SchedulingDisabled"
-                return {
-                    "success": True,
-                    "node": sanitized,
-                    "status": "SchedulingDisabled",
-                    "message": f"Node '{sanitized}' cordoned. Pod scheduling disabled."
-                }
-        return {"success": False, "error": f"Node '{sanitized}' not found."}
-
-    def failover_traffic(self, from_region: str, to_region: str) -> Dict[str, Any]:
-        """Simulates global DNS/Load Balancer traffic failover between clusters."""
-        return {
-            "success": True,
-            "action": "failover",
-            "from_region": from_region,
-            "to_region": to_region,
-            "timestamp": str(time.time()),
-            "message": f"Traffic successfully shifted from {from_region} to {to_region} via Route 53 / Global LB. Convergence expected in 30s."
-        }
-
-k8s_adapter = KubernetesAdapter()
+k8s_adapter = SessionLocal('k8s', KubernetesAdapter)

@@ -5,10 +5,10 @@
  */
 
 class PcmProcessor extends AudioWorkletProcessor {
-  constructor() {
+  constructor(options) {
     super();
-    this.targetSampleRate = 16000;
-    this.bufferSize = 2048; // 128ms of 16kHz audio
+    this.targetSampleRate = options.processorOptions?.targetSampleRate || 16000;
+    this.bufferSize = Math.round(this.targetSampleRate * 0.064); // 64ms frames, engine-specific rate
     this.buffer = new Int16Array(this.bufferSize);
     this.bufferIndex = 0;
     this.step = sampleRate / this.targetSampleRate;

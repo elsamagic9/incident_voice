@@ -10,7 +10,14 @@ interface Props {
 }
 
 export const ServiceDependencyGraph: React.FC<Props> = ({ topology, onSendAction }) => {
-  const [selectedNode, setSelectedNode] = useState<TopologyNode | null>(null);
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+
+  if (!topology?.nodes.length) return (
+    <div className="glass-panel rounded-2xl p-6 text-sm text-slate-400">
+      {topology ? 'Live dependency topology is not configured. Use the health matrix for service checks.' : 'Waiting for service topology.'}
+    </div>
+  );
+  const selectedNode = topology.nodes.find(node => node.id === selectedNodeId);
 
   // Fallback default topology if not yet received via WebSocket
   const nodes: TopologyNode[] = topology?.nodes || [
@@ -120,8 +127,8 @@ export const ServiceDependencyGraph: React.FC<Props> = ({ topology, onSendAction
     { id: 'e5', source: 'payment-service', target: 'redis-cache', rps: 5100, latency_ms: 180, status: 'congested', error_rate_pct: 6.5, protocol: 'RESP' }
   ];
 
-  const blastRadius = topology?.blast_radius_service_ids || ['payment-service', 'order-db', 'redis-cache', 'ingress-gateway'];
-  const hasCascading = topology?.cascading_failure_active ?? true;
+  const blastRadius = topology.blast_radius_service_ids || [];
+  const hasCascading = topology.cascading_failure_active ?? false;
 
   const nodeMap = new Map(nodes.map(n => [n.id, n]));
 
@@ -152,10 +159,10 @@ export const ServiceDependencyGraph: React.FC<Props> = ({ topology, onSendAction
           <div>
             <div className="flex items-center gap-2">
               <h3 className="text-xs font-bold uppercase tracking-wider text-slate-100 font-sans">
-                Live Service Dependency Graph & Blast Radius
+                Simulated Service Dependency Graph & Blast Radius
               </h3>
               <span className="text-[10px] px-2.5 py-0.5 rounded-full bg-cyan-500/10 text-cyan-300 border border-cyan-500/30 font-mono flex items-center gap-1 font-semibold">
-                <Zap className="w-3 h-3 text-cyan-400" /> Real-Time Traffic Flow
+                <Zap className="w-3 h-3 text-cyan-400" /> Demo Traffic Flow
               </span>
             </div>
             <p className="text-[11px] text-slate-400 mt-0.5">
@@ -260,7 +267,12 @@ export const ServiceDependencyGraph: React.FC<Props> = ({ topology, onSendAction
               <g
                 key={node.id}
                 transform={`translate(${node.x}, ${node.y})`}
-                onClick={() => setSelectedNode(node)}
+                onClick={() => setSelectedNodeId(node.id)}
+                role="button"
+                tabIndex={0}
+                aria-label={`Inspect ${node.id}: ${node.status}`}
+                aria-pressed={isSelected}
+                onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setSelectedNodeId(node.id); } }}
                 className="cursor-pointer transition-transform duration-200 hover:scale-105"
               >
                 {/* Blast Radius Radar Halo */}
@@ -332,7 +344,7 @@ export const ServiceDependencyGraph: React.FC<Props> = ({ topology, onSendAction
                 <span>{selectedNode.name}</span>
               </div>
               <button
-                onClick={() => setSelectedNode(null)}
+                onClick={() => setSelectedNodeId(null)}
                 className="text-slate-400 hover:text-white text-xs"
               >
                 ✕

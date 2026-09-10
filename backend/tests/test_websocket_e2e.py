@@ -1,74 +1,71 @@
 import pytest
-import json
-from fastapi.testclient import TestClient
-from main import app
+from starlette.websockets import WebSocketDisconnect
 from app.core.state import cluster_state
 
-def setup_function():
-    cluster_state.reset_to_default_incident()
 
-def read_until_turn_ends(websocket, max_messages=100):
-    messages = []
-    for _ in range(max_messages):
-        try:
-            data = json.loads(websocket.receive_text())
-            messages.append(data)
-            if data.get("type") == "agent_state" and data.get("state") == "listening":
-                break
-        except Exception:
-            break
-    return messages
+def test_session_staging_approval_and_report(client, ws_command):
+    with client.websocket_connect('/ws/agent') as ws:
+        events = ws_command(ws, 'text_command', text='Restart payment-service')
+        staged = next(e['staged_action'] for e in events if e['type'] == 'staging_sync' and e['staged_action'])
+        assert cluster_state.services['payment-service'].status == 'critical'
+        events = ws_command(ws, 'authorize_remediation', action_id=staged['id'])
+        assert any(e.get('result', {}).get('success') for e in events if e['type'] == 'tool_executed')
+        assert cluster_state.services['payment-service'].status == 'healthy'
+        events = ws_command(ws, 'text_command', text='Generate postmortem')
+        report = next(e['data'] for e in events if e['type'] == 'postmortem_ready')
+        assert report['source'] == 'local_events'
+        assert report['action_items_tickets'] == []
 
-def test_websocket_e2e_flow():
-    client = TestClient(app)
-    with client.websocket_connect("/ws/agent") as websocket:
-        # 1. Initial messages should contain cluster_sync
-        initial_msgs = []
-        for _ in range(3):
-            data = json.loads(websocket.receive_text())
-            initial_msgs.append(data)
-            if data.get("type") == "cluster_sync":
-                break
 
-        types = [m.get("type") for m in initial_msgs]
-        assert "cluster_sync" in types
-        sync_msg = next(m for m in initial_msgs if m.get("type") == "cluster_sync")
-        assert sync_msg["incident"]["id"] == "INC-8942"
-        assert "payment-service" in sync_msg["services"]
+@pytest.mark.parametrize('engine', ['custom_stt_v3', 'voice_agent_api'])
+def test_engine_switching_and_unconfigured_voice(client, ws_command, engine):
+    with client.websocket_connect('/ws/agent') as ws:
+        events = ws_command(ws, 'select_engine', engine=engine)
+        assert any(e['type'] == 'engine_sync' and e['engine'] == engine for e in events)
+        events = ws_command(ws, 'start_voice')
+        assert any(e['type'] == 'provider_status' and e['state'] == 'unconfigured' for e in events)
+        assert not any(e['type'] == 'voice_ready' for e in events)
 
-        # 2. Send text command: "What alerts are firing right now?"
-        websocket.send_text(json.dumps({
-            "type": "text_command",
-            "text": "What alerts are firing right now?"
-        }))
 
-        turn1_msgs = read_until_turn_ends(websocket)
-        turn1_types = [m.get("type") for m in turn1_msgs]
-        assert "turn" in turn1_types
-        assert "tool_executed" in turn1_types
-        assert "cluster_sync" in turn1_types
-        assert any(m.get("tool_name") == "get_cluster_health" for m in turn1_msgs if m.get("type") == "tool_executed")
+@pytest.mark.parametrize('kind,args', [('toggle_autopilot', {'enabled': True}), ('simulate_scenario', {'scenario': 'heal_all'})])
+def test_control_responses_reset_audio_suppression(client, ws_command, kind, args):
+    with client.websocket_connect('/ws/agent') as ws:
+        events = ws_command(ws, kind, **args)
+        interrupt = next(e for e in events if e['type'] == 'interrupt')
+        audio = next((e for e in events if e['type'] == 'audio_stream'), None)
+        while audio is None:
+            event = ws.receive_json()
+            if event['type'] == 'audio_stream': audio = event
+        assert audio['epoch'] == interrupt['epoch']
+        assert audio['encoding'] == 'browser'
 
-        # 3. Send text command: "Scale payment-service to 5 replicas"
-        websocket.send_text(json.dumps({
-            "type": "text_command",
-            "text": "Scale payment-service to 5 replicas"
-        }))
 
-        turn2_msgs = read_until_turn_ends(websocket)
-        executed_tools = [m.get("tool_name") for m in turn2_msgs if m.get("type") == "tool_executed"]
-        assert "execute_remediation" in executed_tools
-        assert cluster_state.services["payment-service"].replicas == 5
+def test_scenario_commands_and_reset(client, ws_command):
+    with client.websocket_connect('/ws/agent') as ws:
+        ws_command(ws, 'simulate_scenario', scenario='heal_all')
+        events = ws_command(ws, 'simulate_scenario', scenario='traffic_spike')
+        sync = next(e for e in events if e['type'] == 'cluster_sync')
+        assert sync['incident']['status'] == 'INVESTIGATING'
+        assert sync['services']['ingress-gateway']['status'] == 'degraded'
+        events = ws_command(ws, 'reset_incident')
+        assert any(e['type'] == 'session_reset' for e in events)
 
-        # 4. Send text command: "Wrap up incident and generate post-mortem"
-        websocket.send_text(json.dumps({
-            "type": "text_command",
-            "text": "Wrap up incident and generate post-mortem"
-        }))
 
-        turn3_msgs = read_until_turn_ends(websocket)
-        pm_msg = next((m for m in turn3_msgs if m.get("type") == "postmortem_ready"), None)
-        assert pm_msg is not None
-        assert "incident_id" in pm_msg["data"]
-        assert "preventive_action_items" in pm_msg["data"]
-        assert len(pm_msg["data"]["preventive_action_items"]) > 0
+def test_runbook_control_syncs_active_session(client, ws_command):
+    with client.websocket_connect('/ws/agent') as ws:
+        ws_command(ws, 'simulate_scenario', scenario='starve_db')
+        ws_command(ws, 'start_runbook', runbook_id='runbook-pg-pool')
+        events = ws_command(ws, 'advance_runbook')
+        sync = next(e for e in events if e['type'] == 'cluster_sync')
+        assert sync['active_runbook']['current_step_index'] == 1
+
+
+def test_second_tab_rejected_and_disconnect_cancels_pending(client, ws_command):
+    from app.services.orchestrator import agent_orchestrator
+    with client.websocket_connect('/ws/agent') as ws:
+        ws_command(ws, 'text_command', text='Restart payment-service')
+        with pytest.raises(WebSocketDisconnect) as error:
+            with client.websocket_connect('/ws/agent'):
+                pass
+        assert error.value.code == 4409
+    assert agent_orchestrator.staged_action is None

@@ -18,3 +18,7 @@ services:
         value: 0.0.0.0
       - key: DEBUG
         value: "false"
+      - key: INFRASTRUCTURE_MODE
+        value: simulation
+      - key: OPERATOR_ACCESS_TOKEN
+        sync: false

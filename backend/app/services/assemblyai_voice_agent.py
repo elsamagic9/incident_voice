@@ -1,474 +1,201 @@
+"""AssemblyAI managed voice protocol with the same approval policy as custom STT."""
 import asyncio
+import base64
+import inspect
 import json
-import logging
-import time
-from typing import Callable, Optional, Dict, Any, List
 import websockets
 from app.core.config import settings
-from app.core.state import cluster_state
-from app.tools.sre_tools import SRE_TOOL_MAP
+from app.services.orchestrator import agent_orchestrator, SYSTEM_PROMPT
 from app.tools.tool_schemas import SRE_TOOL_DEFINITIONS
 
-logger = logging.getLogger("assemblyai_voice_agent")
-
-SYSTEM_PROMPT = """You are IncidentVoice, an elite Autonomous Voice Site Reliability Engineer (SRE) and Incident Commander.
-You assist human on-call engineers during live production outages using low-latency voice interaction.
-
-Tone and Rules:
-1. Voice-First Brevity: Speak concisely in 1 to 2 clear, authoritative sentences. Never read out full stack traces or long JSON payloads; summarize the key takeaway (e.g. "Payment service is failing with 42% 503 errors due to DB connection pool starvation. I recommend scaling replicas or restarting pods.").
-2. Proactive Remediation: When an engineer asks you to investigate or fix an issue, call the appropriate tools (e.g., inspect_service_logs, execute_remediation, trigger_pager).
-3. Professional SRE Vocabulary: Use standard terminology (P99 latency, RPS, pod crashloop, connection starvation, circuit breaker).
-4. Safety Guardrails: Destructive remediations like restarting pods, flushing cache, or rolling back releases require staging and explicit confirmation.
-"""
-
 class AssemblyAIVoiceAgentSession:
-    """
-    Manages a real-time bidirectional WebSocket session with AssemblyAI Voice Agent API.
-    URL: wss://agents.assemblyai.com/v1/ws
-    Handles:
-      - session.update with system prompt, voice, and JSON-Schema SRE tools
-      - Streaming microphone PCM audio upstream
-      - Bidirectional event dispatching (user transcripts, agent transcripts, audio chunks)
-      - JSON-Schema tool calling loop (tool.call -> local execution -> tool.result)
-      - Two-phase safety guardrails for destructive remediation actions
-      - Offline / mock mode fallback if no API key or network unreachable
-    """
-
-    def __init__(
-        self,
-        api_key: str,
-        on_user_turn: Optional[Callable[[str, bool, Optional[float]], Any]] = None,
-        on_agent_turn: Optional[Callable[[str, bool], Any]] = None,
-        on_audio_chunk: Optional[Callable[[str], Any]] = None,
-        on_tool_executed: Optional[Callable[[Dict[str, Any]], Any]] = None,
-        on_agent_state: Optional[Callable[[str], Any]] = None,
-        on_error: Optional[Callable[[str], Any]] = None,
-        on_remediation_staged: Optional[Callable[[Dict[str, Any]], Any]] = None,
-        on_postmortem_ready: Optional[Callable[[Dict[str, Any]], Any]] = None
-    ):
-        self.api_key = api_key or settings.assemblyai_api_key
-        self.ws_url = getattr(settings, "assemblyai_voice_agent_url", "wss://agents.assemblyai.com/v1/ws")
+    def __init__(self, api_key, on_user_turn=None, on_agent_turn=None, on_audio_chunk=None,
+                 on_tool_executed=None, on_agent_state=None, on_error=None,
+                 on_remediation_staged=None, on_postmortem_ready=None):
+        self.api_key = api_key
+        self.ws_url = settings.assemblyai_voice_agent_url
         self.on_user_turn = on_user_turn
         self.on_agent_turn = on_agent_turn
         self.on_audio_chunk = on_audio_chunk
         self.on_tool_executed = on_tool_executed
         self.on_agent_state = on_agent_state
-        self.on_error = on_error or (lambda err: logger.error(f"AssemblyAI Voice Agent Error: {err}"))
+        self.on_error = on_error
         self.on_remediation_staged = on_remediation_staged
         self.on_postmortem_ready = on_postmortem_ready
-
-        self.ws: Optional[websockets.WebSocketClientProtocol] = None
+        self.ws = None
         self._running = False
-        self._receive_task: Optional[asyncio.Task] = None
-        self.session_id: Optional[str] = None
         self.is_connected = False
-        self.staged_action: Optional[Dict[str, Any]] = None
-        self.awaiting_confirmation: bool = False
-        self.autopilot_mode: bool = False
-        self.history: List[Dict[str, str]] = []
+        self.session_id = None
+        self._receive_task = None
+        self._tool_task = None
+        self.ready = asyncio.Event()
+        self.reply_done = asyncio.Event()
+        self.pending_calls = []
+        self.seen_calls = set()
+        self.ignore_audio = False
+        self.reply_epoch = 0
 
-    async def connect(self) -> bool:
-        """Connects to AssemblyAI Voice Agent API WebSocket and sends session.update."""
-        if not self.api_key:
-            logger.warning("No AssemblyAI API key provided for Voice Agent API. Running in mock/offline mode.")
-            self.is_connected = False
-            return False
+    @property
+    def staged_action(self): return agent_orchestrator.staged_action
+    @property
+    def awaiting_confirmation(self): return agent_orchestrator.awaiting_confirmation
+    @property
+    def autopilot_mode(self): return agent_orchestrator.autopilot_mode
+    @autopilot_mode.setter
+    def autopilot_mode(self, enabled): agent_orchestrator.set_autopilot(enabled)
+    @property
+    def history(self): return agent_orchestrator.history
 
-        auth_key = self.api_key.strip()
-        auth_header = auth_key if auth_key.startswith("Bearer ") else f"Bearer {auth_key}"
-        headers = {
-            "Authorization": auth_header
-        }
+    async def _call_cb(self, callback, *args):
+        if callback:
+            result = callback(*args)
+            if inspect.isawaitable(result): return await result
 
+    async def connect(self):
+        if not self.api_key: return False
         try:
-            self.ws = await websockets.connect(
-                self.ws_url,
-                additional_headers=headers,
-                ping_interval=20,
-                ping_timeout=10
-            )
+            auth = self.api_key.strip()
+            if not auth.startswith('Bearer '): auth = 'Bearer '+auth
+            self.ws = await websockets.connect(self.ws_url, additional_headers={'Authorization': auth}, open_timeout=10, max_size=2**21)
             self._running = True
-            self.is_connected = True
-            self._receive_task = asyncio.create_task(self._receive_loop())
-
-            # Send initial session.update configuration
             await self._send_session_update()
-            logger.info(f"Connected to AssemblyAI Voice Agent API at {self.ws_url}")
-            return True
-        except Exception as e:
-            logger.error(f"Failed to connect to AssemblyAI Voice Agent API: {e}")
-            self.is_connected = False
-            self.on_error(str(e))
+            self._receive_task = asyncio.create_task(self._receive_loop())
+            await asyncio.wait_for(self.ready.wait(), 10)
+            if not self.is_connected: await self.close()
+            return self.is_connected
+        except Exception:
+            await self._call_cb(self.on_error, 'AssemblyAI managed voice could not connect. Check credentials and network access.')
+            await self.close()
             return False
 
     async def _send_session_update(self):
-        """Dispatches session.update to register tools and system prompt."""
-        if not self.ws or not self._running:
-            return
-
-        # Format SRE tools for AssemblyAI Voice Agent JSON Schema
-        agent_tools = []
-        for tool_def in SRE_TOOL_DEFINITIONS:
-            fn = tool_def.get("function", {})
-            agent_tools.append({
-                "type": "function",
-                "name": fn.get("name"),
-                "description": fn.get("description"),
-                "parameters": fn.get("parameters", {"type": "object", "properties": {}})
-            })
-
-        session_config = {
-            "type": "session.update",
-            "session": {
-                "system_prompt": SYSTEM_PROMPT,
-                "greeting": "IncidentVoice Voice Agent online. Monitoring cluster telemetry and ready for command.",
-                "tools": agent_tools,
-                "input": {
-                    "format": {
-                        "encoding": "audio/pcm16",
-                        "sample_rate": 16000
-                    }
-                },
-                "output": {
-                    "voice": "ivy",
-                    "format": {
-                        "encoding": "audio/pcm16",
-                        "sample_rate": 16000
-                    }
-                }
-            }
-        }
-
-        await self.ws.send(json.dumps(session_config))
-        logger.info("Sent session.update with SRE tool declarations to AssemblyAI Voice Agent API.")
+        tools = [{'type': 'function', **t['function']} for t in SRE_TOOL_DEFINITIONS]
+        await self.ws.send(json.dumps({'type': 'session.update', 'session': {
+            'system_prompt': SYSTEM_PROMPT + f'\nInfrastructure: {settings.infrastructure_mode}.',
+            'greeting': 'IncidentVoice is ready. What would you like to investigate?', 'tools': tools,
+            'input': {'format': {'encoding': 'audio/pcm'}, 'turn_detection': {'interrupt_response': True}},
+            'output': {'voice': settings.voice_agent_voice, 'format': {'encoding': 'audio/pcm'}}}}))
 
     async def _receive_loop(self):
-        """Processes downstream events from AssemblyAI Voice Agent API."""
         try:
-            while self._running and self.ws:
-                message = await self.ws.recv()
-                if isinstance(message, str):
-                    await self._handle_json_event(json.loads(message))
-                elif isinstance(message, bytes):
-                    # Raw audio output from Voice Agent API
-                    import base64
-                    b64_audio = base64.b64encode(message).decode("utf-8")
-                    if self.on_audio_chunk:
-                        await self._call_cb(self.on_audio_chunk, b64_audio)
-        except websockets.ConnectionClosed as cc:
-            logger.info(f"AssemblyAI Voice Agent connection closed: {cc.code} {cc.reason}")
-        except Exception as e:
-            logger.error(f"Error in AssemblyAI Voice Agent receive loop: {e}")
-            self.on_error(str(e))
+            async for message in self.ws:
+                await self._handle_json_event(json.loads(message))
+        except asyncio.CancelledError: raise
+        except Exception:
+            if self._running: await self._call_cb(self.on_error, 'Managed voice disconnected. Reconnect voice to retry.')
         finally:
-            self._running = False
+            was_running = self._running
+            self._running = self.is_connected = False
+            self.ready.set()
+            if was_running: await self._call_cb(self.on_error, 'Managed voice session ended.')
+
+    async def _handle_json_event(self, data):
+        kind = data.get('type')
+        if kind == 'session.ready':
+            self.session_id = data.get('session_id')
+            self.is_connected = True
+            self.ready.set()
+        elif kind == 'session.error':
+            await self._call_cb(self.on_error, 'AssemblyAI error: '+str(data.get('code', 'unknown')))
+            if not self.is_connected: self.ready.set()
+        elif kind == 'session.ended':
             self.is_connected = False
+            self._running = False
+            await self._call_cb(self.on_error, 'Managed voice session ended.')
+        elif kind == 'input.speech.started':
+            self.reply_epoch += 1
+            self.pending_calls.clear()
+            self.reply_done.clear()
+            await self._call_cb(self.on_agent_state, 'interrupted')
+        elif kind in {'transcript.user.delta', 'transcript.user'}:
+            self.reply_done.clear()
+            text = data.get('text', '')
+            if text: await self._call_cb(self.on_user_turn, text, kind == 'transcript.user', None)
+        elif kind in {'transcript.agent.delta', 'transcript.agent'}:
+            text = data.get('text') or data.get('delta', '')
+            if text: await self._call_cb(self.on_agent_turn, text, kind == 'transcript.agent')
+        elif kind == 'reply.started':
+            self.reply_done.clear()
+            self.ignore_audio = False
+            await self._call_cb(self.on_agent_state, 'thinking')
+        elif kind == 'reply.audio':
+            if data.get('data') and not self.ignore_audio:
+                await self._call_cb(self.on_audio_chunk, data['data'])
+        elif kind == 'tool.call':
+            if data.get('call_id') and data['call_id'] not in self.seen_calls:
+                self.seen_calls.add(data['call_id'])
+                self.pending_calls.append(data)
+        elif kind == 'reply.done':
+            self.reply_done.set()
+            if data.get('status') == 'interrupted':
+                self.reply_epoch += 1
+                self.pending_calls.clear()
+                await self._call_cb(self.on_agent_state, 'interrupted')
+            if self.pending_calls and (not self._tool_task or self._tool_task.done()):
+                self._tool_task = asyncio.create_task(self._drain_tool_calls())
+            await self._call_cb(self.on_agent_state, 'awaiting_confirmation' if self.awaiting_confirmation else 'listening')
 
-    async def _handle_json_event(self, data: Dict[str, Any]):
-        msg_type = data.get("type") or data.get("event")
+    async def _drain_tool_calls(self):
+        try:
+            while self.pending_calls and self._running:
+                call = self.pending_calls.pop(0)
+                await self._handle_tool_call(call, self.reply_epoch)
+        except asyncio.CancelledError: raise
+        except Exception:
+            await self._call_cb(self.on_error, 'Unable to complete the requested tool.')
 
-        # Session lifecycle events
-        if msg_type in ["session.created", "session.updated", "session.ready", "SessionBegins"]:
-            self.session_id = data.get("session_id") or data.get("session", {}).get("id")
-            logger.info(f"AssemblyAI Voice Agent session ready/initialized: {self.session_id}")
-
-        # User transcription events (final & interim deltas)
-        elif msg_type in ["transcript.user", "transcript.user.delta", "transcript", "user.transcript", "turn"]:
-            transcript = data.get("transcript") or data.get("text") or data.get("delta", "")
-            end_of_turn = data.get("end_of_turn", msg_type in ["transcript.user", "turn"])
-            confidence = data.get("confidence")
-            if transcript.strip():
-                if end_of_turn:
-                    self.history.append({"speaker": "user", "transcript": transcript})
-                    cluster_state.add_event("voice", f"Engineer: \"{transcript}\"")
-                    try:
-                        from app.services.blackbox_service import blackbox_service
-                        blackbox_service.record_event("user", transcript, "voice")
-                    except Exception:
-                        pass
-                if self.on_user_turn:
-                    await self._call_cb(self.on_user_turn, transcript, end_of_turn, confidence)
-
-        # Agent spoken text events (final & interim deltas)
-        elif msg_type in ["transcript.agent", "transcript.agent.delta", "agent.transcript", "response.audio_transcript.delta", "agent_turn"]:
-            agent_text = data.get("transcript") or data.get("delta") or data.get("text", "")
-            end_of_turn = data.get("end_of_turn", msg_type in ["transcript.agent", "agent_turn"])
-            if agent_text:
-                if end_of_turn:
-                    self.history.append({"speaker": "agent", "transcript": agent_text})
-                    cluster_state.add_event("voice", f"IncidentVoice: \"{agent_text}\"")
-                    try:
-                        from app.services.blackbox_service import blackbox_service
-                        blackbox_service.record_event("agent", agent_text, "voice")
-                    except Exception:
-                        pass
-                if self.on_agent_turn:
-                    await self._call_cb(self.on_agent_turn, agent_text, end_of_turn)
-
-        # Agent audio chunks
-        elif msg_type in ["output.audio", "output.audio.delta", "audio", "response.audio.delta"]:
-            audio_b64 = data.get("data") or data.get("delta") or data.get("audio", "")
-            if audio_b64 and self.on_audio_chunk:
-                await self._call_cb(self.on_audio_chunk, audio_b64)
-
-        # State updates
-        elif msg_type in ["agent_state", "response.state"]:
-            state = data.get("state") or data.get("status")
-            if state and self.on_agent_state:
-                await self._call_cb(self.on_agent_state, state)
-
-        # Tool calling event: tool.call
-        elif msg_type in ["tool.call", "function_call", "tool_call", "response.function_call_arguments.done"]:
-            await self._handle_tool_call(data)
-
-        elif msg_type == "SessionTerminated":
-            logger.info("AssemblyAI Voice Agent session terminated cleanly.")
-
-    async def _handle_tool_call(self, data: Dict[str, Any]):
-        """
-        Handles dynamic tool call event from AssemblyAI Voice Agent API:
-        1. Checks two-phase safety guardrails for destructive actions
-        2. Executes local tool
-        3. Returns tool.result event back to AssemblyAI WebSocket
-        """
-        call_id = data.get("call_id") or data.get("id") or str(time.time())
-        tool_name = data.get("name") or data.get("tool_name") or data.get("function", {}).get("name")
-        arguments = data.get("arguments") or data.get("parameters") or data.get("function", {}).get("arguments", {})
-
-        if isinstance(arguments, str):
-            try:
-                arguments = json.loads(arguments)
-            except Exception:
-                arguments = {}
-
-        logger.info(f"AssemblyAI Voice Agent called tool: {tool_name} with args {arguments}")
-
-        # Safety Guardrail check for destructive operations
-        if tool_name == "execute_remediation":
-            action = arguments.get("action", "")
-            service_name = arguments.get("service_name", "payment-service")
-            if action in ["restart_pod", "flush_cache", "rollback_release", "restart", "failover_traffic"]:
-                # Autopilot bypass — execute immediately without staging
-                if self.autopilot_mode:
-                    logger.warning(f"Autopilot active (Path 1). Auto-executing {action} on {service_name}")
-                    from app.tools.sre_tools import execute_remediation
-                    result = execute_remediation(action, service_name)
-                    if self.on_tool_executed:
-                        await self._call_cb(self.on_tool_executed, {
-                            "tool_name": tool_name,
-                            "arguments": arguments,
-                            "result": result,
-                            "timestamp": time.time()
-                        })
-                    await self._send_tool_result(call_id, result)
+    async def _handle_tool_call(self, data, epoch=None):
+        from app.core.session import current_session
+        name, args = data.get('name', ''), data.get('arguments', {})
+        if not isinstance(args, dict):
+            result = {'success': False, 'error': 'Tool arguments must be an object'}
+        else:
+            async with current_session.get().lock:
+                if epoch is not None and epoch != self.reply_epoch: return
+                event = await agent_orchestrator.call_tool(name, args)
+                result = event['result']
+                if epoch is not None and epoch != self.reply_epoch:
+                    if result.get('status') == 'staged': agent_orchestrator.cancel_staged_remediation(result.get('id'))
                     return
-
-                if not self.awaiting_confirmation:
-                    from app.core.auth_rbac import security_manager
-                    from app.services.audit_ledger import audit_ledger
-
-                    challenge_code = security_manager.generate_phonetic_challenge()
-                    # Stage action and require confirmation
-                    self.staged_action = {
-                        "action": action,
-                        "service_name": service_name,
-                        "params": arguments,
-                        "challenge_code": challenge_code,
-                        "staged_at": time.time()
-                    }
-                    self.awaiting_confirmation = True
-
-                    audit_ledger.record_event(
-                        event_type="STAGED_MUTATION",
-                        actor=security_manager.session_operator,
-                        role=security_manager.current_role.value,
-                        action=action,
-                        details={
-                            "service_name": service_name,
-                            "challenge_code": challenge_code,
-                            "engine": "AssemblyAI Voice Agent API (Path 1)"
-                        }
-                    )
-
-                    staged_payload = {
-                        "status": "staged",
-                        "awaiting_confirmation": True,
-                        "action": action,
-                        "service_name": service_name,
-                        "challenge_code": challenge_code,
-                        "message": f"Remediation staged: {action} on {service_name}. Role: SRE Commander. To authorize, verify with security challenge '{challenge_code}' or click Authorize."
-                    }
-
-                    if self.on_remediation_staged:
-                        await self._call_cb(self.on_remediation_staged, self.staged_action)
-
-                    if self.on_tool_executed:
-                        await self._call_cb(self.on_tool_executed, {
-                            "tool_name": tool_name,
-                            "arguments": arguments,
-                            "result": staged_payload,
-                            "timestamp": time.time()
-                        })
-
-                    # Send staged response back to Voice Agent LLM
-                    await self._send_tool_result(call_id, staged_payload)
-                    return
-                else:
-                    # User confirmed action, proceeding with execution
-                    self.awaiting_confirmation = False
-                    self.staged_action = None
-
-        # Handle post-mortem generation via LeMUR
-        if tool_name == "generate_postmortem":
-            from app.services.lemur_service import lemur_service
-            postmortem_data = await lemur_service.generate_postmortem(
-                transcript_history=self.history,
-                timeline_events=cluster_state.incident.timeline_events,
-                incident_id=cluster_state.incident.id
-            )
-            if self.on_postmortem_ready:
-                await self._call_cb(self.on_postmortem_ready, postmortem_data)
-            if self.on_tool_executed:
-                await self._call_cb(self.on_tool_executed, {
-                    "tool_name": tool_name,
-                    "arguments": arguments,
-                    "result": {"status": "success", "incident_id": cluster_state.incident.id},
-                    "timestamp": time.time()
-                })
-            await self._send_tool_result(call_id, {"status": "success", "incident_id": cluster_state.incident.id})
-            return
-
-        # Execute tool from SRE_TOOL_MAP
-        tool_fn = SRE_TOOL_MAP.get(tool_name)
-        if tool_fn:
-            try:
-                result = tool_fn(**arguments)
-            except TypeError:
-                # Handle no-arg or position-arg variance
-                result = tool_fn()
-            except Exception as e:
-                result = {"error": f"Tool execution failed: {str(e)}"}
-        else:
-            result = {"error": f"Tool '{tool_name}' not implemented in SRE tool suite."}
-
-        # Clear staging state if destructive action was executed
-        if tool_name == "execute_remediation":
-            self.awaiting_confirmation = False
-            self.staged_action = None
-
-        # Broadcast tool execution to frontend UI
-        if self.on_tool_executed:
-            await self._call_cb(self.on_tool_executed, {
-                "tool_name": tool_name,
-                "arguments": arguments,
-                "result": result,
-                "timestamp": time.time()
-            })
-
-        # Send tool.result back to AssemblyAI Voice Agent API
-        await self._send_tool_result(call_id, result)
-
-    async def _send_tool_result(self, call_id: str, result: Any):
-        """Sends tool.result back to AssemblyAI WebSocket."""
-        if not self.ws or not self._running:
-            return
-
-        payload = {
-            "type": "tool.result",
-            "call_id": call_id,
-            "result": json.dumps(result) if not isinstance(result, str) else result
-        }
-        await self.ws.send(json.dumps(payload))
-        logger.info(f"Dispatched tool.result for call_id={call_id}")
-
-    async def send_audio(self, pcm_bytes: bytes):
-        """Streams 16kHz PCM audio chunk to AssemblyAI Voice Agent API."""
+                await self._call_cb(self.on_tool_executed, event)
+                if self.staged_action: await self._call_cb(self.on_remediation_staged, self.staged_action)
+                if agent_orchestrator.postmortem_result:
+                    await self._call_cb(self.on_postmortem_ready, agent_orchestrator.postmortem_result)
         if self.ws and self._running:
-            try:
-                import base64
-                payload = {
-                    "type": "input.audio",
-                    "audio": base64.b64encode(pcm_bytes).decode("utf-8")
-                }
-                await self.ws.send(json.dumps(payload))
-            except Exception as e:
-                logger.error(f"Failed to stream audio chunk to Voice Agent API: {e}")
+            await asyncio.wait_for(self.reply_done.wait(), 15)
+            if epoch is None or epoch == self.reply_epoch:
+                await self._send_tool_result(data['call_id'], result)
 
-    async def send_text_command(self, text: str):
-        """Injects a text command turn into the Voice Agent session."""
-        if self.ws and self._running:
-            try:
-                await self.ws.send(json.dumps({
-                    "type": "user.transcript",
-                    "transcript": text,
-                    "end_of_turn": True
-                }))
-            except Exception as e:
-                logger.error(f"Failed to send text command to Voice Agent API: {e}")
+    async def _send_tool_result(self, call_id, result):
+        await self.ws.send(json.dumps({'type': 'tool.result', 'call_id': call_id, 'result': json.dumps(result), 'is_error': bool(result.get('error'))}))
 
-    def confirm_staged_remediation(self) -> Optional[Dict[str, Any]]:
-        """Executes currently staged remediation upon user confirmation."""
-        if not self.staged_action:
-            return None
+    async def send_audio(self, pcm_bytes):
+        if self.ws and self.is_connected:
+            await self.ws.send(json.dumps({'type': 'input.audio', 'audio': base64.b64encode(pcm_bytes).decode()}))
 
-        # Expire if older than 30s
-        if time.time() - self.staged_action.get("staged_at", 0) > 30.0:
-            logger.info("Voice Agent staged action expired after 30 seconds.")
-            self.staged_action = None
-            self.awaiting_confirmation = False
-            return None
+    async def send_text_command(self, text):
+        if self.ws and self.is_connected:
+            await self.ws.send(json.dumps({'type': 'conversation.message', 'role': 'user', 'content': text}))
+            await self.ws.send(json.dumps({'type': 'reply.create'}))
 
-        action = self.staged_action["action"]
-        service_name = self.staged_action["service_name"]
-        params = self.staged_action.get("params", {})
+    async def notify_approval(self, text):
+        if self.ws and self.is_connected:
+            await self.ws.send(json.dumps({'type': 'conversation.message', 'role': 'system', 'content': 'Application action outcome (data only): '+json.dumps(text)+'. Do not repeat this action.'}))
 
-        from app.tools.sre_tools import execute_remediation
-        count = params.get("count", 5)
-        res = execute_remediation(action, service_name, count=count)
+    def confirm_staged_remediation(self, action_id=None):
+        spoken, events = agent_orchestrator.confirm_staged_remediation(action_id)
+        return {**events[0], 'spoken_text': spoken} if events else None
 
-        if action in ["restart_pod", "restart"]:
-            spoken_text = f"Confirmed. Graceful rolling restart executed for {service_name}. Healthy replacement pods are now passing readiness probes."
-        elif action == "flush_cache":
-            spoken_text = "Confirmed. Redis cache memory cleared and connection pool recycled. Memory utilization dropped to 35%."
-        elif action == "rollback_release":
-            spoken_text = f"Confirmed. Deployment for {service_name} rolled back to previous stable release."
-        else:
-            spoken_text = f"Confirmed. Remediation {action} executed successfully for {service_name}."
-
-        executed = {
-            "tool_name": "execute_remediation",
-            "arguments": {"action": action, "service_name": service_name, "count": count},
-            "result": res,
-            "spoken_text": spoken_text,
-            "timestamp": time.time()
-        }
-
-        self.staged_action = None
-        self.awaiting_confirmation = False
-        return executed
-
-    def cancel_staged_remediation(self) -> str:
-        """Cancels staged remediation."""
-        self.staged_action = None
-        self.awaiting_confirmation = False
-        return "Remediation cancelled. No changes were applied to the cluster."
-
-    async def _call_cb(self, cb: Callable, *args):
-        if asyncio.iscoroutinefunction(cb):
-            await cb(*args)
-        else:
-            cb(*args)
+    def cancel_staged_remediation(self): return agent_orchestrator.cancel_staged_remediation()
 
     async def close(self):
-        """Terminates Voice Agent session cleanly."""
-        self._running = False
-        self.is_connected = False
+        self._running = self.is_connected = False
+        for task in (self._tool_task, self._receive_task):
+            if task and task is not asyncio.current_task(): task.cancel()
         if self.ws:
             try:
-                await self.ws.send(json.dumps({"type": "session.terminate"}))
+                await self.ws.send(json.dumps({'type': 'session.end'}))
                 await self.ws.close()
-            except Exception:
-                pass
+            except Exception: pass
             self.ws = None
-        if self._receive_task and not self._receive_task.done():
-            self._receive_task.cancel()
+        await asyncio.gather(*(t for t in (self._tool_task, self._receive_task) if t and t is not asyncio.current_task()), return_exceptions=True)
