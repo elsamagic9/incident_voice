@@ -17,7 +17,7 @@ class Settings(BaseSettings):
     gemini_model: str = "gemini-3.5-flash"
     openai_model: str = "gpt-4o-mini"
     lemur_model: str = "anthropic/claude-3-5-sonnet"
-    voice_agent_voice: str = "marius"
+    voice_agent_voice: str = "george"
     gemini_api_key: str = ""
     openai_api_key: str = ""
     anthropic_api_key: str = ""
