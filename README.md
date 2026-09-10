@@ -1,8 +1,19 @@
 # IncidentVoice
 
+<div align="center">
+
 ![IncidentVoice mission control](banner.jpg)
 
-**A voice-driven incident investigation and remediation assistant, built for the [AssemblyAI Voice Agent Hackathon](https://lablab.ai/ai-hackathons/assemblyai-voice-agent-hackathon).**
+[![AssemblyAI](https://img.shields.io/badge/AssemblyAI-Voice%20Agent%20API%20%26%20Streaming%20v3-7C3AED?style=for-the-badge&logo=assemblyai&logoColor=white)](https://www.assemblyai.com)
+[![LeMUR](https://img.shields.io/badge/AssemblyAI-LeMUR%20Post--Mortem%20Synthesis-blue?style=for-the-badge)](https://www.assemblyai.com/docs/lemur)
+[![Tests](https://img.shields.io/badge/Backend%20Tests-82%2F82%20Passed-brightgreen?style=for-the-badge)](https://github.com/elsamagic9/incident_voice)
+[![Frontend Tests](https://img.shields.io/badge/Frontend%20Tests-21%2F21%20Passed-brightgreen?style=for-the-badge)](https://github.com/elsamagic9/incident_voice)
+[![Docker](https://img.shields.io/badge/Docker-Production%20Ready-2496ED?style=for-the-badge&logo=docker&logoColor=white)](docs/DEPLOYMENT_GUIDE.md)
+[![License](https://img.shields.io/badge/License-MIT-emerald?style=for-the-badge)](LICENSE)
+
+**Autonomous Voice SRE Incident Commander — Flagship Submission for the [AssemblyAI Voice Agent Hackathon](https://lablab.ai/ai-hackathons/assemblyai-voice-agent-hackathon).**
+
+</div>
 
 Ask about service health, inspect logs, follow runbooks, approve a remediation, and generate an incident review. The dashboard clearly distinguishes simulation, live infrastructure, provider-generated reports, and local fallback summaries.
 

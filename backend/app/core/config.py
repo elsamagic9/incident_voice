@@ -16,7 +16,7 @@ class Settings(BaseSettings):
     llm_provider: Literal["gemini", "openai", "mock"] = "gemini"
     gemini_model: str = "gemini-3.5-flash"
     openai_model: str = "gpt-4o-mini"
-    lemur_model: str = "anthropic/claude-sonnet-4-20250514"
+    lemur_model: str = "anthropic/claude-3-5-sonnet"
     voice_agent_voice: str = "marius"
     gemini_api_key: str = ""
     openai_api_key: str = ""
