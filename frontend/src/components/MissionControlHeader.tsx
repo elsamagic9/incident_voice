@@ -72,12 +72,12 @@ export const MissionControlHeader: React.FC<Props> = ({
       <div className="header-inner">
         {/* Brand */}
         <div className="flex items-center gap-3 md:gap-5 min-w-0">
-          <a href="#workspace" className="brand" aria-label="IncidentVoice workspace">
+          <a href="#workspace" className="brand" aria-label="J.A.R.V.I.S. workspace">
             <span className="brand-symbol">
               <AudioLines size={22} className="brand-audio-icon" />
             </span>
             <span className="brand-text">
-              Incident<span className="brand-light">Voice</span>
+              J.A.R.V.I.S.<span className="brand-light"> SRE</span>
               <small className="brand-tagline">VOICE INCIDENT WORKSPACE</small>
             </span>
           </a>

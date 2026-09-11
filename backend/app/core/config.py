@@ -26,7 +26,7 @@ class Settings(BaseSettings):
     tts_provider: Literal["edge-tts", "browser"] = "edge-tts"
     cartesia_api_key: str = ""
     elevenlabs_api_key: str = ""
-    edge_tts_voice: str = "en-US-ChristopherNeural"
+    edge_tts_voice: str = "en-GB-RyanNeural"
 
     # Server Settings
     host: str = "0.0.0.0"

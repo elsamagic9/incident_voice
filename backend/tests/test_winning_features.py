@@ -163,10 +163,9 @@ async def test_assemblyai_llm_gateway_conversational_turn(monkeypatch):
 @pytest.mark.asyncio
 async def test_sre_conversational_intelligence():
     spoken, tools = await agent_orchestrator._deterministic_agent_reasoning('Who are you?')
-    assert 'IncidentVoice' in spoken
+    assert 'J.A.R.V.I.S.' in spoken
     assert len(tools) == 0
 
     spoken, tools = await agent_orchestrator._deterministic_agent_reasoning('What is the safety barrier?')
     assert 'safety barrier' in spoken.lower() or '30-second' in spoken.lower()
     assert len(tools) == 0
-
