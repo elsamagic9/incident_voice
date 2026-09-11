@@ -14,7 +14,7 @@ def operator_session(monkeypatch):
     for name, value in {
         'infrastructure_mode': 'simulation', 'operator_access_token': '',
         'assemblyai_api_key': '', 'gemini_api_key': '', 'openai_api_key': '',
-        'llm_provider': 'mock', 'tts_provider': 'browser', 'cookie_secure': False,
+        'default_engine': 'custom_stt_v3', 'llm_provider': 'mock', 'tts_provider': 'browser', 'cookie_secure': False,
     }.items():
         monkeypatch.setattr(settings, name, value)
     monkeypatch.setattr(lemur_service, 'api_key', '')

@@ -23,10 +23,10 @@ export const ServiceHealthMatrix: React.FC<Props> = ({
       <div className="service-list-caption">
         <span className="font-mono text-slate-400">
           {infrastructureMode === 'simulation'
-            ? '● Simulated Cluster Telemetry Stream'
-            : '● Live Infrastructure Node Telemetry'}
+            ? 'Simulated service health'
+            : 'Configured infrastructure health'}
         </span>
-        <span className="text-slate-500 font-mono text-[10px]">Sorted by Incident Severity</span>
+        <span className="text-slate-500 font-mono text-[10px]">Severity first</span>
       </div>
 
       {!nodes.length && (

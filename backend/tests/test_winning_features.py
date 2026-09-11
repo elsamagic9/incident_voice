@@ -57,13 +57,19 @@ async def test_openai_function_call_roundtrip(monkeypatch):
 async def test_lemur_report_preserves_empty_tickets_and_local_measurements(monkeypatch):
     monkeypatch.setattr(lemur_service, 'api_key', 'test-key')
     generated = {'title': 'Evidence review', 'executive_summary': 'Investigating', 'root_cause': 'Unverified', 'preventive_action_items': [], 'action_items_tickets': [], 'mttd_minutes': 1.2}
-    response = httpx.Response(200, request=httpx.Request('POST', 'https://example.test'), json={'response': '```json\n' + json.dumps(generated) + '\n```'})
-    monkeypatch.setattr(httpx.AsyncClient, 'post', AsyncMock(return_value=response))
+    response = httpx.Response(200, request=httpx.Request('POST', 'https://example.test'), json={'choices': [{'message': {'content': '```json\n' + json.dumps(generated) + '\n```'}}]})
+    post = AsyncMock(return_value=response)
+    monkeypatch.setattr(httpx.AsyncClient, 'post', post)
     report = await lemur_service.generate_postmortem([], [])
-    assert report['source'] == 'assemblyai_lemur'
+    assert report['source'] == 'assemblyai_llm_gateway'
     assert report['action_items_tickets'] == []
     assert report['mttd_minutes'] is None
     assert report['generation_warning'] is None
+    assert post.call_args.args[0] == 'https://llm-gateway.assemblyai.com/v1/chat/completions'
+    payload = post.call_args.kwargs['json']
+    assert payload['model'] == settings.llm_gateway_model
+    assert [message['role'] for message in payload['messages']] == ['system', 'user']
+    assert 'final_model' not in payload
     assert '0 draft action items' in report['slack_briefing']
 
 

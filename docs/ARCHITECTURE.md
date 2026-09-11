@@ -19,7 +19,7 @@ FastAPI: origin checks + per-session lock + command queue
                                       │
                          Recorded timeline + session audit chain
                                       │
-                         LeMUR report or labeled local summary
+                         LLM Gateway report or labeled local summary
 ```
 
 ## Session and authorization model
@@ -57,7 +57,7 @@ Protocol reference: [AssemblyAI events](https://www.assemblyai.com/docs/voice-ag
 
 The database, Redis, and ingress runbooks have read steps, approval-gated mutation steps, and verification gates. Failed gates keep the current step active. Completing a runbook is not a claim that all cluster services recovered.
 
-LeMUR requests return structured summaries and draft follow-up items. Failures produce a `local_events` summary with a warning and no invented tickets. MTTD stays unknown; MTTR is derived only from a recorded resolution timestamp.
+LLM Gateway requests return structured summaries and draft follow-up items. Failures produce a `local_events` summary with a warning and no invented tickets. MTTD stays unknown; MTTR is derived only from a recorded resolution timestamp.
 
 The blackbox records received microphone PCM and managed-engine output. It does not capture custom-engine TTS/browser speech. Text-only sessions export no audio. Recording is bounded to ten minutes and replay mixes the captured tracks into a 24kHz mono WAV.
 
@@ -66,3 +66,13 @@ The SHA-256 chain detects changes to its current in-memory contents. It is not i
 ## Verification boundaries
 
 Automated checks cover contracts, fallback behavior, role/approval boundaries, browser interactions, and isolated infrastructure adapters. Live provider connectivity, microphone acoustics, latency, cloud deployment, and real recovery require separate rehearsal with valid credentials and infrastructure.
+
+## Evidence-first investigation
+
+`investigate_incident` captures a session-local snapshot of service health, alerts, and logs. Each observation has an ID and infrastructure source. AssemblyAI LLM Gateway can generate hypotheses that reference these IDs. The backend validates the response shape, configured service names, reference existence, and whether each hypothesis cites an observation from its named service. Reference validation does not establish that the model's reasoning is correct; the UI labels hypotheses as unverified.
+
+The baseline is copied and preserved. A fingerprint of the session's current service state marks old briefs stale after observed changes. This is freshness relative to the application's observations, not a background infrastructure monitor.
+
+Each approved mutation records a before/after receipt. `verify_recovery` refreshes configured live health where available and checks all services; unknown or degraded states do not pass. Previous verification results also become stale after observed state changes. Simulation mutations remain scoped to the approved target.
+
+`GET /api/incident/handoff` exports the incident, captured evidence, hypotheses, and recovery checks from the authenticated browser session. It uses the same cookie and origin boundary as other API routes and disables caching. No external service receives the handoff unless the operator shares it.

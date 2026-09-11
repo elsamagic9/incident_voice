@@ -1,5 +1,5 @@
 from typing import Optional
-import asyncio
+from app.core.async_work import session_work
 from fastapi import APIRouter, Body, Request, HTTPException
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
@@ -101,17 +101,17 @@ async def get_active_runbook():
 @router.post("/runbooks/start")
 async def start_runbook_endpoint(payload: dict = Body(...)):
     runbook_id = payload.get("runbook_id") or "runbook-pg-pool"
-    spoken, session_data = await asyncio.to_thread(runbook_engine.start_runbook, runbook_id)
+    spoken, session_data = await session_work(runbook_engine.start_runbook, runbook_id)
     return {"spoken": spoken, "session": session_data}
 
 @router.post("/runbooks/advance")
 async def advance_runbook_endpoint():
-    spoken, session_data, tools = await asyncio.to_thread(runbook_engine.advance_runbook)
+    spoken, session_data, tools = await session_work(runbook_engine.advance_runbook)
     return {"spoken": spoken, "session": session_data, "executed_tools": tools}
 
 @router.post("/runbooks/abort")
 async def abort_runbook_endpoint():
-    spoken, session_data = await asyncio.to_thread(runbook_engine.abort_runbook)
+    spoken, session_data = await session_work(runbook_engine.abort_runbook)
     return {"spoken": spoken, "session": session_data}
 
 # =============================================================================
@@ -130,7 +130,7 @@ async def get_incident_blackbox():
 
 @router.get("/incident/blackbox/audio.wav")
 async def get_blackbox_audio():
-    wav_bytes = await __import__("asyncio").to_thread(blackbox_service.generate_wav)
+    wav_bytes = await session_work(blackbox_service.generate_wav)
     if not wav_bytes:
         raise HTTPException(404, "No microphone or agent audio has been recorded in this session")
     return Response(
@@ -143,7 +143,7 @@ async def get_blackbox_audio():
     )
 
 # =============================================================================
-# Enterprise 9.5/10: SOC-2 Audit Ledger & Kubernetes Endpoints
+# Session Audit Ledger & Kubernetes Endpoints
 # =============================================================================
 @router.get("/audit-ledger")
 async def get_audit_ledger():
@@ -153,7 +153,7 @@ async def get_audit_ledger():
 @router.get("/k8s/cluster")
 async def get_k8s_cluster():
     from app.tools.k8s_adapter import k8s_adapter
-    return await asyncio.to_thread(lambda: {
+    return await session_work(lambda: {
         "status": k8s_adapter.get_cluster_status(), "pods": k8s_adapter.list_pods()
     })
 
@@ -169,3 +169,10 @@ async def get_security_status():
         "authentication": "operator_token" if current_session.get().authenticated else "isolated_demo",
         "hardware_mfa": False
     }
+
+
+@router.get("/incident/handoff")
+async def export_handoff():
+    from app.services.investigation import investigation_service
+    return JSONResponse(investigation_service.export_handoff(), headers={
+        'Content-Disposition': 'attachment; filename="incident-handoff.json"', 'Cache-Control': 'no-store'})

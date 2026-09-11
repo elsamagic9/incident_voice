@@ -130,3 +130,16 @@ def test_recording_marker_ids_stay_unique_after_history_limit():
     for _ in range(1005): blackbox_service.record_event('user', 'Check health')
     assert len(blackbox_service.events) == 1000
     assert len({event['id'] for event in blackbox_service.events}) == 1000
+
+
+@pytest.mark.asyncio
+async def test_typed_managed_command_is_explicit_in_reply_instructions():
+    session = AssemblyAIVoiceAgentSession('test-key')
+    session.ws = AsyncMock()
+    session.is_connected = True
+    await session.send_text_command('Check cluster health')
+    messages = [json.loads(call.args[0]) for call in session.ws.send.call_args_list]
+    assert messages[0]['type'] == 'conversation.message'
+    assert messages[0]['content'] == 'Check cluster health'
+    assert messages[1]['type'] == 'reply.create'
+    assert 'Check cluster health' in messages[1]['instructions']

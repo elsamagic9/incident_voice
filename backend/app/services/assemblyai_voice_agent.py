@@ -139,6 +139,7 @@ class AssemblyAIVoiceAgentSession:
         try:
             while self.pending_calls and self._running:
                 call = self.pending_calls.pop(0)
+                await self._call_cb(self.on_agent_state, 'thinking')
                 await self._handle_tool_call(call, self.reply_epoch)
         except asyncio.CancelledError: raise
         except Exception:
@@ -164,7 +165,15 @@ class AssemblyAIVoiceAgentSession:
         if self.ws and self._running:
             await asyncio.wait_for(self.reply_done.wait(), 15)
             if epoch is None or epoch == self.reply_epoch:
-                await self._send_tool_result(data['call_id'], result)
+                # The UI receives the complete evidence via on_tool_executed. Keep the
+                # voice context small so the agent briefs the operator, not the JSON.
+                voice_result = result
+                if name == 'investigate_incident' and not result.get('error'):
+                    voice_result = {key: result.get(key) for key in ('summary', 'analysis_source', 'source', 'warning')}
+                    voice_result['leading_hypothesis'] = (result.get('hypotheses') or [None])[0]
+                    voice_result['evidence_displayed'] = len(result.get('evidence', []))
+                    voice_result['root_cause_verified'] = False
+                await self._send_tool_result(data['call_id'], voice_result)
 
     async def _send_tool_result(self, call_id, result):
         await self.ws.send(json.dumps({'type': 'tool.result', 'call_id': call_id, 'result': json.dumps(result), 'is_error': bool(result.get('error'))}))
@@ -176,7 +185,9 @@ class AssemblyAIVoiceAgentSession:
     async def send_text_command(self, text):
         if self.ws and self.is_connected:
             await self.ws.send(json.dumps({'type': 'conversation.message', 'role': 'user', 'content': text}))
-            await self.ws.send(json.dumps({'type': 'reply.create'}))
+            await self.ws.send(json.dumps({'type': 'reply.create', 'instructions':
+                'Respond to this latest operator request using the registered tools and approval rules. '
+                'Keep the spoken response under 50 words. Operator request: ' + json.dumps(text)}))
 
     async def notify_approval(self, text):
         if self.ws and self.is_connected:

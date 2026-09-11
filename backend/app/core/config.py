@@ -10,13 +10,13 @@ class Settings(BaseSettings):
         "wss://streaming.assemblyai.com/v3/ws?sample_rate=16000&speech_model=universal-3-5-pro&format_turns=true&end_of_turn_confidence_threshold=0.6"
     )
     assemblyai_voice_agent_url: str = "wss://agents.assemblyai.com/v1/ws"
-    default_engine: str = "custom_stt_v3"  # "voice_agent_api" (Path 1) or "custom_stt_v3" (Path 2)
+    default_engine: str = "voice_agent_api"  # "voice_agent_api" (Path 1) or "custom_stt_v3" (Path 2)
 
     # LLM Settings
     llm_provider: Literal["gemini", "openai", "mock"] = "gemini"
     gemini_model: str = "gemini-3.5-flash"
     openai_model: str = "gpt-4o-mini"
-    lemur_model: str = "anthropic/claude-3-5-sonnet"
+    llm_gateway_model: str = "qwen3.5-4b-32k-fast"
     voice_agent_voice: str = "george"
     gemini_api_key: str = ""
     openai_api_key: str = ""

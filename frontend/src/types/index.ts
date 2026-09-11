@@ -217,3 +217,37 @@ export interface AuditManifest {
   failure_details?: string | null;
   blocks: AuditLedgerEntry[];
 }
+
+export interface ServiceSnapshot {
+  status: string;
+  replicas: number;
+  error_rate_pct: number | null;
+  latency_p99_ms: number | null;
+}
+export interface RecoveryCheck {
+  id: string;
+  action: string;
+  service: string;
+  captured_at: number;
+  source: string;
+  outcome: 'failed' | 'unverified' | 'healthy' | 'needs_attention';
+  before: ServiceSnapshot | null;
+  after: ServiceSnapshot | null;
+  message: string;
+}
+export interface InvestigationBrief {
+  id: string;
+  incident_id: string;
+  captured_at: number;
+  source: string;
+  analysis_source: 'local_evidence' | 'assemblyai_llm_gateway';
+  summary: string;
+  stale: boolean;
+  warning: string | null;
+  gaps: string[];
+  baseline: Record<string, ServiceSnapshot>;
+  current: Record<string, ServiceSnapshot>;
+  evidence: { id: string; service: string; kind: string; detail: string; source: string }[];
+  hypotheses: { title: string; service: string; reason: string; evidence_ids: string[]; next_check: string }[];
+  verification?: { recovery_verified: boolean; remaining_services: string[]; message: string; stale: boolean; captured_at: number } | null;
+}

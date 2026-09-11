@@ -30,7 +30,7 @@ it('keeps empty local results empty instead of inventing tickets', async () => {
   metadata();
   render(<PostMortemViewer data={report} onClose={() => {}} />);
   expect(screen.getByText(/Source: Local event summary/)).toBeTruthy();
-  expect(screen.queryByText('Powered by AssemblyAI LeMUR')).toBeNull();
+  expect(screen.queryByText('Powered by AssemblyAI LLM Gateway')).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: 'Draft tickets (0)' }));
   expect(screen.getByText('No ticket drafts were generated.')).toBeTruthy();
   expect(screen.queryByText(/PgBouncer/)).toBeNull();

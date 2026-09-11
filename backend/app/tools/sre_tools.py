@@ -94,6 +94,8 @@ def execute_remediation(action, service_name, count=4):
         return {'success': False, 'error': 'Service not found'}
     if isinstance(count, bool) or not isinstance(count, int) or not 1 <= count <= 50:
         return {'success': False, 'error': 'Replica count must be an integer from 1 to 50'}
+    from app.services.investigation import investigation_service, service_snapshot
+    before = service_snapshot(cluster_state.services[service_name]) if service_name in cluster_state.services else None
     started = time.perf_counter()
     if settings.infrastructure_mode == 'simulation':
         if action == 'cordon_node':
@@ -110,6 +112,9 @@ def execute_remediation(action, service_name, count=4):
             result = infra_bridge.restart_container(target)
             if result.get('success'):
                 verification = infra_bridge.inspect_container(target)
+                svc = cluster_state.services[service_name]
+                svc.metrics_available = False
+                svc.status = 'healthy' if verification.get('health_verified') else ('critical' if verification.get('success') and (not verification.get('running') or verification.get('health') == 'unhealthy') else 'unknown')
                 result['health_verified'] = verification.get('health_verified', False)
                 result['message'] = 'Container restarted. ' + ('Health check passed.' if result['health_verified'] else 'Application recovery is not yet verified.')
     else:
@@ -117,6 +122,10 @@ def execute_remediation(action, service_name, count=4):
             result = k8s_adapter.rollout_restart_deployment(service_name)
         elif action == 'cordon_node': result = k8s_adapter.cordon_node(service_name)
         else: result = {'success': False, 'error': 'This action has no configured live Kubernetes implementation'}
+    if settings.infrastructure_mode == 'kubernetes' and result.get('health_verified') and service_name in cluster_state.services:
+        cluster_state.services[service_name].status = 'healthy'
+        cluster_state.services[service_name].metrics_available = False
+    result['verification'] = investigation_service.record_receipt(action, service_name, before, result)
     result['duration_ms'] = round((time.perf_counter() - started) * 1000, 1)
     result['source'] = settings.infrastructure_mode
     if settings.infrastructure_mode != 'simulation':
@@ -184,7 +193,22 @@ def k8s_rollout_restart(deployment_name, namespace='production'):
 def k8s_cordon_node(node_name):
     return execute_remediation('cordon_node', node_name)
 
-SRE_TOOL_MAP = {name: globals()[name] for name in ['get_cluster_health', 'inspect_service_logs', 'query_telemetry',
+def verify_recovery():
+    from app.services.investigation import investigation_service, service_snapshot, fingerprint
+    refresh_live_services()
+    current = {sid: service_snapshot(svc) for sid, svc in cluster_state.services.items()}
+    remaining = [sid for sid, svc in current.items() if svc['status'] != 'healthy']
+    baseline = investigation_service.brief['baseline'] if investigation_service.brief else None
+    result = {'source': settings.infrastructure_mode, 'current': current, 'baseline': baseline,
+            'captured_at': time.time(),
+            'remaining_services': remaining, 'recovery_verified': not remaining,
+            'message': ('All configured services are healthy in the simulation.' if settings.infrastructure_mode == 'simulation' else 'All configured service health checks passed.') if not remaining else
+                       f'Recovery is incomplete: {", ".join(remaining)} still need attention or health verification.'}
+    investigation_service.verification = {**result, 'fingerprint': fingerprint()}
+    return result
+
+
+SRE_TOOL_MAP = {name: globals()[name] for name in ['verify_recovery', 'get_cluster_health', 'inspect_service_logs', 'query_telemetry',
     'execute_remediation', 'query_host_telemetry', 'trigger_pager', 'generate_postmortem', 'list_runbooks',
     'start_runbook', 'advance_runbook', 'abort_runbook', 'get_service_topology', 'k8s_rollout_restart', 'k8s_list_pods']}
 SRE_TOOL_MAP['cordon_node'] = k8s_cordon_node

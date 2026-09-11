@@ -89,8 +89,8 @@ export const PostMortemViewer: React.FC<Props> = ({ data, onClose }) => {
   const markers = blackbox?.markers ?? [];
   const activeMarker = [...markers].reverse().find(marker => marker.time_seconds <= currentTime);
   const audioAvailable = !!blackbox?.audio_url && duration > 0;
-  const isLemur = data.source === 'assemblyai_lemur';
-  const source = isLemur ? 'AssemblyAI LeMUR' : 'Local event summary';
+  const isGateway = data.source === 'assemblyai_llm_gateway';
+  const source = isGateway ? 'AssemblyAI LLM Gateway' : 'Local event summary';
 
   const tabs: [Tab, string, React.ReactNode][] = [
     ['pir', 'Incident report', <FileText key="1" size={13} />],
@@ -214,10 +214,10 @@ export const PostMortemViewer: React.FC<Props> = ({ data, onClose }) => {
               <h2>
                 Incident review · {data.incident_id}
               </h2>
-              {isLemur && (
+              {isGateway && (
                 <span className="flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-mono bg-gradient-to-r from-purple-950/80 to-cyan-950/80 border border-purple-500/40 text-purple-300">
                   <Sparkles size={11} className="text-purple-400 animate-pulse" />
-                  AssemblyAI LeMUR
+                  AssemblyAI LLM Gateway
                 </span>
               )}
             </div>

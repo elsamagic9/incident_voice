@@ -1,67 +1,45 @@
-# 🎬 IncidentVoice: 3-Minute Video Demo Script
-## Lablab.ai AssemblyAI Voice Agent Hackathon Presentation
+# IncidentVoice — three-minute demonstration
 
----
+**Story:** An action can succeed while an incident remains unresolved. IncidentVoice connects voice triage to inspectable evidence and recovery checks.
 
-### [0:00 - 0:35] Part 1: The Problem & The Dual-Engine Advantage
-- **Visual:** Show the Mission Control HUD (`http://localhost:5173`) with live audio oscilloscope and microservices matrix. Point out the top header:
-  - **Engine Switcher:** `[⚡ AssemblyAI Voice Agent API | 🛠️ Custom STT v3 + LeMUR]`
-  - **Docker Live Badge:** Showing active local containers.
-- **Voiceover:**
-  > *"When mission-critical production breaks at 3 AM, every second of downtime costs thousands of dollars. Engineers are overwhelmed, frantically typing 20 `kubectl` commands while on high-stress incident calls.  
-  > Meet **IncidentVoice**: the Autonomous Voice SRE Commander built for the AssemblyAI Voice Agent Hackathon.  
-  > IncidentVoice implements **both hackathon paths**: Path 1 via AssemblyAI's brand-new end-to-end Voice Agent API, and Path 2 via Universal-3.5 Pro Streaming STT with custom LLM tool calling and LeMUR post-incident intelligence."*
+Use a clean simulation session with manual approval enabled and a working AssemblyAI key. The suggested timings below are a recording plan, not verified hackathon duration requirements.
 
----
+## 0:00–0:20 · State the problem
 
-### [0:35 - 1:15] Part 2: Real-Time Voice Triage & Diagnostics
-- **Action:** Click the microphone or speak directly into your headset.
-- **Spoken Command:**
-  > *"IncidentVoice, what alerts are firing right now?"*
-- **Agent Action:**
-  - Real-time words appear in the HUD as you speak.
-  - Agent answers via voice: *"Warning: Critical alerts active on Payment Processing Core. Error rate is at 42% due to Postgres database connection starvation."*
-- **Spoken Command:**
-  > *"Inspect the logs for payment service and find the root cause."*
-- **Agent Action:**
-  - `inspect_service_logs` tool executes against the **real Docker daemon** (`docker logs incident-payment`).
-  - Tool card expands on screen showing live error traces.
-  - Agent replies: *"Live Docker container logs show connection acquired timeout after 5000 milliseconds. 120 worker threads are blocked on Postgres."*
+Show the incident workspace and **Demo simulation** label.
 
----
+> “During an outage, asking an AI to restart a service is the easy part. Knowing why to act, keeping control, and checking whether it helped are harder. IncidentVoice puts those steps in one voice workspace.”
 
-### [1:15 - 1:55] Part 3: Two-Phase SRE Safety Guardrail & Real Container Restart
-- **Spoken Command:**
-  > *"Restart the payment service pods and scale replicas to 5."*
-- **Two-Phase Guardrail in Action:**
-  - The agent **does not blindly execute** destructive commands. It stages the action!
-  - UI displays an amber **Approval Required** banner with an Authorize button.
-  - Agent speaks: *"Remediation staged: Rolling restart of payment-service pods. Blast radius: Low. Say 'Confirm' or click Authorize to execute."*
-- **Spoken Confirmation (or Click Authorize):**
-  > *"Confirm"*
-- **Agent Action:**
-  - Agent executes a **real Docker container restart** (`docker restart incident-payment` in 1.16s).
-  - Health matrix flips from RED to GREEN. Latency and error rates drop to nominal.
-  - Agent speaks: *"Rolling restart executed for payment-service. Real Docker container successfully restarted in 1.16 seconds."*
+## 0:20–1:05 · Investigate by voice
 
----
+Start voice using the managed AssemblyAI engine. Say **“Investigate the incident.”**
 
-### [1:55 - 2:35] Part 4: AssemblyAI LeMUR Multi-Artifact Post-Mortem
-- **Spoken Command:**
-  > *"The incident is mitigated. Wrap up the outage and generate the post-mortem report."*
-- **Agent Action:**
-  - Agent calls AssemblyAI LeMUR with the complete session transcript and timeline.
-  - Post-Mortem modal pops up with 3 interactive tabs:
-    1. **Tab 1: Post-Incident Review (PIR):** Complete executive summary, RCA, and chronological timeline in GitHub Markdown.
-    2. **Tab 2: Jira / Linear Action Items:** Structured JSON tickets with P0/P1 priorities and assigned teams.
-    3. **Tab 3: Slack Outage Broadcast:** 3-bullet executive briefing ready to copy-paste into Slack `#incidents`.
-  - Click "Export .md" to download the file.
+Show the incident brief. Point out its provider source, captured observations, and unverified hypotheses. Click one evidence reference and read the actual log or health observation. Use the model's real output rather than a predetermined root-cause claim.
 
----
+> “The explanation is attached to evidence we can inspect. A citation does not prove the diagnosis; these are hypotheses to verify.”
 
-### [2:35 - 3:00] Part 5: Dual-Engine Switcher & Closing
-- **Action:** Click the engine toggle in the header:
-  `[⚡ AssemblyAI Voice Agent API (All-in-One)]`
-- **Voiceover:**
-  > *"With a single click, engineers can switch to AssemblyAI's all-in-one Voice Agent API for single-connection simplicity, or utilize our custom pipeline for enterprise safety guardrails and LeMUR intelligence.  
-  > IncidentVoice combines AssemblyAI's voice infrastructure with real operational DevOps engineering. Built with pride for the AssemblyAI Voice Agent Hackathon on lablab.ai."*
+## 1:05–1:50 · Keep the operator in control
+
+Say **“Restart payment-service.”** Show the exact target and 30-second expiry. Say **“Do not confirm.”** Show that no action executed.
+
+Request the restart again, then approve it explicitly. Explain that the infrastructure change in this demo is simulated.
+
+## 1:50–2:25 · Show the distinguishing moment
+
+The target recovery card compares its status, error rate, and latency before and after the action. Say **“Verify recovery.”**
+
+> “Payment-service improved, but the database and other services still need attention. IncidentVoice does not mistake a successful restart for a resolved incident.”
+
+Point out that the old brief is marked stale. A refreshed investigation should be based on the new observations.
+
+## 2:25–2:50 · Hand off the evidence
+
+Export the handoff JSON or generate an incident review. Show the actual source, recorded actions, and draft follow-up work. If provider generation falls back locally, state that clearly.
+
+> “The next engineer receives the evidence, the working hypotheses, and the recovery checks—not just a chat transcript.”
+
+## 2:50–3:00 · Close with scope
+
+> “This is a prototype for on-call engineers. Next we want to evaluate investigation time and recovery-verification accuracy with real operators.”
+
+Show verified repository and deployment links. No measured business savings, WER, or MTTR improvements are claimed by this script. Check the final submission form for its current media requirements.

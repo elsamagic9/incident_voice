@@ -37,9 +37,9 @@ class ClusterState:
             status="INVESTIGATING",
             started_at=time.time() - 420,  # 7 mins ago
             timeline_events=[
-                {"timestamp": time.time() - 420, "type": "alert", "text": "PagerDuty fired: HighErrorRate (>15%) on payment-gateway"},
-                {"timestamp": time.time() - 360, "type": "system", "text": "Kubernetes HPA triggered: Pod autoscaling throttled by cluster resource quota"},
-                {"timestamp": time.time() - 300, "type": "voice", "text": "Incident Commander initiated live voice triage war-room"}
+                {"timestamp": time.time() - 420, "type": "alert", "text": "Simulation: HighErrorRate (>15%) on payment-gateway"},
+                {"timestamp": time.time() - 360, "type": "system", "text": "Simulation: pod autoscaling throttled by cluster resource quota"},
+                {"timestamp": time.time() - 300, "type": "system", "text": "Simulation: checkout traffic is affected by service and dependency failures"}
             ],
             mitigations_applied=[]
         )
@@ -171,22 +171,21 @@ class ClusterState:
             result["details"] = f"Scaled {service_name} from {old_count} to {new_count} replicas."
 
         elif action == "flush_cache":
-            if "redis-cache" in self.services:
-                rc = self.services["redis-cache"]
-                rc.status = "healthy"
-                rc.memory_percent = 35.0
-                rc.error_rate_pct = 0.01
-                rc.active_alerts = []
-                rc.recent_logs.append("[INFO] Redis cache flushed and connection pool recycled.")
+            if service_name != "redis-cache":
+                return {"success": False, "error": "Cache flush is supported only for redis-cache."}
+            svc.status = "healthy"
+            svc.memory_percent = 35.0
+            svc.error_rate_pct = 0.01
+            svc.active_alerts = []
+            svc.recent_logs.append("[INFO] Redis cache flushed and connection pool recycled.")
             result["details"] = "Redis cache memory flushed and stale distributed locks released."
 
         elif action == "enable_circuit_breaker":
-            if "ingress-gateway" in self.services:
-                ig = self.services["ingress-gateway"]
-                ig.status = "healthy"
-                ig.error_rate_pct = 1.0
-                ig.recent_logs.append(f"[INFO] Circuit breaker tripped for {service_name}. Synthetic fallback enabled.")
-            result["details"] = f"Circuit breaker engaged for {service_name} with graceful fallback."
+            svc.status = "degraded"
+            svc.error_rate_pct = min(svc.error_rate_pct, 1.0)
+            svc.active_alerts = ["CircuitBreakerActive"]
+            svc.recent_logs.append(f"[INFO] Circuit breaker tripped for {service_name}. Synthetic fallback enabled.")
+            result["details"] = f"Circuit breaker engaged for {service_name}; fallback is serving while recovery remains incomplete."
 
         elif action == "rollback_release":
             svc.status = "healthy"
@@ -197,12 +196,10 @@ class ClusterState:
             result["details"] = f"Deployment for {service_name} rolled back to previous stable release."
 
         elif action == "failover_traffic":
-            # Global failover affects all services positively
-            for s in self.services.values():
-                if s.status == "critical":
-                    s.status = "degraded"
-                    s.error_rate_pct = max(1.0, s.error_rate_pct / 3)
-            result["details"] = "Global DNS traffic shifted to failover region. Active region services stabilizing."
+            if svc.status == "critical":
+                svc.status = "degraded"
+                svc.error_rate_pct = max(1.0, svc.error_rate_pct / 3)
+            result["details"] = f"Simulated traffic for {service_name} shifted to a failover region; verify recovery separately."
 
         else:
             return {"success": False, "error": f"Unsupported action: {action}"}
@@ -222,6 +219,9 @@ class ClusterState:
 
     def simulate_scenario(self, scenario: str) -> Dict[str, Any]:
         """Simulates SRE chaos scenarios for war-room demonstrations."""
+        from app.core.config import settings
+        if settings.infrastructure_mode != "simulation":
+            return {"success": False, "error": "Fault scenarios require simulation mode"}
         scenario = scenario.lower().strip()
         if "crash" in scenario or "payment" in scenario:
             if "payment-service" in self.services:

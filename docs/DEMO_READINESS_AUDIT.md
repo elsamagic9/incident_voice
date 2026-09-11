@@ -1,4 +1,4 @@
-# Demo-readiness audit — September 10, 2026
+# Demo-readiness audit — September 11, 2026
 
 This records confirmed findings, repairs, and remaining validation work. It is not a guarantee of zero defects or a hackathon outcome.
 
@@ -27,15 +27,38 @@ This records confirmed findings, repairs, and remaining validation work. It is n
 | Packaging/CI | Missing backend README/build package selection; CI referenced nonexistent Poetry workflow | Backend package metadata and direct dependency install; refreshed uv lock |
 | Submission claims | Checklist asserted certification, old test counts, unverified public URLs, latency and prize split | Grounded checklist/architecture with explicit pending live checks |
 
-## Blocking external validation
+## September 11 follow-up repairs
 
-At audit time, local AssemblyAI, Gemini, and OpenAI values were placeholders. No real voice/LLM/report API request can be validated with them. Add actual keys locally or in hosting-provider secrets, then test:
+- Prevent a disconnected HTTP/WebSocket request from releasing its session lock before a blocking infrastructure operation has finished, including repeated cancellation.
+- Read current playback state in the voice callback, preserving one WebSocket across playback and engine changes.
+- Replace the retired LeMUR endpoint with AssemblyAI LLM Gateway. The local key denied Claude Sonnet access; `qwen3.5-4b-32k-fast` succeeded and is now the configurable default.
+- Keep the command composer visible on a 1366×768 laptop; compact the welcome state and improve service label contrast.
+- Revise stale pitch/video claims and export an eight-slide presentation PDF.
+- Add regression coverage for cancellation, playback interruption, stale audio, MP3 decode failures, PCM format, and hook cleanup.
 
-1. Live microphone → final AssemblyAI transcript → audible reply.
-2. Managed-engine tool call → operator approval → actual result, including barge-in.
-3. Custom LLM function-call loop with the selected model.
-4. LeMUR report with `source=assemblyai_lemur`, not a local fallback.
-5. The deployed HTTPS URL in a clean browser session.
+API references: [LLM Gateway request format](https://www.assemblyai.com/docs/llm-gateway/quickstart), [available models](https://www.assemblyai.com/docs/llm-gateway/available-models), and [LeMUR retirement notice](https://www.assemblyai.com/changelog?trk=public_post-text).
+
+## Evidence-first investigation follow-up
+
+- Capture an immutable incident baseline and numbered service-health/log observations; generate hypotheses through AssemblyAI LLM Gateway. Validate service IDs and cited references, deduplicate citations, and retain an explicit local fallback.
+- Keep the overview grounded in captured facts; generated causal reasoning stays in unverified hypothesis cards. Diagnostic buttons inspect logs without executing generated commands.
+- Mark stale briefs and verification results when observed service state changes. Export session-scoped evidence and recovery receipts through an authenticated handoff endpoint.
+- Compare each action’s target before/after state and separately verify all configured services. Simulator actions now change only their approved target. Unknown live metrics remain unknown.
+- Add a responsive Brief panel with evidence navigation, recovery comparisons, freshness notices, and handoff download.
+- Strengthen managed tool selection and send compact investigation context for spoken replies while retaining full evidence in the UI. Typed requests are explicit in the provider’s documented reply instructions. The remediation tool description now states that it stages a request and requires a real tool result before announcing approval readiness.
+
+## External validation
+
+On September 11, actual AssemblyAI calls with the configured local key confirmed:
+
+- Streaming v3 connected and transcribed generated speech as “Check Cluster Health.” This exercised real transcription with synthetic input, not the user's physical microphone.
+- Managed Voice Agent API connected, called `get_cluster_health` with simulated incident data, and returned PCM audio.
+- LLM Gateway generated reports with `source=assemblyai_llm_gateway` using `qwen3.5-4b-32k-fast`. Report failures remain explicitly labeled local fallbacks.
+- A real-browser flow generated an AssemblyAI brief containing 17 observations and 3 hypotheses, focused a citation, approved a simulated restart, verified three remaining affected services, and exported the handoff without browser errors.
+- A managed voice session invoked `investigate_incident`, returned a Gateway-generated brief, and produced a final spoken transcript with PCM audio. Longer replies exceeded earlier validation deadlines; compact voice tool results reduced the payload. Gateway errors remain visible local fallbacks. Repeated live checks also hit HTTP 429; the app now explains the provider rate limit while retaining all captured evidence. Avoid rapid repeated analysis during the demo.
+- The real-backend smoke harness passed session setup, both voice handshakes, simulated approvals, runbooks, untrusted-origin rejection, duplicate-connection rejection, and input bounds.
+
+Still unverified: the user's microphone/speaker quality and acoustic echo handling; an actual microphone-driven managed approval; a separately configured custom Gemini/OpenAI key; live Docker/Kubernetes actions; and the public HTTPS deployment.
 
 ## Remaining prototype limitations and competitive risks
 
@@ -45,12 +68,14 @@ At audit time, local AssemblyAI, Gemini, and OpenAI values were placeholders. No
 - Built-in runbooks are most complete in simulation. Live application telemetry and unsupported mutations may stop their verification/action steps.
 - The custom pipeline buffers full speech synthesis; low-latency claims require actual measurement. No project-specific WER benchmark has been measured.
 - Authentication uses one shared operator token, not individual identities or hardware MFA. The audit chain is session-memory evidence, not compliance certification.
-- Older pitch/video files still need editorial review before publication. Use `SUBMISSION_CHECKLIST.md` for current supported claims.
+- Revised pitch/video materials require a final editorial review against the actual recorded demo. Use `SUBMISSION_CHECKLIST.md` for the remaining submission work.
 - A complete live demo, an actual deployed URL, and final submitted media have not been verified by the offline checks.
 
 ## Reproduce checks
 
-Latest verification in this pass: **82 backend tests passed**, **21 frontend tests passed**, production frontend build passed, real-backend Chrome smoke passed, both Compose configurations validated, `uv lock --check` passed, and the backend wheel built successfully. `npm audit --omit=dev` reported zero known production dependency vulnerabilities. The backend test run also reports two upstream TestClient deprecation warnings.
+Latest checks: **104 backend tests passed**, **32 frontend tests passed**, production frontend build passed, and real-backend Chrome smoke passed at desktop, laptop, phone, landscape, and tablet sizes. The composer is explicitly checked inside the laptop viewport. Production Compose validation and the eight-page PDF export passed. Backend tests report two upstream TestClient deprecation warnings.
+
+The earlier repair pass also recorded a Docker image build/smoke test, backend wheel build, `uv lock --check`, and zero known production npm dependency vulnerabilities. Those earlier results are not a fresh image build of the September 11 changes.
 
 From `backend/`: `.venv/bin/pytest tests/ -q`.
 
@@ -58,4 +83,6 @@ From `frontend/`: `npm run build`, `npm test`, and `npm run test:browser` (requi
 
 From the repository root: `docker compose -f docker-compose.prod.yml config --quiet` and `git diff --check`.
 
-The browser smoke test uses a real, isolated simulation backend and tests commands, approvals, reports, settings, and layouts at desktop/phone/landscape/tablet sizes. Browser speech is stubbed; it is not a microphone-quality test.
+The browser smoke test uses a real, isolated simulation backend and tests cited investigation briefs, evidence focus, handoff downloads, target recovery, remaining impact, commands, approvals, reports, settings, and layouts at desktop/phone/landscape/tablet sizes. Browser speech is stubbed; it is not a microphone-quality test.
+
+Live provider checks: `backend/.venv/bin/python scripts/validate_providers.py`. Managed investigation/approval/recovery validation: `backend/.venv/bin/python scripts/validate_voice_investigation.py`. This uses provider quota and isolated simulated data; it never operates host infrastructure.

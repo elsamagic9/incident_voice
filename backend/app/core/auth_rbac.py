@@ -12,7 +12,7 @@ class SRERole(str, Enum):
     READ_ONLY_OBSERVER = 'READ_ONLY_OBSERVER'
 
 READ_ACTIONS = {'get_cluster_health', 'check_cluster_health', 'inspect_service_logs', 'query_telemetry',
-                'query_metrics', 'query_host_telemetry', 'list_runbooks', 'get_service_topology', 'k8s_list_pods', 'generate_postmortem'}
+                'query_metrics', 'query_host_telemetry', 'list_runbooks', 'get_service_topology', 'k8s_list_pods', 'generate_postmortem', 'investigate_incident', 'verify_recovery'}
 MUTATIONS = {'restart_pod', 'flush_cache', 'rollback_release', 'scale_replicas', 'enable_circuit_breaker',
              'failover_traffic', 'cordon_node', 'k8s_rollout_restart'}
 ROLE_PERMISSIONS = {

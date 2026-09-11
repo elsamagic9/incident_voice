@@ -1,4 +1,5 @@
 import asyncio
+from app.core.async_work import session_work
 import base64
 import json
 import secrets
@@ -14,6 +15,7 @@ from app.services.orchestrator import agent_orchestrator
 from app.services.tts_service import tts_service
 from app.services.blackbox_service import blackbox_service
 from app.services.runbook_engine import runbook_engine
+from app.services.investigation import investigation_service
 from app.tools.sre_tools import refresh_live_services, get_service_topology
 
 router = APIRouter()
@@ -43,11 +45,12 @@ async def voice_agent_websocket(websocket: WebSocket):
             await websocket.send_json(payload)
 
     async def sync():
-        await asyncio.to_thread(refresh_live_services)
+        await session_work(refresh_live_services)
         await send({'type': 'cluster_sync', 'incident': cluster_state.incident.model_dump(),
             'services': {k: v.model_dump() for k, v in cluster_state.services.items()},
             'topology': get_service_topology(), 'active_runbook': runbook_engine.get_active_session(),
             'rbac_role': security_manager.current_role.value, 'session_operator': security_manager.session_operator,
+            'investigation': investigation_service.view(), 'recovery_checks': investigation_service.receipts,
             'infrastructure_mode': settings.infrastructure_mode, 'autopilot_enabled': agent_orchestrator.autopilot_mode})
         await send({'type': 'staging_sync', 'staged_action': agent_orchestrator.staged_action})
 
@@ -181,7 +184,7 @@ async def voice_agent_websocket(websocket: WebSocket):
                 if isinstance(provider, AssemblyAIVoiceAgentSession) and voice_ready: await provider.notify_approval(spoken)
         elif kind == 'authorize_remediation':
             await interrupt()
-            spoken, tools = await asyncio.to_thread(agent_orchestrator.confirm_staged_remediation, data.get('action_id'))
+            spoken, tools = await session_work(agent_orchestrator.confirm_staged_remediation, data.get('action_id'))
             agent_orchestrator.record_turn('agent', spoken)
             await emit_response(spoken, tools, started=started)
             if isinstance(provider, AssemblyAIVoiceAgentSession): await provider.notify_approval(spoken)
@@ -220,7 +223,7 @@ async def voice_agent_websocket(websocket: WebSocket):
             await provider_status('idle' if settings.assemblyai_api_key else 'unconfigured')
         elif kind in {'start_runbook', 'advance_runbook', 'abort_runbook'}:
             await interrupt()
-            result = await asyncio.to_thread(agent_orchestrator.dispatch_tool, kind, {'runbook_id': data.get('runbook_id', 'runbook-pg-pool')} if kind == 'start_runbook' else {})
+            result = await session_work(agent_orchestrator.dispatch_tool, kind, {'runbook_id': data.get('runbook_id', 'runbook-pg-pool')} if kind == 'start_runbook' else {})
             spoken = result.get('spoken') or result.get('error', 'Runbook updated.')
             agent_orchestrator.record_turn('agent', spoken)
             await emit_response(spoken, result.get('executed_tools', []))
@@ -306,4 +309,5 @@ async def voice_agent_websocket(websocket: WebSocket):
             if provider: await provider.close()
             await asyncio.gather(maintenance, consumer, *( [tts_task] if tts_task else []), return_exceptions=True)
         finally:
+            agent_orchestrator.cancel_staged_remediation()
             if session.connection_id == connection_id: session.connection_id = None

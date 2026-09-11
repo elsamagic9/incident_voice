@@ -1,6 +1,7 @@
 // Local Chrome + the real backend in isolated simulation mode. Run after npm run build.
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
+import { mkdir } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright-core';
 
@@ -13,6 +14,7 @@ const server = spawn(`${backend}.venv/bin/python`, ['-m', 'uvicorn', 'main:app',
 });
 let browser;
 try {
+  await mkdir('/tmp/opencode', { recursive: true });
   let ready = false;
   for (let attempt = 0; attempt < 100; attempt++) {
     if (server.exitCode !== null) throw new Error('Test backend exited before startup');
@@ -34,7 +36,18 @@ try {
   await page.getByRole('button', { name: 'Inspect payment-service logs' }).waitFor();
   assert(await page.getByRole('heading', { name: /Less typing/ }).isVisible());
   await page.screenshot({ path: '/tmp/opencode/incident-voice-desktop.png', fullPage: true });
+  await page.setViewportSize({ width: 1366, height: 768 });
+  assert(await page.getByLabel('SRE command').evaluate(element => element.getBoundingClientRect().bottom <= innerHeight), 'Composer must be visible on a laptop without page scrolling');
+  await page.setViewportSize({ width: 1440, height: 1050 });
 
+  await page.getByRole('button', { name: 'Investigate incident', exact: true }).click();
+  await page.getByRole('heading', { name: 'What the evidence suggests' }).waitFor();
+  await page.getByRole('button', { name: 'View evidence E01' }).first().click();
+  assert(await page.evaluate(() => document.activeElement?.id === 'evidence-E01'));
+  const downloadEvent = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Export handoff' }).click();
+  const handoff = await downloadEvent;
+  assert(handoff.suggestedFilename() === 'incident-handoff.json');
   await page.getByLabel('SRE command').fill('Check cluster health');
   await page.getByRole('button', { name: 'Send command', exact: true }).click();
   await page.locator('.tool-card').first().waitFor();
@@ -42,6 +55,11 @@ try {
   await page.getByRole('button', { name: 'Send command', exact: true }).click();
   await page.getByRole('button', { name: 'Approve action' }).click();
   await page.getByRole('button', { name: 'Approve action' }).waitFor({ state: 'detached' });
+  await page.getByRole('heading', { name: 'The target is healthy.' }).waitFor();
+  await page.getByRole('button', { name: 'Check the whole cluster' }).click();
+  await page.getByRole('heading', { name: 'Recovery is still in progress' }).waitFor();
+  await page.getByRole('heading', { name: /Less typing/ }).scrollIntoViewIfNeeded();
+  await page.screenshot({ path: '/tmp/opencode/incident-voice-brief.png', fullPage: true });
 
   await page.getByRole('button', { name: 'Create incident report' }).click();
   await page.getByRole('dialog', { name: 'Incident review' }).waitFor();
@@ -68,7 +86,7 @@ try {
     }
   }
   assert.deepEqual(errors, [], 'Browser runtime errors');
-  console.log('Browser smoke passed: real session, commands, approval, report reopen/Escape, demo scenarios, settings, and responsive overflow checks.');
+  console.log('Browser smoke passed: real session, cited brief, handoff export, commands, approval, recovery checks, report reopen/Escape, demo scenarios, settings, and responsive overflow checks.');
   console.log('Screenshots: /tmp/opencode/incident-voice-desktop.png and /tmp/opencode/incident-voice-mobile.png');
 } finally {
   if (browser) await browser.close();

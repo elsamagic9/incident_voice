@@ -4,9 +4,8 @@
 
 /* ==========================================================================
    IncidentVoice Master Design System
-   Stack: React 19 + Tailwind CSS + Lucide Icons + Google Fonts
+   Stack: React 18 + Tailwind CSS + Lucide Icons + Google Fonts
    Theme: Dark OLED / Cyber Glassmorphism / SRE Mission Control HUD
-   WCAG: AAA (7:1+ contrast on all telemetry, alerts, and interactive states)
    ========================================================================== */
 
 :root {

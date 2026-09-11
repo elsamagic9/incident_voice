@@ -1,6 +1,8 @@
 """JSON Schemas for LLM Tool Calling (OpenAI / Gemini function format)"""
 
 SRE_TOOL_DEFINITIONS = [
+    {"type": "function", "function": {"name": "investigate_incident", "description": "Investigate the incident across services, capture health and log evidence, and return ranked unverified hypotheses citing observation IDs. Read-only; does not execute remediation.", "parameters": {"type": "object", "properties": {}, "required": []}}},
+    {"type": "function", "function": {"name": "verify_recovery", "description": "Check current service health and compare it with the captured investigation baseline. Report remaining degraded or unverified services; do not equate successful execution with recovery.", "parameters": {"type": "object", "properties": {}, "required": []}}},
     {
         "type": "function",
         "function": {
@@ -55,7 +57,7 @@ SRE_TOOL_DEFINITIONS = [
         "type": "function",
         "function": {
             "name": "execute_remediation",
-            "description": "Execute an operational remediation action on a service to resolve an active outage.",
+            "description": "Request a remediation on a service. Despite its name, this tool STAGES the exact action for operator approval; it does not execute a new mutation without approval. You MUST call this tool to stage a restart, scaling change, cache flush, rollback, circuit breaker, or failover. A spoken statement alone does not stage anything. Return and inspect its status before telling the operator an action is staged.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -114,7 +116,7 @@ SRE_TOOL_DEFINITIONS = [
         "type": "function",
         "function": {
             "name": "generate_postmortem",
-            "description": "Synthesize a comprehensive multi-artifact Post-Mortem Report (Formal Markdown PIR, Jira Tickets JSON, and Slack Outage Briefing) via AssemblyAI LeMUR.",
+            "description": "Synthesize a comprehensive multi-artifact Post-Mortem Report (Formal Markdown PIR, Jira Tickets JSON, and Slack Outage Briefing) via AssemblyAI LLM Gateway.",
             "parameters": {
                 "type": "object",
                 "properties": {},

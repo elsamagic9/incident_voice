@@ -4,6 +4,7 @@ Validates live WebSockets, AssemblyAI Voice Engines, SRE tool dispatch,
 two-phase safety gates, chaos simulation, runbook workflows, and adversarial bounds.
 """
 import asyncio
+import os
 import json
 import secrets
 import time
@@ -40,20 +41,21 @@ async def run_full_engineering_validation():
         assert data.get("status") == "healthy", f"Unhealthy status: {data}"
         assert data.get("assemblyai_configured") is True, "AssemblyAI API key not detected by backend!"
         print(f"  ✓ Backend Healthy: {data.get('service')} v{data.get('version')}")
-        print("  ✓ AssemblyAI API Key: Confirmed Active & Loaded")
+        print("  ✓ AssemblyAI API Key: Configured (validity checked by the live handshakes below)")
         results.append(("HTTP Health & Key Detection", "PASS", "200 OK with assemblyai_configured=True"))
 
     # Obtain an authenticated session cookie via /api/session
     async with httpx.AsyncClient(timeout=10) as client:
         session_resp = await client.post(
             f"{BACKEND_HTTP}/api/session",
-            json={"access_token": ""},
+            json={"access_token": os.environ.get("OPERATOR_ACCESS_TOKEN", "")},
             headers={"Origin": "http://localhost:5173"}
         )
         assert session_resp.status_code == 200, f"Session creation failed: {session_resp.status_code}"
         cookies = session_resp.cookies
         cookie_header = "; ".join([f"{k}={v}" for k, v in cookies.items()])
         session_data = session_resp.json()
+        assert session_data.get("infrastructure_mode") == "simulation", "Run this harness only against isolated simulation; it stages and approves demo actions"
         print(f"  ✓ Session Initialized: operator='{session_data.get('operator')}', role='{session_data.get('role')}'")
 
     headers = {
@@ -84,7 +86,7 @@ async def run_full_engineering_validation():
         # Send dummy 16kHz PCM audio chunk (64ms frame: 1024 samples = 2048 bytes)
         silence_pcm = bytes(2048)
         await ws.send(silence_pcm)
-        print("  ✓ Ingested 16kHz linear PCM frame into AudioWorklet buffer pipeline")
+        print("  ✓ Sent a silent 16kHz PCM frame to the backend (no microphone tested)")
 
         # Stop Voice
         await ws.send(json.dumps({"type": "stop_voice"}))
@@ -114,7 +116,7 @@ async def run_full_engineering_validation():
         # Ingest 24kHz frame
         pcm24k = bytes(3072)
         await ws.send(pcm24k)
-        print("  ✓ Ingested 24kHz linear PCM frame into Voice Agent audio pipeline")
+        print("  ✓ Sent a silent 24kHz PCM frame to the managed voice backend")
 
         await ws.send(json.dumps({"type": "stop_voice"}))
         await recv_matching(ws, "provider_status", lambda m: m.get("state") == "idle")
@@ -164,7 +166,7 @@ async def run_full_engineering_validation():
         assert exec_tool.get("tool_name") == "execute_remediation"
         assert exec_tool["result"]["success"] is True
         await recv_matching(ws, "command_complete")
-        print(f"  ✓ Remediation Executed: payment-service restarted and restored to healthy!")
+        print(f"  ✓ Remediation Executed: simulated payment-service restart applied!")
 
         # Step 4d: Post-Mortem Report Generation
         print("  -> Dispatching: 'Generate postmortem'...")
@@ -222,11 +224,15 @@ async def run_full_engineering_validation():
     async with websockets.connect(f"{BACKEND_WS}", additional_headers=headers) as ws_primary:
         await recv_matching(ws_primary, "cluster_sync")
         print("  -> Primary connection established. Attempting duplicate connection from second tab...")
+        rejected = False
         try:
             async with websockets.connect(f"{BACKEND_WS}", additional_headers=headers) as ws_second:
                 await ws_second.recv()
         except (websockets.exceptions.InvalidStatus, websockets.exceptions.ConnectionClosed) as e:
-            print(f"  ✓ Second tab rejected during handshake: {e} (Session Hijacking Blocked)")
+            rejected = True
+            print(f"  ✓ Second tab rejected during handshake: {e} (Duplicate Connection Rejected)")
+
+        assert rejected, "Duplicate session connection was accepted"
 
     # Test 6b: Untrusted Origin Rejection
     print("  -> Testing Untrusted Origin Rejection (e.g. evil-site.com)...")
@@ -267,7 +273,7 @@ async def run_full_engineering_validation():
         if status != "PASS": all_passed = False
     print("=" * 70)
     assert all_passed, "One or more validation checks failed!"
-    print("🎯 ALL 6 VECTORS OF REAL-ENGINEER VALIDATION PASSED FLAWLESSLY!\n")
+    print("🎯 Configured smoke checks passed. Microphone quality and public deployment remain separate checks.\n")
 
 if __name__ == "__main__":
     asyncio.run(run_full_engineering_validation())

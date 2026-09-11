@@ -22,12 +22,13 @@ interface Props {
 }
 
 const welcomePrompts = [
-  { title: 'Identify Active Outage', text: 'What alerts are firing right now?', icon: '01' },
+  { title: 'Build an incident brief', text: 'Investigate the incident', icon: '01' },
   { title: 'Investigate Container Logs', text: 'Inspect logs for payment-service', icon: '02' },
   { title: 'Execute Runbook Workflow', text: 'Start runbook postgres connection pool', icon: '03' },
 ];
 
 const quickChips = [
+  'Investigate the incident',
   'What alerts are firing?',
   'Inspect payment-service',
   'Show dependency topology',
@@ -62,7 +63,7 @@ export const LiveTranscriptHUD: React.FC<Props> = ({
   const label = speaking
     ? 'Speaking response...'
     : awaiting
-    ? 'Awaiting Voice Authorization...'
+    ? 'Awaiting approval'
     : thinking
     ? 'Reasoning over telemetry...'
     : connecting
@@ -139,10 +140,10 @@ export const LiveTranscriptHUD: React.FC<Props> = ({
               <AudioLines size={34} strokeWidth={1.75} />
             </div>
             <p className="eyebrow">READY FOR TRIAGE</p>
-            <h3>How can I assist your incident?</h3>
+            <h3>Where should we investigate?</h3>
             <p className="muted">
-              Speak naturally via microphone or pick an action below.
-              The agent investigates live metrics and stages changes for your voice authorization.
+              Ask about alerts, inspect a service, or start a runbook.
+              Review the evidence before approving a change.
             </p>
 
             <div className="starter-prompts">
@@ -274,7 +275,7 @@ export const LiveTranscriptHUD: React.FC<Props> = ({
           )}
 
           <span className="voice-hint">
-            {isRecording ? '● MIC ACTIVE · 16KHZ PCM' : '○ MIC STANDBY'}
+            {isRecording ? '● MIC ACTIVE' : '○ MIC STANDBY'}
           </span>
         </div>
 
@@ -319,10 +320,10 @@ export const LiveTranscriptHUD: React.FC<Props> = ({
         </form>
 
         <div className="composer-caption">
-          <span><CornerDownLeft size={11} />Press Return to execute</span>
+          <span><CornerDownLeft size={11} />Enter to send</span>
           <span className="text-amber-400/90 font-medium">
             <ShieldAlert size={11} className="inline mr-1" />
-            Destructive actions require explicit voice confirmation
+            Changes require your approval
           </span>
         </div>
       </div>

@@ -78,7 +78,7 @@ export const MissionControlHeader: React.FC<Props> = ({
             </span>
             <span className="brand-text">
               Incident<span className="brand-light">Voice</span>
-              <small className="brand-tagline">AUTONOMOUS SRE COMMANDER</small>
+              <small className="brand-tagline">VOICE INCIDENT WORKSPACE</small>
             </span>
           </a>
 
@@ -115,10 +115,10 @@ export const MissionControlHeader: React.FC<Props> = ({
                 ? 'bg-gradient-to-r from-indigo-600 to-cyan-600 text-white shadow-[0_0_15px_rgba(99,102,241,0.4)] border border-indigo-400/40'
                 : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
             }`}
-            title="AssemblyAI Streaming v3 STT + Custom Tool Orchestrator + LeMUR"
+            title="AssemblyAI Streaming v3 STT + Custom Tool Orchestrator + LLM Gateway"
           >
             <Cpu size={13} className={activeEngine === 'custom_stt_v3' ? 'text-cyan-300' : 'text-slate-400'} />
-            <span>Path 2: Streaming v3 + LeMUR</span>
+            <span>Path 2: Streaming v3 + LLM Gateway</span>
           </button>
         </div>
 
@@ -195,7 +195,7 @@ export const MissionControlHeader: React.FC<Props> = ({
               className="mt-2 w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-xs text-slate-200 focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500"
             >
               <option value="voice_agent_api">Path 1 · AssemblyAI Voice Agent API (Managed WebRTC/WS)</option>
-              <option value="custom_stt_v3">Path 2 · Streaming v3 STT + Custom Tool Calling + LeMUR</option>
+              <option value="custom_stt_v3">Path 2 · Streaming v3 STT + Custom Tool Calling + LLM Gateway</option>
             </select>
             <p className="field-help mt-2">
               Switching engines cleanly migrates session state and re-initializes audio streaming without losing incident context.

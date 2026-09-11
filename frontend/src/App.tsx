@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Activity, ArrowUpRight, FileText, FlaskConical, Layers, LockKeyhole, Network, RefreshCw, ShieldAlert, Wrench, X } from 'lucide-react';
+import { Activity, ArrowUpRight, Sparkles, FileText, FlaskConical, Layers, LockKeyhole, Network, RefreshCw, ShieldAlert, Wrench, X } from 'lucide-react';
 import { useVoiceStream } from './hooks/useVoiceStream';
 import { MissionControlHeader } from './components/MissionControlHeader';
 import { LiveTranscriptHUD } from './components/LiveTranscriptHUD';
@@ -10,6 +10,7 @@ import { IncidentTimeline } from './components/IncidentTimeline';
 import { ToolExecutionCard } from './components/ToolExecutionCard';
 import { PostMortemViewer } from './components/PostMortemViewer';
 import { LiveTelemetryDrawer } from './components/LiveTelemetryDrawer';
+import { InvestigationPanel } from './components/InvestigationPanel';
 import { ApprovalCard } from './components/ApprovalCard';
 
 class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean }> {
@@ -21,7 +22,7 @@ class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { has
   }
 }
 
-type View = 'services' | 'runbooks' | 'topology' | 'demo';
+type View = 'brief' | 'services' | 'runbooks' | 'topology' | 'demo';
 
 function Workspace() {
   const voice = useVoiceStream();
@@ -41,17 +42,21 @@ function Workspace() {
   useEffect(() => {
     if (voice.activeRunbook?.status === 'active') setView('runbooks');
   }, [voice.activeRunbook?.runbook_id, voice.activeRunbook?.status]);
+  useEffect(() => { if (voice.investigation?.id) setView('brief'); }, [voice.investigation?.id]);
+  const latestCheckId = voice.recoveryChecks?.[voice.recoveryChecks.length - 1]?.id;
+  useEffect(() => { if (latestCheckId) setView('brief'); }, [latestCheckId]);
   useEffect(() => { if (voice.postMortem) setReportOpen(true); }, [voice.postMortem]);
   useEffect(() => { if (!simulation && view === 'demo') setView('services'); }, [simulation, view]);
 
   const tabs = [
+    { id: 'brief' as const, label: 'Brief', icon: Sparkles },
     { id: 'services' as const, label: 'Services', icon: Layers },
     { id: 'runbooks' as const, label: 'Runbooks', icon: Wrench },
     { id: 'topology' as const, label: 'Topology', icon: Network },
     ...(simulation ? [{ id: 'demo' as const, label: 'Demo lab', icon: FlaskConical }] : []),
   ];
   const report = () => voice.postMortem ? setReportOpen(true) : voice.sendTextCommand('Generate postmortem');
-  const reasoning = voice.activeEngine === 'voice_agent_api' ? 'AssemblyAI managed' : voice.reasoningProvider === 'scripted' ? 'Scripted fallback' : voice.reasoningProvider;
+  const reasoning = voice.activeEngine === 'voice_agent_api' && voice.providerState === 'ready' ? 'AssemblyAI managed' : voice.reasoningProvider === 'scripted' ? 'Scripted fallback' : voice.reasoningProvider;
 
   return <div className="workspace-shell">
     <a className="skip-link" href="#workspace">Skip to workspace</a>
@@ -68,11 +73,12 @@ function Workspace() {
           <h1>Less typing. Faster triage<span className="accent-text">.</span></h1>
           <p className="muted">Investigate together. Make the next move with confidence.</p>
         </div>
-        <button className="button button-primary" disabled={disabled || !voice.incident} onClick={report}>
+        <div className="heading-actions"><button className="button button-primary" disabled={disabled || !voice.incident} onClick={() => { setView('brief'); voice.sendTextCommand('Investigate the incident'); }}><Sparkles size={16} />Investigate incident</button>
+        <button className="button button-secondary" disabled={disabled || !voice.incident} onClick={report}>
           <FileText size={16} />
           {voice.postMortem ? 'Open incident report' : 'Create incident report'}
           <ArrowUpRight size={15} />
-        </button>
+        </button></div>
       </section>
 
       {voice.loginRequired && <section className="login-card" aria-labelledby="login-heading">
@@ -119,7 +125,7 @@ function Workspace() {
           <strong className={healthy === services.length && services.length > 0 ? 'text-emerald-400' : 'text-slate-200'}>
             {services.length ? <>{healthy}<small> / {services.length}</small></> : '—'}
           </strong>
-          <span>Telemetry probes passing</span>
+          <span>{simulation ? 'Healthy in this scenario' : 'Verified healthy services'}</span>
         </div>
       </section>
 
@@ -137,6 +143,7 @@ function Workspace() {
             <div className="panel-heading"><div><p className="eyebrow">INVESTIGATE</p><h2>The bigger picture</h2></div><span className="small-count">{services.length} services</span></div>
             <nav className="view-tabs" aria-label="Investigation views">{tabs.map(({ id, label, icon: Icon }) => <button key={id} aria-pressed={view === id} onClick={() => setView(id)}><Icon size={15} />{label}{id === 'runbooks' && voice.activeRunbook?.status === 'active' && <span className="status-dot dot-good" />}</button>)}</nav>
             <div className="diagnostic-content">
+              {view === 'brief' && <InvestigationPanel brief={voice.investigation ?? null} checks={voice.recoveryChecks ?? []} disabled={disabled} onCommand={voice.sendTextCommand} />}
               {view === 'services' && <ServiceHealthMatrix services={voice.services} infrastructureMode={voice.operator?.infrastructure_mode} onInspect={service => voice.sendTextCommand(`Inspect logs for ${service}`)} disabled={disabled} />}
               {view === 'topology' && <ServiceDependencyGraph topology={voice.topology} onSendAction={disabled ? undefined : voice.sendTextCommand} />}
               {view === 'runbooks' && <RunbookWorkflowHUD activeRunbook={voice.activeRunbook} disabled={disabled || !!voice.stagedRemediation} onStartRunbook={voice.startRunbook} onAdvanceRunbook={voice.advanceRunbook} onAbortRunbook={voice.abortRunbook} />}
@@ -156,13 +163,13 @@ function Workspace() {
       <footer className="workspace-footer" aria-label="Connection and provider status">
         <span>
           <span className={`status-dot ${voice.isConnected ? 'dot-good' : ''}`} />
-          {voice.isConnected ? 'Mission Control Live' : 'Reconnecting to cluster...'}
+          {voice.isConnected ? 'Server connected' : 'Server disconnected'}
           <button className="text-button" onClick={voice.reconnect}><RefreshCw size={12} />Reconnect</button>
         </span>
         <span className="flex items-center gap-2 flex-wrap">
           <span>Reasoning: <strong className="text-slate-200">{reasoning}</strong></span>
           <span className="summary-separator">/</span>
-          <span className="text-cyan-400 font-medium">Powered by AssemblyAI Universal-3 Pro & LeMUR</span>
+          <span className="text-cyan-400 font-medium">Voice & reports by AssemblyAI</span>
         </span>
       </footer>
     </main>

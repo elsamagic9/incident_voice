@@ -1,87 +1,91 @@
 # IncidentVoice
 
-<div align="center">
+**A voice incident copilot that shows its work.**
 
-![IncidentVoice mission control](banner.jpg)
+Investigate a service outage by voice, inspect the evidence behind the agent's hypotheses, approve an exact action, and check whether recovery actually followed.
 
-[![AssemblyAI](https://img.shields.io/badge/AssemblyAI-Voice%20Agent%20API%20%26%20Streaming%20v3-7C3AED?style=for-the-badge&logo=assemblyai&logoColor=white)](https://www.assemblyai.com)
-[![LeMUR](https://img.shields.io/badge/AssemblyAI-LeMUR%20Post--Mortem%20Synthesis-blue?style=for-the-badge)](https://www.assemblyai.com/docs/lemur)
-[![Tests](https://img.shields.io/badge/Backend%20Tests-82%2F82%20Passed-brightgreen?style=for-the-badge)](https://github.com/elsamagic9/incident_voice)
-[![Frontend Tests](https://img.shields.io/badge/Frontend%20Tests-21%2F21%20Passed-brightgreen?style=for-the-badge)](https://github.com/elsamagic9/incident_voice)
-[![Docker](https://img.shields.io/badge/Docker-Production%20Ready-2496ED?style=for-the-badge&logo=docker&logoColor=white)](docs/DEPLOYMENT_GUIDE.md)
-[![License](https://img.shields.io/badge/License-MIT-emerald?style=for-the-badge)](LICENSE)
+Built for the [AssemblyAI Voice Agent Hackathon](https://lablab.ai/ai-hackathons/assemblyai-voice-agent-hackathon).
 
-**Autonomous Voice SRE Incident Commander — Flagship Submission for the [AssemblyAI Voice Agent Hackathon](https://lablab.ai/ai-hackathons/assemblyai-voice-agent-hackathon).**
+![IncidentVoice evidence workspace](docs/assets/incident-brief.png)
 
-</div>
+## The demo to try
 
-Ask about service health, inspect logs, follow runbooks, approve a remediation, and generate an incident review. The dashboard clearly distinguishes simulation, live infrastructure, provider-generated reports, and local fallback summaries.
+1. Start voice. The default engine uses AssemblyAI's managed Voice Agent API.
+2. Say **“Investigate the incident.”** The brief captures service health and logs and generates ranked hypotheses through AssemblyAI LLM Gateway.
+3. Open an **E01-style evidence reference** to inspect the observation behind a hypothesis. These are hypotheses to verify, not asserted root causes.
+4. Say **“Restart payment-service.”** Review the target and expiry. Say **“Do not confirm”** to cancel, or explicitly approve the matching action.
+5. Review the **before/after recovery card**, then ask **“Verify recovery.”** A healthy target does not mean the entire incident is resolved.
+6. Export the **incident handoff**, or generate a sourced incident review with draft follow-up work.
 
-## Capabilities
+The default incident uses clearly labeled simulated infrastructure. Voice processing and AI analysis use real AssemblyAI services when configured. No cloud infrastructure is needed to reproduce the demonstration.
 
-- **Custom voice engine:** AssemblyAI Streaming v3 transcription → Gemini or OpenAI tool calling → Edge TTS, with browser speech fallback.
-- **Managed voice engine:** AssemblyAI Voice Agent API integration with shared SRE tools and approval policy.
-- **Explicit approvals:** Mutations are staged for 30 seconds. Confirm verbally, speak the displayed phonetic challenge, or approve the matching action card. Cancellation, expiry, and disconnect discard pending approvals.
-- **Demo simulation:** Isolated service state, fault scenarios, dependency topology, and optional automatic approval of requested demo actions.
-- **Live Docker:** Inspect configured containers and request real restarts. Recovery is reported only when a container health check verifies it.
-- **Kubernetes adapter:** Inspect pods, request deployment rollout restarts, and cordon nodes using the configured host `kubectl` context.
-- **Runbooks:** Database, Redis, and ingress investigation workflows with approval and telemetry gates. Completing a runbook does not imply that every cluster service recovered.
-- **Incident review:** AssemblyAI LeMUR can generate an evidence-based summary and draft follow-up tickets. Failures return labeled local summaries. Nothing is posted to Slack, Jira, Linear, or PagerDuty automatically.
-- **Captured audio:** Session PCM recording, waveform, and transcript markers. Custom-engine TTS and browser speech are not recorded; managed-engine audio is captured. Text-only sessions have no audio replay.
-- **Audit chain:** Session-local, in-memory SHA-256 tamper-evident records. No hardware MFA or compliance certification is claimed.
+## What makes the workflow useful
 
-## Quick start
+- **An inspectable investigation:** Captured observations have source labels, timestamps, and IDs. Generated hypotheses must reference existing observations and configured services; invalid output falls back to local evidence.
+- **Evidence freshness:** The original baseline remains intact. Changes to service state mark the brief and previous recovery checks as stale.
+- **Approval before execution:** All mutations pass through a shared backend policy. Approvals bind an action ID and target, expire after 30 seconds, and cannot be replayed. Negative confirmation cancels.
+- **Recovery checks:** Each executed action gets a before/after receipt. Cluster verification distinguishes healthy, degraded, failed, and unknown states without inventing unavailable metrics.
+- **A usable handoff:** Download the incident, evidence, hypotheses, and recovery checks as JSON. Reports can include drafted follow-up work; nothing is sent to Slack, Jira, or PagerDuty automatically.
 
-Prerequisites: Python 3.11+, Node.js 20+, npm. Docker is optional.
+## AssemblyAI architecture
+
+| Path | Pipeline |
+|---|---|
+| Managed voice — default | AssemblyAI Voice Agent API · 24 kHz PCM · shared incident tools and approvals |
+| Custom voice | AssemblyAI Streaming v3 · 16 kHz PCM · configured Gemini/OpenAI reasoning or labeled scripted commands · Edge TTS/browser speech |
+| Investigation and reports | AssemblyAI LLM Gateway · `qwen3.5-4b-32k-fast` by default · validated report structure and evidence references |
+
+The managed path, incident briefs, and reports work with one AssemblyAI key. A separate Gemini/OpenAI key is optional for the custom path. Set `LLM_GATEWAY_MODEL` to another model your account can access.
+
+## Run locally
+
+Requires Python 3.11+, Node.js 20+, and npm. Docker is optional.
 
 ```bash
 cp .env.example .env
-# Set ASSEMBLYAI_API_KEY in .env for voice and LeMUR.
-# Set GEMINI_API_KEY or OPENAI_API_KEY and select LLM_PROVIDER for custom reasoning.
+# Set ASSEMBLYAI_API_KEY in .env; never commit it.
 ./scripts/dev.sh
 ```
 
-- Dashboard: http://localhost:5173
-- API docs: http://localhost:8000/docs
+Open [the dashboard](http://localhost:5173). For a single-server preview, run `npm run build` inside `frontend`, then start `uvicorn main:app` inside `backend`; the dashboard is served on port 8000.
 
-The startup script installs backend and frontend dependencies. Start with `INFRASTRUCTURE_MODE=simulation`. Without an LLM key, custom reasoning uses labeled scripted commands. Without AssemblyAI, text commands still work, but microphone transcription and LeMUR generation are unavailable.
+Start with `INFRASTRUCTURE_MODE=simulation`. Without provider credentials, typed commands and evidence capture still work with clearly labeled local fallbacks. Microphone capture needs HTTPS or localhost and browser permission.
 
-When `OPERATOR_ACCESS_TOKEN` is set, enter that token in the dashboard's sign-in form. Live modes require it. Microphone capture requires HTTPS or localhost and browser permission.
+Use an operator token for an exposed demo. When `OPERATOR_ACCESS_TOKEN` is configured, enter it in the dashboard. Live modes require a token.
 
-## Demo flow
+## Live infrastructure scope
 
-1. Verify the dashboard shows the intended infrastructure mode and provider status.
-2. Enable the microphone and wait for voice to become ready.
-3. Ask **“What alerts are firing right now?”**, then **“Inspect logs for payment-service.”**
-4. Ask **“Restart payment-service.”** Confirm the staged action and inspect the execution result.
-5. In simulation, use the Chaos Simulator buttons to inject faults or restore demo health.
-6. Start the PostgreSQL runbook after injecting database starvation; its first diagnostic step should allow you to reach remediation.
-7. Ask **“Generate postmortem.”** Check whether its source is AssemblyAI LeMUR or a local summary; tickets remain drafts.
+Docker supports inspection and restarts of explicitly configured containers. Kubernetes supports configured pod inspection, rollout restarts, and node cordoning through the host's `kubectl` context. The image includes Docker CLI; Kubernetes requires an additional configured CLI and credentials. Unsupported live actions return failures instead of silently simulating success.
 
-## Verification
+Recorded audio contains received microphone PCM and managed-agent PCM. Custom TTS and browser speech are not included in replay. Empty recordings remain unavailable.
+
+## Verify
 
 ```bash
-# From backend/ after installing requirements:
-.venv/bin/pytest tests/ -q
+# backend/
+.venv/bin/python -m pytest -q
 
-# From frontend/:
-npm ci
+# frontend/
 npm run build
 npm test
+npm run test:browser
+
+# repository root; uses provider quota, simulation only
+backend/.venv/bin/python scripts/validate_providers.py
+backend/.venv/bin/python scripts/validate_voice_investigation.py
 ```
 
-Backend tests use isolated sessions, simulation, and mocked external calls. They cover authentication, approvals, session isolation, runbooks, scenario transitions, audio exports, tool calling, provider failures, and report provenance. Frontend tests cover startup, login/error visibility, scenario dispatch, unavailable telemetry, and honest artifact/audio states.
+The browser suite covers incident briefs, evidence navigation, handoff export, approvals, recovery checks, reports, and responsive layouts. Offline tests do not prove microphone quality or public deployment readiness. See the [validation record](docs/DEMO_READINESS_AUDIT.md) for observed results and limits.
 
-Passing automated tests does not verify live AssemblyAI credentials or microphone/browser compatibility. Rehearse one real voice session and inspect the provider status before recording the submission.
+## Submission materials
 
-## Deployment
+- [Short demonstration script](docs/DEMO_SCRIPT.md)
+- [Presentation PDF](docs/IncidentVoice-Presentation.pdf), [source](docs/PITCH_DECK.md), and [slides](docs/pitch_deck.html)
+- [Submission checklist](docs/SUBMISSION_CHECKLIST.md)
+- [Architecture](docs/ARCHITECTURE.md) and [deployment guide](docs/DEPLOYMENT_GUIDE.md)
 
-See [Deployment guide](docs/DEPLOYMENT_GUIDE.md). The unified Docker image serves the React 18 dashboard and FastAPI backend on port 8000 and includes the Docker CLI. Cloud demos should use simulation; live Docker requires access to a host daemon and an operator token.
+## Prototype boundaries
 
-Sessions, transcripts, recordings, and audit chains live in one backend process and expire after eight hours or on server restart. Run one worker/replica for this prototype. Export artifacts you want to retain.
+Sessions, recordings, and audit records live in one backend process and expire after eight hours or on restart. Use one worker/replica and export evidence to retain it. Authentication is a shared operator token; the audit chain is in-memory tamper evidence, not compliance certification. AI hypotheses can be wrong even when their references are valid. Live performance metrics require a telemetry integration.
 
-Older pitch materials under `docs/` describe earlier aspirations. This README and the deployment guide describe the current supported behavior.
-
-## License
-
-[MIT](LICENSE)
+[MIT license](LICENSE)

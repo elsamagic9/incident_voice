@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { AgentStatus, IncidentRecord, ServiceNode, Turn, ToolExecution, PostMortemData, VoiceEngine, StagedRemediation, ActiveRunbookSession, ServiceTopology } from '../types';
+import { AgentStatus, IncidentRecord, ServiceNode, Turn, ToolExecution, PostMortemData, VoiceEngine, StagedRemediation, ActiveRunbookSession, ServiceTopology, InvestigationBrief, RecoveryCheck } from '../types';
 import { useAudioPlayer } from './useAudioPlayer';
 
 export interface LatencyStats { stt_ms: number | null; tool_ms: number | null; llm_ms: number | null; tts_ms: number | null; total_ms: number | null; }
@@ -27,6 +27,8 @@ export function useVoiceStream() {
   const [activeRunbook, setActiveRunbook] = useState<ActiveRunbookSession | null>(null);
   const [postMortem, setPostMortem] = useState<PostMortemData | null>(null);
   const [audioLevel, setAudioLevel] = useState(0);
+  const [investigation, setInvestigation] = useState<InvestigationBrief | null>(null);
+  const [recoveryChecks, setRecoveryChecks] = useState<RecoveryCheck[]>([]);
   const [notice, setNotice] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -42,6 +44,8 @@ export function useVoiceStream() {
   const audioEpoch = useRef(0);
   const suppressAudio = useRef(false);
   const { enqueueAudio, stopPlayback, getAudioContext, isPlaying } = useAudioPlayer(setError);
+  const playing = useRef(isPlaying);
+  playing.current = isPlaying;
 
   const releaseMicrophone = useCallback(() => {
     captureGeneration.current++;
@@ -163,7 +167,7 @@ export function useVoiceStream() {
             case 'voice_ready': void beginCapture(data.sample_rate); break;
             case 'reasoning_status': setReasoningProvider(data.provider); if (data.message) setNotice(data.message); break;
             case 'turn':
-              if (data.speaker === 'user' && isPlaying) {
+              if (data.speaker === 'user' && playing.current) {
                 const words = data.transcript.trim().split(/\s+/);
                 const isInterrupt = /^(stop|wait|cancel|hold on|pause|abort|no|hush)\b/i.test(data.transcript.trim());
                 if (words.length >= 2 || isInterrupt) {
@@ -182,7 +186,8 @@ export function useVoiceStream() {
             case 'cluster_sync':
               setIncident(data.incident); setServices(data.services || {}); setTopology(data.topology); setActiveRunbook(data.active_runbook);
               setOperator(previous => previous ? { ...previous, role: data.rbac_role, infrastructure_mode: data.infrastructure_mode } : previous);
-              setAutopilotEnabled(!!data.autopilot_enabled); break;
+              setAutopilotEnabled(!!data.autopilot_enabled);
+              setInvestigation(data.investigation || null); setRecoveryChecks(data.recovery_checks || []); break;
             case 'staging_sync': setStagedRemediation(data.staged_action || null); break;
             case 'tool_executed':
               setExecutedTools(prev => [...prev.slice(-99), { ...data, id: crypto.randomUUID() }]); break;
@@ -198,6 +203,7 @@ export function useVoiceStream() {
             case 'command_complete': setBusy(false); break;
             case 'session_reset':
               releaseMicrophone(); stopPlayback(); setTurns([]); setExecutedTools([]); setPostMortem(null); setStagedRemediation(null);
+              setInvestigation(null); setRecoveryChecks([]);
               setActiveRunbook(null); setNotice('A fresh incident session is ready.'); setCurrentInterimTranscript(''); setAutopilotEnabled(false);
               setLatency({ stt_ms: null, tool_ms: null, llm_ms: null, tts_ms: null, total_ms: null }); break;
           }
@@ -241,7 +247,7 @@ export function useVoiceStream() {
   return { operator, loginRequired, login, reconnect: () => void login(), isConnected, agentStatus, activeEngine,
     providerState, providerMessage, reasoningProvider, stagedRemediation, autopilotEnabled, isRecording, isPlaying,
     turns, currentInterimTranscript, executedTools, incident, services, topology, activeRunbook, postMortem,
-    audioLevel, latency, error, notice, busy, clearError: () => setError(''), clearNotice: () => setNotice(''),
+    audioLevel, latency, investigation, recoveryChecks, error, notice, busy, clearError: () => setError(''), clearNotice: () => setNotice(''),
     startRecording, stopRecording, toggleRecording: () => (isRecording || wantsRecording.current) ? stopRecording() : void startRecording(),
     sendTextCommand: (text: string) => command('text_command', { text }),
     selectEngine: (engine: VoiceEngine) => { releaseMicrophone(); command('select_engine', { engine }); },
