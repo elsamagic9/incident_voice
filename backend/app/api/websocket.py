@@ -174,14 +174,10 @@ async def voice_agent_websocket(websocket: WebSocket):
                 raise ValueError('Use a command between 1 and 4000 characters.')
             await interrupt()
             await send({'type': 'turn', 'speaker': 'user', 'transcript': text, 'end_of_turn': True, 'timestamp': time.time()})
-            await send({'type': 'agent_state', 'state': 'thinking'})
-            if kind == 'text_command' and isinstance(provider, AssemblyAIVoiceAgentSession) and voice_ready and not agent_orchestrator.staged_action:
-                agent_orchestrator.record_turn('user', text)
-                await provider.send_text_command(text)
-            else:
-                spoken, tools, postmortem = await agent_orchestrator.process_user_turn(text)
-                await emit_response(spoken, tools, postmortem, started)
-                if isinstance(provider, AssemblyAIVoiceAgentSession) and voice_ready: await provider.notify_approval(spoken)
+            spoken, tools, postmortem = await agent_orchestrator.process_user_turn(text)
+            await emit_response(spoken, tools, postmortem, started)
+            if isinstance(provider, AssemblyAIVoiceAgentSession) and voice_ready:
+                await provider.notify_approval(spoken)
         elif kind == 'authorize_remediation':
             await interrupt()
             spoken, tools = await session_work(agent_orchestrator.confirm_staged_remediation, data.get('action_id'))

@@ -13,7 +13,7 @@ class Settings(BaseSettings):
     default_engine: str = "voice_agent_api"  # "voice_agent_api" (Path 1) or "custom_stt_v3" (Path 2)
 
     # LLM Settings
-    llm_provider: Literal["gemini", "openai", "mock"] = "gemini"
+    llm_provider: Literal["assemblyai", "gemini", "openai", "mock"] = "assemblyai"
     gemini_model: str = "gemini-3.5-flash"
     openai_model: str = "gpt-4o-mini"
     llm_gateway_model: str = "qwen3.5-4b-32k-fast"

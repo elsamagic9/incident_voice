@@ -11,7 +11,7 @@ export function useVoiceStream() {
   const [sessionVersion, setSessionVersion] = useState(0);
   const [isConnected, setIsConnected] = useState(false);
   const [agentStatus, setAgentStatus] = useState<AgentStatus>('idle');
-  const [activeEngine, setActiveEngine] = useState<VoiceEngine>('custom_stt_v3');
+  const [activeEngine, setActiveEngine] = useState<VoiceEngine>('voice_agent_api');
   const [providerState, setProviderState] = useState('idle');
   const [providerMessage, setProviderMessage] = useState('');
   const [reasoningProvider, setReasoningProvider] = useState('scripted');

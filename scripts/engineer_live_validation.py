@@ -15,14 +15,30 @@ BACKEND_HTTP = "http://localhost:8000"
 BACKEND_WS = "ws://localhost:8000/ws/agent"
 
 async def recv_matching(ws, target_type, predicate=None, timeout=10):
+    if not hasattr(ws, "_msg_buffer"):
+        ws._msg_buffer = []
+
     start = time.time()
-    while time.time() - start < timeout:
-        raw = await asyncio.wait_for(ws.recv(), timeout)
-        data = json.loads(raw)
-        if data.get("type") == target_type:
-            if predicate is None or predicate(data):
+    # First check buffered messages
+    for i, data in enumerate(ws._msg_buffer):
+        if data.get("type") == target_type and (predicate is None or predicate(data)):
+            return ws._msg_buffer.pop(i)
+
+    while True:
+        remaining = timeout - (time.time() - start)
+        if remaining <= 0:
+            break
+        try:
+            raw = await asyncio.wait_for(ws.recv(), timeout=remaining)
+            data = json.loads(raw)
+            if data.get("type") == target_type and (predicate is None or predicate(data)):
                 return data
-    raise TimeoutError(f"Timed out waiting for message type '{target_type}'")
+            ws._msg_buffer.append(data)
+        except asyncio.TimeoutError:
+            break
+    buffered_types = [m.get("type") for m in ws._msg_buffer]
+    matching_types = [m for m in ws._msg_buffer if m.get("type") == target_type]
+    raise TimeoutError(f"Timed out after {timeout}s waiting for message type '{target_type}'. Buffer has {len(ws._msg_buffer)} msgs: {buffered_types}. Matching msgs: {matching_types}")
 
 async def run_full_engineering_validation():
     results = []
@@ -147,6 +163,8 @@ async def run_full_engineering_validation():
         req_id_2 = secrets.token_hex(4)
         await ws.send(json.dumps({"type": "text_command", "text": "Restart payment-service", "request_id": req_id_2}))
 
+        stage_tool = await recv_matching(ws, "tool_executed")
+        assert stage_tool["result"].get("status") == "staged"
         stage_turn = await recv_matching(ws, "turn", lambda m: m.get("speaker") == "agent")
         stage_sync = await recv_matching(ws, "staging_sync", lambda m: m.get("staged_action") is not None)
         await recv_matching(ws, "command_complete")
@@ -173,13 +191,13 @@ async def run_full_engineering_validation():
         req_id_4 = secrets.token_hex(4)
         await ws.send(json.dumps({"type": "text_command", "text": "Generate postmortem", "request_id": req_id_4}))
 
-        report_event = await recv_matching(ws, "postmortem_ready")
+        report_event = await recv_matching(ws, "postmortem_ready", timeout=25)
         report = report_event["data"]
         assert report.get("incident_id") == "INC-8942"
         assert len(report.get("markdown_report", "")) > 100
         print(f"  ✓ Post-Mortem Generated: Source={report.get('source')}")
         print(f"  ✓ Artifacts Created: Formal PIR ({len(report['markdown_report'])} chars), Slack briefing, Timeline")
-        await recv_matching(ws, "command_complete")
+        await recv_matching(ws, "command_complete", timeout=25)
         results.append(("Two-Phase SRE Safety Gate & Remediation", "PASS", "Staging, authorization, recovery, and postmortem verified"))
 
     # -------------------------------------------------------------

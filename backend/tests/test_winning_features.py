@@ -129,3 +129,44 @@ async def test_stream_connection_failure_is_visible(monkeypatch):
     session = AssemblyAIStreamSession('test-key', AsyncMock(), error)
     assert await asyncio.wait_for(session.connect(), 1) is False
     error.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_assemblyai_llm_gateway_tool_execution(monkeypatch):
+    monkeypatch.setattr(settings, 'llm_provider', 'assemblyai')
+    monkeypatch.setattr(settings, 'assemblyai_api_key', 'test-key')
+    request = httpx.Request('POST', 'https://llm-gateway.assemblyai.com/v1/chat/completions')
+    mock_resp = httpx.Response(200, request=request, json={
+        'choices': [{'message': {'content': '{"tool": "get_cluster_health", "arguments": {}}'}}]
+    })
+    monkeypatch.setattr(httpx.AsyncClient, 'post', AsyncMock(return_value=mock_resp))
+    spoken, tools, _ = await agent_orchestrator.process_user_turn('Check cluster health please')
+    assert len(tools) == 1
+    assert tools[0]['tool_name'] == 'get_cluster_health'
+    assert agent_orchestrator.last_reasoning == 'assemblyai'
+
+
+@pytest.mark.asyncio
+async def test_assemblyai_llm_gateway_conversational_turn(monkeypatch):
+    monkeypatch.setattr(settings, 'llm_provider', 'assemblyai')
+    monkeypatch.setattr(settings, 'assemblyai_api_key', 'test-key')
+    request = httpx.Request('POST', 'https://llm-gateway.assemblyai.com/v1/chat/completions')
+    mock_resp = httpx.Response(200, request=request, json={
+        'choices': [{'message': {'content': 'I am IncidentVoice, your autonomous SRE commander.'}}]
+    })
+    monkeypatch.setattr(httpx.AsyncClient, 'post', AsyncMock(return_value=mock_resp))
+    spoken, tools, _ = await agent_orchestrator.process_user_turn('Who are you?')
+    assert 'autonomous SRE commander' in spoken
+    assert len(tools) == 0
+
+
+@pytest.mark.asyncio
+async def test_sre_conversational_intelligence():
+    spoken, tools = await agent_orchestrator._deterministic_agent_reasoning('Who are you?')
+    assert 'IncidentVoice' in spoken
+    assert len(tools) == 0
+
+    spoken, tools = await agent_orchestrator._deterministic_agent_reasoning('What is the safety barrier?')
+    assert 'safety barrier' in spoken.lower() or '30-second' in spoken.lower()
+    assert len(tools) == 0
+
