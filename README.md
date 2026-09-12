@@ -104,15 +104,15 @@ python scripts/benchmark_eval.py
 
 | Scenario | Focus Area | Dialogue Turns | Pass Rate | Safety Gate Adherence |
 |---|---|:---:|:---:|:---:|
-| **SCN-01** | Incident Triage & Telemetry Querying | 8 | 100.0% | 100.0% |
-| **SCN-02** | Voice-Guided SOP Runbook Execution | 10 | 100.0% | 100.0% |
-| **SCN-03** | Two-Phase Destructive Mutation Gating | 8 | 100.0% | 100.0% |
-| **SCN-04** | Role-Based Access Control (RBAC) Enforcement | 6 | 100.0% | 100.0% |
-| **SCN-05** | Negative Voice Confirmation & Cancellation | 6 | 83.3% | 100.0% |
-| **SCN-06** | AssemblyAI LeMUR Post-Mortem Generation | 8 | 100.0% | 100.0% |
-| **OVERALL** | **Full Multi-Turn Dialogue Suite** | **46** | **97.8%** | **100.0%** |
+| **SCN-01** | Incident Triage & Telemetry Querying | 12 | 100.0% | 100.0% |
+| **SCN-02** | Voice-Guided SOP Runbook Execution | 11 | 100.0% | 100.0% |
+| **SCN-03** | Two-Phase Destructive Mutation Gating | 13 | 100.0% | 100.0% |
+| **SCN-04** | Role-Based Access Control (RBAC) Enforcement | 12 | 100.0% | 100.0% |
+| **SCN-05** | Negative Voice Confirmation & Cancellation | 12 | 100.0% | 100.0% |
+| **SCN-06** | AssemblyAI LeMUR Post-Mortem Generation | 1 | 100.0% | 100.0% |
+| **OVERALL** | **Full Multi-Turn Dialogue Suite** | **61** | **100.0%** | **100.0%** |
 
-- **Mean Processing Latency:** 2.65 ms / turn (orchestration overhead)
+- **Mean Processing Latency:** 165.74 ms / turn (p50: 64.56 ms, p95: 257.66 ms)
 - **Safety Gate Adherence:** 100.0% (zero unauthorized destructive executions)
 - **Cryptographic Audit Ledger Integrity:** Verified SHA-256 hash chain
 
@@ -145,29 +145,42 @@ This boots IncidentVoice along with an instrumented sandbox cluster (`incident-p
 
 ---
 
-## Multi-Operator RBAC Credentials
+## Multi-Operator RBAC & Identity
 
-For role testing, IncidentVoice comes configured with three predefined operational identities:
+The operator directory starts empty with **zero hardcoded public credentials** (per Saltzer-Schroeder and RBAC96 principles).
 
-| Operator Name | Role | Predefined Token | Permissions |
-|---|---|---|---|
-| **Sarah Chen** | `SRE_COMMANDER` | `sre_cmd_sarah_chen_9821` | Full inspection, destructive mutations, runbooks, operator revocation |
-| **Alex Rivera** | `INCIDENT_RESPONDER` | `resp_alex_rivera_4410` | Full inspection, runbooks, safe mutations (destructive requires Commander) |
-| **Jordan Lee** | `READ_ONLY_OBSERVER` | `obs_jordan_lee_1109` | Read-only telemetry, investigation queries, report generation |
+- **Demo Simulation Mode (Default):** When booted in simulation mode with an unconfigured directory, IncidentVoice automatically opens a demo session (`op-demo`) with full `SRE_COMMANDER` capabilities for hassle-free evaluation.
+- **Single-Commander Token:** Set `OPERATOR_ACCESS_TOKEN=<your-secret-token>` in `.env` to require authentication for all access.
+- **Multi-Operator Provisioning:** To provision distinct identities with role boundaries (`SRE_COMMANDER`, `INCIDENT_RESPONDER`, `READ_ONLY_OBSERVER`), use the CLI:
+
+```bash
+# Register an operator (prompts privately for token or pass --token)
+.venv/bin/python -m app.core.operators_cli register --id oncall-sarah --name "Sarah Chen" --role SRE_COMMANDER
+.venv/bin/python -m app.core.operators_cli register --id responder-alex --name "Alex Rivera" --role INCIDENT_RESPONDER
+.venv/bin/python -m app.core.operators_cli register --id auditor-jordan --name "Jordan Lee" --role READ_ONLY_OBSERVER
+
+# List or revoke operators
+.venv/bin/python -m app.core.operators_cli list
+.venv/bin/python -m app.core.operators_cli revoke --id responder-alex
+```
+
+All credentials are encrypted/hashed in a private, transactional SQLite database (`operators.sqlite3`) and revoked immediately across active WebSockets.
 
 ---
 
 ## Test Verification Suite
 
-All backend and frontend test suites are fully automated and passing:
+All backend and frontend test suites are fully automated, reproducible, and passing:
 
 ```bash
-# Run all 154 backend pytest tests (WAL, RBAC, telemetry, tools, multimodal, fidelity)
+# Run all 224 backend pytest tests (WAL, RBAC, telemetry, tools, multimodal, fidelity, Path 1)
 cd backend && .venv/bin/pytest tests/
 
-# Run all 32 frontend vitest tests
+# Run all 37 frontend vitest tests across 7 test suites
 cd frontend && npm test -- --run
 
+# Run full 61-turn benchmark evaluation harness
+cd backend && .venv/bin/python3 ../scripts/benchmark_eval.py
 
 # Run frontend production build (TypeScript + Vite)
 cd frontend && npm run build

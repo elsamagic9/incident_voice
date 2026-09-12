@@ -1,9 +1,10 @@
 """Live API checks with isolated simulated data. Uses provider quota; never changes infrastructure."""
-import asyncio, json, sys
+import asyncio, json, secrets, sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'backend'))
 from app.core.config import settings
 from app.core.session import OperatorSession, current_session
+from app.core.auth_rbac import operator_registry, SRERole
 from app.core.state import cluster_state
 from app.services.assemblyai_stream import AssemblyAIStreamSession
 from app.services.assemblyai_voice_agent import AssemblyAIVoiceAgentSession
@@ -15,7 +16,12 @@ async def main():
     if not settings.assemblyai_api_key:
         raise SystemExit('Configure ASSEMBLYAI_API_KEY before running provider checks.')
     settings.infrastructure_mode = 'simulation'
-    token = current_session.set(OperatorSession())
+    op = operator_registry.get_operator('validator-commander')
+    if not op or operator_registry.is_revoked('validator-commander'):
+        raw_tok = secrets.token_hex(24)
+        op = operator_registry.register_operator('validator-commander', 'Validator Commander', SRERole.SRE_COMMANDER, raw_tok)
+    sess = OperatorSession(operator_id=op.operator_id, operator=op.name, role=op.role.value, authenticated=True, token_hash=op.token_hash)
+    token = current_session.set(sess)
     errors = []
     async def error(message): errors.append(message)
     async def turn(*args): pass

@@ -2,11 +2,13 @@
 import asyncio
 import argparse
 import json
+import secrets
 import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'backend'))
 from app.core.config import settings
 from app.core.session import OperatorSession, current_session
+from app.core.auth_rbac import operator_registry, SRERole
 from app.core.async_work import session_work
 from app.services.assemblyai_voice_agent import AssemblyAIVoiceAgentSession
 from app.services.orchestrator import agent_orchestrator
@@ -19,7 +21,12 @@ async def main():
     if not settings.assemblyai_api_key:
         raise SystemExit('Configure ASSEMBLYAI_API_KEY first.')
     settings.infrastructure_mode = 'simulation'
-    token = current_session.set(OperatorSession())
+    op = operator_registry.get_operator('validator-commander')
+    if not op or operator_registry.is_revoked('validator-commander'):
+        raw_tok = secrets.token_hex(24)
+        op = operator_registry.register_operator('validator-commander', 'Validator Commander', SRERole.SRE_COMMANDER, raw_tok)
+    sess = OperatorSession(operator_id=op.operator_id, operator=op.name, role=op.role.value, authenticated=True, token_hash=op.token_hash)
+    token = current_session.set(sess)
     received = {'audio_chunks': 0, 'observations': 0, 'hypotheses': 0, 'source': None, 'errors': []}
     finished = asyncio.Event()
     staged = asyncio.Event()
