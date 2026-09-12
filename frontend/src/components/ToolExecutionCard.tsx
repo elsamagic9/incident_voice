@@ -1,15 +1,17 @@
 import React, { useState } from 'react';
-import { Check, ChevronDown, Clock3, FileText, Wrench, X, Copy, Terminal } from 'lucide-react';
+import { Check, ChevronDown, Clock3, FileText, Wrench, X, Copy, Terminal, Globe, ExternalLink } from 'lucide-react';
 import type { ToolExecution } from '../types';
 
 export const ToolExecutionCard: React.FC<{ tool: ToolExecution }> = ({ tool }) => {
   const [copied, setCopied] = useState(false);
 
+  const isSearch = tool.tool_name === 'search_web_or_docs';
   const failed = !!tool.result.error || tool.result.success === false || ['error', 'denied'].includes(tool.result.status);
   const staged = tool.result.status === 'staged';
   const draft = tool.result.status === 'draft';
   const label = failed ? 'Failed' : staged ? 'Needs Approval' : draft ? 'Draft' : 'Executed';
   const Icon = failed ? X : staged ? Clock3 : draft ? FileText : Check;
+  const ToolIcon = isSearch ? Globe : Wrench;
   const summary = tool.result.error || tool.result.message || tool.result.spoken || tool.result.confirmation;
 
   const copyJson = (e: React.MouseEvent) => {
@@ -24,7 +26,7 @@ export const ToolExecutionCard: React.FC<{ tool: ToolExecution }> = ({ tool }) =
     <details className="tool-card group border border-slate-800/80 bg-slate-900/60 rounded-xl overflow-hidden transition-all duration-200 hover:border-slate-700">
       <summary className="list-none flex items-center gap-3 p-3 cursor-pointer select-none hover:bg-slate-800/40">
         <span className="tool-icon p-1.5 rounded-lg bg-cyan-950/40 border border-cyan-500/30 text-cyan-400">
-          <Wrench size={14} />
+          <ToolIcon size={14} />
         </span>
 
         <span className="tool-card-name flex-1 min-w-0">
@@ -32,7 +34,9 @@ export const ToolExecutionCard: React.FC<{ tool: ToolExecution }> = ({ tool }) =
             {tool.tool_name.replace(/_/g, ' ')}
           </span>
           <small className="font-mono text-[10px] text-slate-400 block truncate">
-            target: {tool.arguments.service_name ?? 'cluster-orchestrator'}
+            {isSearch
+              ? `query: "${tool.arguments.query ?? 'SRE documentation'}"`
+              : `target: ${tool.arguments.service_name ?? 'cluster-orchestrator'}`}
           </small>
         </span>
 
@@ -56,6 +60,35 @@ export const ToolExecutionCard: React.FC<{ tool: ToolExecution }> = ({ tool }) =
         {typeof summary === 'string' && (
           <div className="mb-3 p-2.5 rounded-lg bg-slate-900/90 border border-slate-800 text-xs text-slate-300 leading-relaxed font-mono">
             {summary}
+          </div>
+        )}
+
+        {isSearch && Array.isArray(tool.result.results) && tool.result.results.length > 0 && (
+          <div className="mb-3 space-y-2">
+            <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-cyan-400 flex items-center gap-1.5">
+              <Globe size={12} /> Grounded Web & Documentation Sources ({tool.result.results.length})
+            </span>
+            <div className="space-y-2">
+              {tool.result.results.map((item: any, idx: number) => (
+                <div key={idx} className="p-2.5 rounded-lg bg-slate-900/90 border border-slate-800 hover:border-cyan-500/40 transition-colors">
+                  <a
+                    href={item.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs font-semibold text-cyan-300 hover:text-cyan-200 hover:underline flex items-center gap-1.5"
+                  >
+                    <span>{item.title}</span>
+                    <ExternalLink size={12} className="shrink-0 text-cyan-400" />
+                  </a>
+                  <p className="text-[11px] text-slate-300 mt-1 leading-relaxed">
+                    {item.snippet}
+                  </p>
+                  <span className="text-[10px] font-mono text-slate-500 truncate block mt-1">
+                    {item.url}
+                  </span>
+                </div>
+              ))}
+            </div>
           </div>
         )}
 

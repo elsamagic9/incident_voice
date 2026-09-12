@@ -330,9 +330,18 @@ class AgentOrchestrator:
             name, args = 'inspect_service_logs', {'service_name': target}
         elif any(w in lower for w in ['host', 'pc ', 'machine']) and any(w in lower for w in ['cpu', 'memory', 'metric', 'telemetry']):
             name, args = 'query_host_telemetry', {}
-        elif any(w in lower for w in ['search web', 'search online', 'search docs', 'look up online', 'google', 'duckduckgo']) or lower.startswith('search for'):
-            query_text = re.sub(r'^(?:search\s+(?:web|online|docs)?\s*(?:for)?|look\s+up\s+(?:online)?|google|duckduckgo)\s*', '', lower, flags=re.I).strip()
-            query_text = query_text or 'PostgreSQL connection pool exhaustion'
+        elif any(w in lower for w in [
+            'search web', 'web search', 'search the web', 'search online', 'search internet',
+            'search docs', 'search documentation', 'look up online', 'look up', 'google',
+            'duckduckgo', 'search stackoverflow', 'search github', 'find online', 'find documentation'
+        ]) or lower.startswith('search ') or lower.startswith('search for'):
+            query_text = re.sub(
+                r'^(?:(?:web\s+)?search\s+(?:the\s+web\s+|web\s+|online\s+|internet\s+|docs\s+|documentation\s+)?(?:for\s+)?|look\s+up\s+(?:online\s+)?|google\s+|duckduckgo\s+|find\s+(?:online\s+|documentation\s+for\s+)?)\s*',
+                '',
+                lower,
+                flags=re.I
+            ).strip()
+            query_text = query_text or (f"{target} troubleshooting" if target != 'payment-service' else 'PostgreSQL connection pool exhaustion')
             name, args = 'search_web_or_docs', {'query': query_text}
         elif any(w in lower for w in ['inspect document', 'read document', 'read pdf', 'read docx', 'inspect pdf', 'read file']):
             match_file = re.search(r'(?:document|file|pdf|docx)\s+([^\s]+\.(?:pdf|docx|md|txt))', lower)

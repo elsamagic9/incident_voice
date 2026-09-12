@@ -250,38 +250,76 @@ def search_web_or_docs(query: str, max_results: int = 4):
         ]
     }
 
+    # 1. Try real live DuckDuckGo HTML web search
     try:
         encoded = urllib.parse.quote_plus(clean_query)
         resp = httpx.get(
-            f"https://api.duckduckgo.com/?q={encoded}&format=json&no_html=1&skip_disambig=1",
-            timeout=3.0,
-            headers={"User-Agent": "IncidentVoice/1.0 (SRE-Commander)"}
+            f"https://html.duckduckgo.com/html/?q={encoded}",
+            timeout=4.0,
+            headers={"User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"}
         )
         if resp.status_code == 200:
-            data = resp.json()
-            abstract = data.get("AbstractText")
-            source_url = data.get("AbstractURL")
-            if abstract:
-                results.append({
-                    "title": data.get("Heading") or clean_query,
-                    "snippet": abstract,
-                    "url": source_url or "https://duckduckgo.com"
-                })
-            for topic in data.get("RelatedTopics", [])[:max_results - len(results)]:
-                if isinstance(topic, dict) and "Text" in topic:
-                    results.append({
-                        "title": topic.get("FirstURL", "").split("/")[-1].replace("_", " ") or clean_query,
-                        "snippet": topic["Text"],
-                        "url": topic.get("FirstURL") or "https://duckduckgo.com"
-                    })
+            import re
+            from html import unescape
+            blocks = re.split(r'<div[^>]+class=[\"\']result\s+results_links[^\"\']*[\"\']', resp.text)
+            for b in blocks[1:]:
+                t_m = re.search(r'<h2[^>]+class=[\"\']result__title[\"\'][^>]*>\s*<a[^>]*>(.*?)</a>', b, re.DOTALL)
+                s_m = re.search(r'<a[^>]+class=[\"\']result__snippet[\"\'][^>]*>(.*?)</a>', b, re.DOTALL)
+                u_m = re.search(r'<a[^>]+class=[\"\']result__url[\"\'][^>]+href=[\"\']([^\"\']+)[\"\']', b, re.DOTALL)
+                if t_m and s_m:
+                    title = unescape(re.sub(r'<[^>]+>', '', t_m.group(1)).strip())
+                    snippet = unescape(re.sub(r'<[^>]+>', '', s_m.group(1)).strip())
+                    raw_url = u_m.group(1) if u_m else ''
+                    if 'uddg=' in raw_url:
+                        actual_url = urllib.parse.unquote(raw_url.split('uddg=')[1].split('&')[0])
+                    else:
+                        actual_url = raw_url
+                    if actual_url and not actual_url.startswith('//') and not any(r['url'] == actual_url for r in results):
+                        results.append({'title': title, 'snippet': snippet, 'url': actual_url})
+                        if len(results) >= max_results:
+                            break
     except Exception:
         pass
 
+    # 2. Try DuckDuckGo Instant Answer API if live HTML search didn't yield enough
+    if len(results) < max_results:
+        try:
+            encoded = urllib.parse.quote_plus(clean_query)
+            resp = httpx.get(
+                f"https://api.duckduckgo.com/?q={encoded}&format=json&no_html=1&skip_disambig=1",
+                timeout=2.5,
+                headers={"User-Agent": "IncidentVoice/1.0 (SRE-Commander)"}
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                abstract = data.get("AbstractText")
+                source_url = data.get("AbstractURL")
+                if abstract and not any(r['url'] == source_url for r in results):
+                    results.append({
+                        "title": data.get("Heading") or clean_query,
+                        "snippet": abstract,
+                        "url": source_url or "https://duckduckgo.com"
+                    })
+                for topic in data.get("RelatedTopics", []):
+                    if len(results) >= max_results:
+                        break
+                    if isinstance(topic, dict) and "Text" in topic:
+                        topic_url = topic.get("FirstURL") or "https://duckduckgo.com"
+                        if not any(r['url'] == topic_url for r in results):
+                            results.append({
+                                "title": topic.get("FirstURL", "").split("/")[-1].replace("_", " ") or clean_query,
+                                "snippet": topic["Text"],
+                                "url": topic_url
+                            })
+        except Exception:
+            pass
+
+    # 3. Augment with curated SRE Knowledge Index for domain accuracy
     q_lower = clean_query.lower()
     for category, items in KNOWLEDGE_INDEX.items():
         if category in q_lower or any(word in q_lower for word in category.split()):
             for item in items:
-                if len(results) < max_results and item not in results:
+                if len(results) < max_results and not any(r['url'] == item['url'] for r in results):
                     results.append(item)
 
     if not results:

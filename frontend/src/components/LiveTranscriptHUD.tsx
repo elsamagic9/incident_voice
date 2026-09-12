@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
   ArrowRight, AudioLines, Bot, CornerDownLeft, Mic, MicOff, Send,
-  Square, User, Terminal, ShieldAlert
+  Square, User, Terminal, ShieldAlert, Globe
 } from 'lucide-react';
 import type { AgentStatus, Turn } from '../types';
 
@@ -26,15 +26,17 @@ const welcomePrompts = [
   { title: 'Jarvis, Run Diagnostics', text: 'Jarvis, run full diagnostics', icon: '01' },
   { title: 'Check Backend Host Vitals', text: 'Jarvis, check host vitals', icon: '02' },
   { title: 'Build Incident Brief', text: 'Investigate the incident', icon: '03' },
+  { title: 'Search Web & SRE Docs', text: 'Search web for PostgreSQL connection pool exhaustion', icon: '04' },
 ];
 
 const quickChips = [
+  'Search web: Postgres pool exhaustion',
+  'Search web: Redis memory spike',
   'Jarvis, check host vitals',
   'Investigate the incident',
   'What is causing the outage?',
   'Restart payment-service',
   'Show dependency topology',
-  'What time is it, Jarvis?',
   'Generate postmortem',
 ];
 
@@ -234,9 +236,10 @@ export const LiveTranscriptHUD: React.FC<Props> = ({
             type="button"
             disabled={disabled}
             onClick={() => onSendText(chip)}
-            className="shrink-0 px-2.5 py-1 rounded-md text-[11px] font-medium bg-slate-800/80 hover:bg-slate-700/90 text-slate-300 hover:text-cyan-300 border border-slate-700/60 transition-colors"
+            className="shrink-0 flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-medium bg-slate-800/80 hover:bg-slate-700/90 text-slate-300 hover:text-cyan-300 border border-slate-700/60 transition-colors"
           >
-            {chip}
+            {chip.startsWith('Search') && <Globe size={11} className="text-cyan-400" />}
+            <span>{chip}</span>
           </button>
         ))}
       </div>

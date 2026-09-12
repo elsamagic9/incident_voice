@@ -176,3 +176,22 @@ async def test_orchestrator_multimodal_intent_routing():
     spoken_tr, tools_tr, _ = await agent_orchestrator.process_user_turn("J.A.R.V.I.S., transcribe recording data/incident_call.wav")
     assert len(tools_tr) == 1
     assert tools_tr[0]["tool_name"] == "transcribe_media_recording"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("prompt,expected_keyword", [
+    ("web search for postgres connection pool", "postgres"),
+    ("search online for redis maxmemory", "redis"),
+    ("look up 504 gateway timeout", "504"),
+    ("google kubernetes crashloopbackoff", "kubernetes"),
+    ("search the web for aws status", "aws"),
+    ("search postgres oom error", "postgres"),
+])
+async def test_orchestrator_diverse_web_search_prompts(prompt, expected_keyword):
+    """Verify various natural phrasing web search commands route to search_web_or_docs."""
+    spoken, tools, _ = await agent_orchestrator.process_user_turn(prompt)
+    assert len(tools) == 1
+    assert tools[0]["tool_name"] == "search_web_or_docs"
+    assert expected_keyword in tools[0]["arguments"]["query"].lower()
+    assert spoken
+
