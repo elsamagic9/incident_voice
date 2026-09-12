@@ -186,7 +186,19 @@ class AgentOrchestrator:
             result = await lemur_service.generate_postmortem(self.history, cluster_state.incident.timeline_events, cluster_state.incident.id)
             self.postmortem_result = result
         else:
-            result = await session_work(self.dispatch_tool, name, args)
+            spec_cached = None
+            if name in {'inspect_service_logs', 'query_telemetry', 'query_host_telemetry', 'get_cluster_health', 'locate_causal_root_cause'}:
+                try:
+                    from app.services.speculative_engine import speculative_service
+                    spec_hit = speculative_service.engine.get_speculative_result(name, args)
+                    if spec_hit and spec_hit.get('cache_hit'):
+                        spec_cached = spec_hit['result']
+                except Exception:
+                    pass
+            if spec_cached is not None:
+                result = spec_cached
+            else:
+                result = await session_work(self.dispatch_tool, name, args)
         duration = (time.perf_counter() - start) * 1000
         self.last_tool_ms += duration
         return {'tool_name': name if isinstance(name, str) else 'unknown', 'arguments': args if isinstance(args, dict) else {}, 'result': result, 'timestamp': time.time(), 'duration_ms': round(duration, 1)}
@@ -237,7 +249,7 @@ class AgentOrchestrator:
                 try:
                     spoken, tools = await self._call_dynamic_llm(text)
                     self.last_reasoning = settings.llm_provider
-                    if not tools and any(w in text.lower() for w in ['restart', 'flush', 'rollback', 'roll back', 'scale', 'failover', 'circuit breaker', 'health', 'inspect', 'log', 'runbook', 'vitals', 'search', 'document', 'pdf', 'docx', 'export', 'transcribe', 'recording', 'causal', 'root cause', 'microhecl', 'dejavu', 'historical', 'memory']):
+                    if not tools and any(w in text.lower() for w in ['restart', 'flush', 'rollback', 'roll back', 'scale', 'failover', 'circuit breaker', 'health', 'inspect', 'log', 'runbook', 'vitals', 'search', 'document', 'pdf', 'docx', 'export', 'transcribe', 'recording', 'causal', 'root cause', 'microhecl', 'dejavu', 'historical', 'memory', 'mitigation', 'tree of thoughts']):
                         self.last_reasoning = 'hybrid'
                         spoken, tools = await self._deterministic_agent_reasoning(command)
                 except (httpx.HTTPError, ValueError, KeyError, IndexError) as exc:
@@ -340,6 +352,8 @@ class AgentOrchestrator:
         elif any(w in lower for w in ['incident memory', 'retrieve memory', 'past incidents', 'episodic memory', 'what do you remember']):
             query_q = re.sub(r'^(?:retrieve|search|find)?\s*(?:incident)?\s*memory\s*(?:for)?|past\s+incidents?\s*(?:about)?', '', lower).strip()
             name, args = 'retrieve_incident_memory', {'query': query_q or 'connection pool failure'}
+        elif any(w in lower for w in ['plan mitigation', 'tree of thoughts', 'mitigation tree', 'simulate remediation', 'simulate plan']):
+            name, args = 'plan_mitigation_tree', {}
         elif any(w in lower for w in ['cpu', 'memory', 'metric', 'telemetry', 'latency']):
             name, args = 'query_telemetry', {'service_name': target}
         elif 'page ' in lower or 'escalat' in lower:

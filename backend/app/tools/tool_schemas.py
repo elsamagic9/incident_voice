@@ -362,7 +362,25 @@ SRE_TOOL_DEFINITIONS = [
                 "required": []
             }
         }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "plan_mitigation_tree",
+            "description": "Execute Tree of Thoughts (ToT) deliberate mitigation planning with environment rollout simulation. Evaluates multi-step remediation trajectories and selects Pareto-optimal recovery path.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "max_depth": {
+                        "type": "integer",
+                        "description": "Maximum tree exploration depth (default: 2)"
+                    }
+                },
+                "required": []
+            }
+        }
     }
 ]
+
 
 

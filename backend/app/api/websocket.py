@@ -114,6 +114,11 @@ async def voice_agent_websocket(websocket: WebSocket):
     async def on_stt_turn(text, final, confidence):
         if not final:
             await interrupt()
+            try:
+                from app.services.speculative_engine import speculative_service
+                speculative_service.engine.prefetch(text)
+            except Exception:
+                pass
             await send({'type': 'turn', 'speaker': 'user', 'transcript': text, 'end_of_turn': False})
             return
         if voice_queue.full():
@@ -123,6 +128,11 @@ async def voice_agent_websocket(websocket: WebSocket):
 
     async def on_managed_user(text, final, confidence):
         if not final:
+            try:
+                from app.services.speculative_engine import speculative_service
+                speculative_service.engine.prefetch(text)
+            except Exception:
+                pass
             await send({'type': 'turn', 'speaker': 'user', 'transcript': text, 'end_of_turn': False})
             return
         if agent_orchestrator.staged_action:

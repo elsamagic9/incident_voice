@@ -425,11 +425,21 @@ def match_historical_incident(threshold: float = 0.70):
     }
 
 
+def plan_mitigation_tree(max_depth: int = 2):
+    """
+    Execute Tree of Thoughts (ToT) deliberate mitigation planning (Yao et al., NeurIPS 2023).
+    Simulates environment rollouts, prunes high-risk branches, and returns the Pareto-optimal
+    multi-step mitigation sequence with projected Golden Signal deltas.
+    """
+    from app.services.tot_planner import tot_planner_service
+    return tot_planner_service.planner.plan_mitigation_tree(max_depth=max_depth)
+
+
 SRE_TOOL_MAP = {name: globals()[name] for name in ['verify_recovery', 'get_cluster_health', 'inspect_service_logs', 'query_telemetry',
     'execute_remediation', 'query_host_telemetry', 'trigger_pager', 'generate_postmortem', 'list_runbooks',
     'start_runbook', 'advance_runbook', 'abort_runbook', 'get_service_topology', 'k8s_rollout_restart', 'k8s_list_pods',
     'search_web_or_docs', 'inspect_document', 'export_incident_report', 'transcribe_media_recording',
-    'retrieve_incident_memory', 'locate_causal_root_cause', 'match_historical_incident']}
+    'retrieve_incident_memory', 'locate_causal_root_cause', 'match_historical_incident', 'plan_mitigation_tree']}
 SRE_TOOL_MAP['cordon_node'] = k8s_cordon_node
 SRE_TOOL_MAP['k8s_cordon_node'] = k8s_cordon_node
 
