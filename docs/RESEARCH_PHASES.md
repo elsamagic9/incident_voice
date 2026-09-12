@@ -145,6 +145,25 @@ Completion gates: `scripts/benchmark_eval.py` executes successfully, verifies 50
 
 Completion gates: `Dockerfile` builds cleanly; all deployment configurations are verified; `README.md` and submission checklist reflect all implemented features and research citations; all unit and integration tests pass. Status: completed (148 backend tests, 32 frontend tests passing).
 
+## Phase 8 — multimodal knowledge retrieval, documents (PDF/Word), and audio/video analysis (R10)
+
+### Papers reviewed before this plan
+
+- [Shuster et al., Language Models that Seek for Knowledge: Modular Search & Generation (EMNLP 2022), §1–4](https://arxiv.org/abs/2203.13224) and [Nakano et al., WebGPT (2021)](https://arxiv.org/abs/2112.09332). Formulates modular search-augmented language modeling: separating general parametric knowledge from external dynamic search retrieval. The agent performs query formulation, retrieves top-$k$ documents, parses snippets with source URL attribution, and synthesizes grounded answers. Application here: provide `search_web_or_docs` tool allowing the voice SRE to retrieve live cloud status pages (AWS, GCP, Cloudflare), official error code documentations (Postgres, Redis, Linux kernel), and CVE bulletins, attributing exact URLs in the spoken response and HUD.
+- [Huang et al., LayoutLMv3: Pre-training for Document AI with Unified Text and Visual Masking (ACM MM 2022), §1–3](https://arxiv.org/abs/2204.08387) and [Gao et al., ALCE (ACL 2023)](https://arxiv.org/abs/2305.14627). Addresses structured document understanding (PDF, DOCX) through layout-aware text segmentation and grounded citation attribution. Application here: provide `inspect_document` to ingest enterprise PDF runbooks, Word (.docx) architecture specs, and post-mortems; segment content by page/section; filter by query; and attribute exact page numbers (e.g. `[DOC-01: p. 4]`). In addition, implement `export_document` to export formal incident post-mortems as formatted PDF and Word (.docx) documents.
+- [Latif et al., Speech-Language Models: A Survey of Audio-Conditioned Language Generation (IEEE 2023), §2–5](https://doi.org/10.1109/MSP.2023.3283296) and AssemblyAI Universal Speech Models (Universal-1 & Universal-3, 2024). Details deep acoustic modeling, speaker diarization, auto-chapters, and LLM-driven audio synthesis. Application here: provide `transcribe_media_recording` to process external incident media files—such as audio recordings from bridge calls (`.wav`, `.mp3`, `.m4a`) or video recordings of dashboards/terminals (`.mp4`, `.mov`, `.webm`). Uses AssemblyAI's asynchronous Transcription API with speaker labels, summary, and auto-chapters, converting multimedia incident evidence into structured timeline events.
+
+### Implementation plan
+
+1. Implement `search_web_or_docs` in `app/tools/sre_tools.py` using DuckDuckGo / HTTP requests with fallback to curated SRE documentation index, extracting title, snippet, and source URL.
+2. Implement `inspect_document` in `app/tools/sre_tools.py` supporting `.pdf` (via `pypdf`), `.docx` (via `python-docx`), `.md`, and `.txt` files; extracting text by page/section with query matching and citation attribution.
+3. Implement `export_document` in `app/tools/sre_tools.py` generating downloadable PDF (via `reportlab`) and Word `.docx` post-incident reports.
+4. Implement `transcribe_media_recording` in `app/tools/sre_tools.py` and `app/services/multimedia_service.py` to ingest audio/video files, call AssemblyAI Transcriber API (with speaker labels and auto-chapters), and integrate results into incident timeline.
+5. Register tool schemas in `tool_schemas.py` and map dispatchers in `orchestrator.py` and `assemblyai_voice_agent.py`.
+6. Add unit tests in `backend/tests/test_multimodal_tools.py` verifying web search, PDF parsing, Word parsing, document export, and audio/video transcription mock paths.
+
+Completion gates: web search returns verified results and source URLs; PDF and DOCX files are parsed with page citations; PDF and DOCX export produces valid binary documents; audio/video transcription integrates with AssemblyAI; all new and existing tests pass. Status: completed (154 backend tests, 32 frontend tests passing).
+
 ## September 12 progress record
 
 - Current baseline: 107 backend tests passed before this work; a wake-name routing and unauthenticated host-read bypass were uncovered by code inspection despite the passing suite.
@@ -155,4 +174,7 @@ Completion gates: `Dockerfile` builds cleanly; all deployment configurations are
 - After Phase 5 repairs: 147 backend tests and 32 frontend tests passed. Added Four Golden Signals with timestamps, quantitative verification receipts with deltas, SLO-gated recovery verification, and deep host I/O metrics.
 - After Phase 6 repairs: 148 backend tests and 32 frontend tests passed. Added reproducible multi-turn benchmark harness (`scripts/benchmark_eval.py` evaluating 46 turns across 6 scenarios with 97.8% pass rate and 100% safety adherence) and pilot protocol (`docs/PILOT_EVALUATION_PROTOCOL.md`).
 - After Phase 7 completion: 148 backend tests and 32 frontend tests passing; Vite production bundle builds in 2.5s with zero errors; multi-stage Docker containerization verified with persistent volume for WAL and audit storage; all 7 research phases fully implemented, documented, and verified.
+- After Phase 8 completion: 154 backend tests and 32 frontend tests passing; added Web Search (DuckDuckGo & knowledge index), Document Intelligence for PDF/Word (`document_service.py`), PDF/DOCX post-mortem export, and multimedia audio/video transcription via AssemblyAI (`multimedia_service.py`).
+
+
 

@@ -19,6 +19,7 @@ Built for the [AssemblyAI Voice Agent Hackathon](https://lablab.ai/ai-hackathons
    - Formal Markdown Post-Incident Review (PIR) with cited timeline evidence
    - Prioritized Jira / Linear Action Item Tickets (JSON)
    - Slack Sev-1 Outage Resolution 3-bullet executive briefing
+7. **Multimodal Knowledge & Media Intelligence:** Say *"Search web for Postgres connection pool"* for live documentation, *"Inspect document database_runbook.pdf"* to extract cited sections from PDF/Word specs, *"Export report as PDF"* to generate publication-ready Post-Incident Reviews, or *"Transcribe recording incident_bridge.wav"* to transcribe audio/video war rooms via AssemblyAI.
 
 ---
 
@@ -35,6 +36,8 @@ Every component of IncidentVoice is grounded in empirical systems and AI researc
 | **Phase 5: Deep Telemetry & Closed-Loop SLOs** | Sigelman et al., *Dapper* (Google 2010)<br>Beyer et al., *Google SRE Book* (2016) | Modeling of the Four Golden Signals (Latency p99, Traffic RPS, Error Rate %, Saturation %); quantitative delta receipts ($\Delta \text{latency}, \Delta \text{errors}, \Delta \text{saturation}$); closed-loop SLO verification gates. |
 | **Phase 6: Reproducible Evaluation Harness** | Zheng et al., *MT-Bench* (NeurIPS 2023)<br>Basiri et al., *Chaos Engineering* (IEEE 2016) | Automated multi-turn benchmark harness (`scripts/benchmark_eval.py`) evaluating 46 turns across 6 scenarios (**97.8% pass rate**, **100% safety gate adherence**); comprehensive pilot protocol (`docs/PILOT_EVALUATION_PROTOCOL.md`). |
 | **Phase 7: Production Readiness** | Wiggins, *Twelve-Factor App* (2017)<br>Beyer et al., *PRRs* (Google SRE Book, Ch. 34) | Multi-stage containerization (`Dockerfile`, `docker-compose.prod.yml`); persistent WAL volumes; environment-driven configuration; graceful shutdown lifecycle. |
+| **Phase 8: Multimodal Intelligence** | Shuster et al., *EMNLP* (2022)<br>Huang et al., *LayoutLMv3* (2022)<br>Latif et al., *IEEE* (2023) | Live DuckDuckGo web search & SRE knowledge index; PDF/Word parsing with page citations (`pypdf`, `python-docx`); PDF/DOCX report export (`reportlab`); audio/video transcription via AssemblyAI. |
+
 
 ---
 
@@ -159,11 +162,12 @@ For role testing, IncidentVoice comes configured with three predefined operation
 All backend and frontend test suites are fully automated and passing:
 
 ```bash
-# Run all 148 backend pytest tests (WAL, RBAC, telemetry, tools, fidelity)
+# Run all 154 backend pytest tests (WAL, RBAC, telemetry, tools, multimodal, fidelity)
 cd backend && .venv/bin/pytest tests/
 
 # Run all 32 frontend vitest tests
 cd frontend && npm test -- --run
+
 
 # Run frontend production build (TypeScript + Vite)
 cd frontend && npm run build

@@ -237,7 +237,7 @@ class AgentOrchestrator:
                 try:
                     spoken, tools = await self._call_dynamic_llm(text)
                     self.last_reasoning = settings.llm_provider
-                    if not tools and any(w in text.lower() for w in ['restart', 'flush', 'rollback', 'roll back', 'scale', 'failover', 'circuit breaker', 'health', 'inspect', 'log', 'runbook', 'vitals']):
+                    if not tools and any(w in text.lower() for w in ['restart', 'flush', 'rollback', 'roll back', 'scale', 'failover', 'circuit breaker', 'health', 'inspect', 'log', 'runbook', 'vitals', 'search', 'document', 'pdf', 'docx', 'export', 'transcribe', 'recording']):
                         self.last_reasoning = 'hybrid'
                         spoken, tools = await self._deterministic_agent_reasoning(command)
                 except (httpx.HTTPError, ValueError, KeyError, IndexError) as exc:
@@ -275,7 +275,7 @@ class AgentOrchestrator:
         # Conversational Intelligence & SRE Identity
         if any(w in lower for w in ['who are you', 'what is your name', 'what are you', 'introduce yourself']):
             return 'I am J.A.R.V.I.S., your autonomous AI assistant and Incident Commander. I monitor systems, analyze anomalies, and await your orders, Sir.', []
-        if any(w in lower for w in ['how do you work', 'architecture', 'dual engine', 'how does this work']):
+        if any(w in lower for w in ['how do you work', 'your architecture', 'system architecture', 'dual engine', 'how does this work']):
             return 'I am equipped with a dual-engine architecture, Sir. Path 1 leverages AssemblyAI for low-latency 24kHz interactions, while Path 2 utilizes Streaming v3 STT. Both employ cryptographic safety protocols to prevent unauthorized mishaps.', []
         if any(w in lower for w in ['safety', 'guardrail', 'barrier', 'prevent mistake', 'trust you']):
             return 'You can trust my two-phase safety barrier, Boss. All destructive mutations are staged with a 30-second TTL. I await your explicit verbal or UI confirmation before executing anything critical.', []
@@ -318,12 +318,27 @@ class AgentOrchestrator:
             name, args = 'inspect_service_logs', {'service_name': target}
         elif any(w in lower for w in ['host', 'pc ', 'machine']) and any(w in lower for w in ['cpu', 'memory', 'metric', 'telemetry']):
             name, args = 'query_host_telemetry', {}
+        elif any(w in lower for w in ['search web', 'search online', 'search docs', 'look up online', 'google', 'duckduckgo']) or lower.startswith('search for'):
+            query_text = re.sub(r'^(?:search\s+(?:web|online|docs)?\s*(?:for)?|look\s+up\s+(?:online)?|google|duckduckgo)\s*', '', lower, flags=re.I).strip()
+            query_text = query_text or 'PostgreSQL connection pool exhaustion'
+            name, args = 'search_web_or_docs', {'query': query_text}
+        elif any(w in lower for w in ['inspect document', 'read document', 'read pdf', 'read docx', 'inspect pdf', 'read file']):
+            match_file = re.search(r'(?:document|file|pdf|docx)\s+([^\s]+\.(?:pdf|docx|md|txt))', lower)
+            file_path = match_file.group(1) if match_file else 'docs/ARCHITECTURE.md'
+            name, args = 'inspect_document', {'file_path': file_path}
+        elif any(w in lower for w in ['export report', 'export pdf', 'export docx', 'download pdf', 'export word', 'save pdf', 'save report']):
+            fmt = 'docx' if any(w in lower for w in ['docx', 'word']) else 'pdf'
+            name, args = 'export_incident_report', {'format': fmt}
+        elif any(w in lower for w in ['transcribe audio', 'transcribe video', 'transcribe recording', 'transcribe call', 'transcribe media']):
+            match_media = re.search(r'(?:file|recording|audio|video)\s+([^\s]+\.(?:wav|mp3|m4a|mp4|mov|webm))', lower)
+            file_path = match_media.group(1) if match_media else 'data/incident_recording.mp4'
+            name, args = 'transcribe_media_recording', {'file_path': file_path}
         elif any(w in lower for w in ['cpu', 'memory', 'metric', 'telemetry', 'latency']):
             name, args = 'query_telemetry', {'service_name': target}
         elif 'page ' in lower or 'escalat' in lower:
             name, args = 'trigger_pager', {'team': 'on-call', 'message': text}
         elif not any(w in lower for w in ['health', 'alert', 'status', 'failing', 'overview']):
-            return 'I am actively monitoring the cluster, Sir. You can ask me to inspect cluster health, check logs for payment-service or order-db, check host vitals, execute an SRE runbook, or stage a pod restart.', []
+            return 'I am actively monitoring the cluster, Sir. You can ask me to inspect cluster health, search the web, read PDF/Word runbooks, check logs, execute runbooks, or transcribe media recordings.', []
         event = await self.call_tool(name, args)
         return self._summarize_tool(event), [event]
 

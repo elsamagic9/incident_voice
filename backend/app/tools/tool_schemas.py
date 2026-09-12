@@ -222,5 +222,96 @@ SRE_TOOL_DEFINITIONS = [
                 "required": ["deployment_name"]
             }
         }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "search_web_or_docs",
+            "description": "Search online technical documentation, cloud status pages (AWS, GCP), and SRE knowledge bases for error codes and outage advisories.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "Search terms or error message (e.g. 'Postgres connection pool max connections', 'AWS us-east-1 status')"
+                    },
+                    "max_results": {
+                        "type": "integer",
+                        "description": "Maximum number of search results to return (default: 4)"
+                    }
+                },
+                "required": ["query"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "inspect_document",
+            "description": "Inspect and extract text from an enterprise document (PDF runbooks, Word DOCX specifications, Markdown, or text files) with page and section citations.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "file_path": {
+                        "type": "string",
+                        "description": "Path to the document file (e.g. 'docs/database_runbook.pdf' or 'docs/architecture.docx')"
+                    },
+                    "query": {
+                        "type": "string",
+                        "description": "Optional search term to filter specific sections or pages within the document"
+                    },
+                    "max_pages": {
+                        "type": "integer",
+                        "description": "Maximum number of pages to inspect (default: 10)"
+                    }
+                },
+                "required": ["file_path"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "export_incident_report",
+            "description": "Generate and export a formal Post-Incident Review document in PDF or Microsoft Word (.docx) format with Golden Signals receipts.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "format": {
+                        "type": "string",
+                        "enum": ["pdf", "docx"],
+                        "description": "Document export format ('pdf' or 'docx')"
+                    },
+                    "filename": {
+                        "type": "string",
+                        "description": "Optional custom output filename"
+                    }
+                },
+                "required": ["format"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "transcribe_media_recording",
+            "description": "Transcribe and analyze an incident audio recording (.wav, .mp3, .m4a) or video recording (.mp4, .mov, .webm) via AssemblyAI speech models.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "file_path": {
+                        "type": "string",
+                        "description": "Local path or URL to the incident audio or video file"
+                    },
+                    "media_type": {
+                        "type": "string",
+                        "enum": ["auto", "audio", "video"],
+                        "description": "Media type (default: 'auto')"
+                    }
+                },
+                "required": ["file_path"]
+            }
+        }
     }
 ]
+
