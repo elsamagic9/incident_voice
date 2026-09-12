@@ -250,7 +250,7 @@ class AgentOrchestrator:
                 try:
                     spoken, tools = await self._call_dynamic_llm(text)
                     self.last_reasoning = settings.llm_provider
-                    if not tools and any(w in text.lower() for w in ['restart', 'flush', 'rollback', 'roll back', 'scale', 'failover', 'circuit breaker', 'health', 'inspect', 'log', 'runbook', 'vitals', 'search', 'document', 'pdf', 'docx', 'export', 'transcribe', 'recording', 'causal', 'root cause', 'microhecl', 'dejavu', 'historical', 'memory', 'mitigation', 'tree of thoughts', 'page', 'pager', 'escalat']):
+                    if not tools and any(w in text.lower() for w in ['restart', 'flush', 'rollback', 'roll back', 'scale', 'failover', 'circuit breaker', 'health', 'inspect', 'log', 'runbook', 'vitals', 'search', 'news', 'headline', 'headlines', 'breaking', 'document', 'pdf', 'docx', 'export', 'transcribe', 'recording', 'causal', 'root cause', 'microhecl', 'dejavu', 'historical', 'memory', 'mitigation', 'tree of thoughts', 'page', 'pager', 'escalat']):
                         self.last_reasoning = 'hybrid'
                         spoken, tools = await self._deterministic_agent_reasoning(command)
                 except (httpx.HTTPError, ValueError, KeyError, IndexError) as exc:
@@ -411,8 +411,8 @@ class AgentOrchestrator:
         system = (
             f"{SYSTEM_PROMPT}\nInfrastructure mode: {settings.infrastructure_mode}.\n\n"
             f"Available SRE Tools:\n{tool_summaries}\n\n"
-            "CRITICAL INSTRUCTIONS:\n"
-            "1. If the operator wants to check cluster health, inspect logs, run a runbook, query host vitals, or remediate, output ONLY a valid JSON object:\n"
+            "INSTRUCTIONS:\n"
+            "1. If the operator wants to search the web or docs, query news, check cluster health, inspect logs, run a runbook, query host vitals, or remediate, output ONLY a valid JSON object:\n"
             '{"tool": "<tool_name>", "arguments": {<args>}}\n'
             "2. If the operator asks a conversational question, greeting, or explanation, respond directly with 1 to 2 spoken sentences as J.A.R.V.I.S. Address them respectfully as 'Sir' or 'Boss'. NEVER use markdown asterisks, bullet points, headers, or JSON for conversational replies."
         )
