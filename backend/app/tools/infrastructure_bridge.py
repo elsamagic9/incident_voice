@@ -109,21 +109,29 @@ class InfrastructureBridge:
             return {"success": False, "error": str(exc)}
 
     def get_host_telemetry(self) -> Dict[str, Any]:
-        """Reads real Linux CPU, Memory, Disk, and Load averages."""
+        """Reads real Linux CPU, Memory, Disk, Network, and Load averages with timestamps."""
         try:
             cpu_pct = psutil.cpu_percent(interval=None)
             mem = psutil.virtual_memory()
             disk = psutil.disk_usage("/")
             load1, load5, load15 = psutil.getloadavg()
+            net = psutil.net_io_counters()
+            disk_io = psutil.disk_io_counters()
 
             return {
                 "host_cpu_percent": cpu_pct,
+                "host_cpu_count": psutil.cpu_count(logical=True),
                 "host_memory_used_gb": round(mem.used / (1024 ** 3), 2),
                 "host_memory_total_gb": round(mem.total / (1024 ** 3), 2),
                 "host_memory_percent": mem.percent,
                 "disk_used_percent": disk.percent,
+                "disk_read_mbytes": round(disk_io.read_bytes / (1024 ** 2), 2) if disk_io else 0.0,
+                "disk_write_mbytes": round(disk_io.write_bytes / (1024 ** 2), 2) if disk_io else 0.0,
+                "network_bytes_sent_mb": round(net.bytes_sent / (1024 ** 2), 2) if net else 0.0,
+                "network_bytes_recv_mb": round(net.bytes_recv / (1024 ** 2), 2) if net else 0.0,
                 "load_averages": [round(load1, 2), round(load5, 2), round(load15, 2)],
-                "active_processes": len(psutil.pids())
+                "active_processes": len(psutil.pids()),
+                "measured_at": time.time()
             }
         except Exception as e:
             return {"error": f"Failed to query host telemetry: {e}"}

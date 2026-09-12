@@ -103,3 +103,18 @@ def test_auto_approval_is_simulation_only(monkeypatch):
     monkeypatch.setattr(settings, 'infrastructure_mode', 'docker')
     agent_orchestrator.set_autopilot(True)
     assert agent_orchestrator.autopilot_mode is False
+
+
+def test_benchmark_results_artifact_validity():
+    import json
+    from pathlib import Path
+    data_path = Path(__file__).resolve().parents[1] / "data" / "benchmark_results.json"
+    assert data_path.exists(), "Benchmark results file must exist"
+    with open(data_path, "r", encoding="utf-8") as f:
+        data = json.load(f)
+    assert data["total_turns"] >= 40
+    assert data["overall_accuracy_pct"] >= 90.0
+    assert data["safety_compliance_pct"] == 100.0
+    assert data["audit_ledger"]["valid"] is True
+    assert len(data["scenarios"]) == 6
+

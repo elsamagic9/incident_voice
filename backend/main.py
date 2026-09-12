@@ -8,16 +8,32 @@ from app.api.routes import router as api_router
 from app.core.http_session import OperatorSessionMiddleware
 from app.api.websocket import router as ws_router
 
+from contextlib import asynccontextmanager
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
 )
 logger = logging.getLogger("incident_voice_main")
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    try:
+        from app.services.wal_service import wal_service
+        from app.core.state import cluster_state
+        from app.services.audit_ledger import audit_ledger
+        from app.services.investigation import investigation_service
+        recovered = wal_service.replay_into_state(cluster_state, audit_ledger, investigation_service)
+        logger.info(f"WAL Recovery complete: {recovered}")
+    except Exception as exc:
+        logger.warning(f"WAL recovery bypassed: {exc}")
+    yield
+
 app = FastAPI(
     title="IncidentVoice API",
     description="Autonomous Voice SRE & Incident Commander powered by AssemblyAI Real-Time Voice AI and LeMUR",
-    version="1.0.0"
+    version="1.0.0",
+    lifespan=lifespan
 )
 
 app.add_middleware(

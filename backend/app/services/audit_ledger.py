@@ -78,6 +78,11 @@ class CryptographicAuditLedger:
             block_payload["block_hash"] = block_hash
 
             self.blocks.append(block_payload)
+            try:
+                from app.services.wal_service import wal_service
+                wal_service.append("AUDIT_BLOCK", block_payload)
+            except Exception:
+                pass
             return block_payload
 
     def verify_chain_integrity(self) -> Tuple[bool, int, Optional[str]]:

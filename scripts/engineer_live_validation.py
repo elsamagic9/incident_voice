@@ -164,6 +164,7 @@ async def run_full_engineering_validation():
         await ws.send(json.dumps({"type": "text_command", "text": "Restart payment-service", "request_id": req_id_2}))
 
         stage_tool = await recv_matching(ws, "tool_executed")
+        print(f"DEBUG STAGE_TOOL: {stage_tool}")
         assert stage_tool["result"].get("status") == "staged"
         stage_turn = await recv_matching(ws, "turn", lambda m: m.get("speaker") == "agent")
         stage_sync = await recv_matching(ws, "staging_sync", lambda m: m.get("staged_action") is not None)

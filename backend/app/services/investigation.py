@@ -19,7 +19,11 @@ logger = logging.getLogger(__name__)
 def service_snapshot(service):
     return {'status': service.status, 'replicas': service.replicas,
             'error_rate_pct': service.error_rate_pct if service.metrics_available else None,
-            'latency_p99_ms': service.latency_p99_ms if service.metrics_available else None}
+            'latency_p99_ms': service.latency_p99_ms if service.metrics_available else None,
+            'traffic_rps': getattr(service, 'traffic_rps', None) if service.metrics_available else None,
+            'saturation_pct': getattr(service, 'saturation_pct', None) if service.metrics_available else None,
+            'measured_at': getattr(service, 'measured_at', time.time())}
+
 
 
 def fingerprint():
@@ -167,9 +171,34 @@ class InvestigationService:
             outcome = 'healthy'
         else:
             outcome = 'needs_attention'
+
+        before_latency = before.get('latency_p99_ms') if before else None
+        after_latency = after.get('latency_p99_ms') if after else None
+        delta_latency_ms = round(after_latency - before_latency, 2) if (before_latency is not None and after_latency is not None) else None
+
+        before_error = before.get('error_rate_pct') if before else None
+        after_error = after.get('error_rate_pct') if after else None
+        delta_error_pct = round(after_error - before_error, 2) if (before_error is not None and after_error is not None) else None
+
+        before_sat = before.get('saturation_pct') if before else None
+        after_sat = after.get('saturation_pct') if after else None
+        delta_saturation_pct = round(after_sat - before_sat, 2) if (before_sat is not None and after_sat is not None) else None
+
+        verified_improvement = False
+        if outcome == 'healthy':
+            verified_improvement = True
+        elif delta_latency_ms is not None and delta_error_pct is not None:
+            verified_improvement = bool(delta_error_pct <= 0 and delta_latency_ms <= 0)
+
         receipt = {'id': secrets.token_hex(8), 'action': action, 'service': target,
                    'captured_at': time.time(), 'source': settings.infrastructure_mode,
                    'outcome': outcome, 'before': before, 'after': after,
+                   'deltas': {
+                       'delta_latency_ms': delta_latency_ms,
+                       'delta_error_pct': delta_error_pct,
+                       'delta_saturation_pct': delta_saturation_pct,
+                       'verified_improvement': verified_improvement
+                   },
                    'message': result.get('message') or result.get('error', 'No result supplied.')}
         self.receipts = (self.receipts + [receipt])[-20:]
         return deepcopy(receipt)

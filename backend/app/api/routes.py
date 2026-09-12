@@ -25,22 +25,91 @@ async def open_session(request: Request, payload: SessionLogin = Body(default=Se
     if not origin_allowed(request):
         raise HTTPException(403, "Origin not allowed")
     existing = find_session(request.cookies.get(COOKIE_NAME))
-    if settings.infrastructure_mode != "simulation" and not settings.operator_access_token:
-        raise HTTPException(503, "Live infrastructure requires OPERATOR_ACCESS_TOKEN")
-    if settings.operator_access_token and not (existing and existing.authenticated):
-        if not secrets.compare_digest(payload.access_token, settings.operator_access_token):
-            raise HTTPException(401, "An operator access token is required")
+    from app.core.auth_rbac import operator_registry, SRERole, ROLE_PERMISSIONS
+    
+    op = None
+    if payload.access_token:
+        op = operator_registry.authenticate(payload.access_token)
+        if not op:
+            raise HTTPException(401, "Invalid operator access token or credentials revoked")
+    elif existing and existing.authenticated:
+        op = operator_registry.get_operator(existing.operator_id)
+        if op and op.revoked:
+            raise HTTPException(401, "Operator credentials have been revoked")
+
+    if settings.infrastructure_mode != "simulation" and not op and not (existing and existing.authenticated):
+        raise HTTPException(503, "Live infrastructure requires an authenticated operator token")
+    if settings.operator_access_token and not op and not (existing and existing.authenticated):
+        raise HTTPException(401, "An operator access token is required")
+
     try:
-        session = existing or create_session(authenticated=bool(settings.operator_access_token))
+        if op:
+            session = create_session(operator=op)
+        else:
+            session = existing or create_session(authenticated=False)
     except RuntimeError as exc:
         raise HTTPException(503, str(exc))
-    response = JSONResponse({"operator": session.operator, "role": session.role,
-        "infrastructure_mode": settings.infrastructure_mode, "authenticated": session.authenticated,
-        "assemblyai_configured": bool(settings.assemblyai_api_key), "tts_provider": settings.tts_provider})
+
+    active_role = SRERole(session.role) if session.role in SRERole.__members__ else SRERole.READ_ONLY_OBSERVER
+    perms = ROLE_PERMISSIONS.get(active_role, [])
+
+    response = JSONResponse({
+        "operator_id": session.operator_id,
+        "operator": session.operator,
+        "role": session.role,
+        "permissions": perms,
+        "infrastructure_mode": settings.infrastructure_mode,
+        "authenticated": session.authenticated,
+        "assemblyai_configured": bool(settings.assemblyai_api_key),
+        "tts_provider": settings.tts_provider
+    })
     response.set_cookie(COOKIE_NAME, session.id, httponly=True, samesite="strict",
                         secure=settings.cookie_secure or request.url.scheme == "https", max_age=SESSION_TTL)
     response.headers["Cache-Control"] = "no-store"
     return response
+
+@router.get("/operators")
+async def list_operators():
+    from app.core.auth_rbac import operator_registry
+    return {"operators": operator_registry.list_operators()}
+
+class RevokeOperatorPayload(BaseModel):
+    operator_id: str = ""
+    token: str = ""
+
+@router.post("/operators/revoke")
+async def revoke_operator_endpoint(request: Request, payload: RevokeOperatorPayload = Body(...)):
+    if not origin_allowed(request):
+        raise HTTPException(403, "Origin not allowed")
+    session = current_session.get()
+    if not session or not session.authenticated:
+        raise HTTPException(401, "Authenticated session required")
+    if session.role != "SRE_COMMANDER":
+        raise HTTPException(403, "Only SRE_COMMANDER can revoke operator credentials")
+    
+    from app.core.auth_rbac import operator_registry
+    revoked = False
+    target = ""
+    if payload.operator_id:
+        revoked = operator_registry.revoke_operator(payload.operator_id)
+        target = payload.operator_id
+    elif payload.token:
+        revoked = operator_registry.revoke_token(payload.token)
+        target = "token_hash"
+    
+    if not revoked:
+        raise HTTPException(404, "Operator not found or already revoked")
+    
+    from app.services.audit_ledger import audit_ledger
+    audit_ledger.record_event(
+        "OPERATOR_REVOKED",
+        f"{session.operator} ({session.operator_id})",
+        session.role,
+        "REVOKE_CREDENTIALS",
+        {"target": target}
+    )
+    return {"status": "revoked", "target": target}
+
 
 @router.delete("/session")
 async def close_session(request: Request):
@@ -159,16 +228,21 @@ async def get_k8s_cluster():
 
 @router.get("/security/status")
 async def get_security_status():
-    from app.core.auth_rbac import security_manager
+    from app.core.auth_rbac import security_manager, operator_registry
+    session = current_session.get()
+    is_rev = operator_registry.is_revoked(session.operator_id) if (session and session.operator_id) else False
     return {
+        "operator_id": getattr(session, "operator_id", "op-unknown") if session else "op-unknown",
         "role": security_manager.current_role.value,
         "operator": security_manager.session_operator,
         "active_challenge": security_manager.active_challenge,
         "ttl_seconds": security_manager.challenge_ttl_seconds,
         "permissions": security_manager.get_current_permissions(),
-        "authentication": "operator_token" if current_session.get().authenticated else "isolated_demo",
+        "authentication": "operator_token" if (session and session.authenticated) else "isolated_demo",
+        "revoked": is_rev,
         "hardware_mfa": False
     }
+
 
 
 @router.get("/incident/handoff")

@@ -6,11 +6,12 @@ import secrets
 import time
 import httpx
 from app.core.config import settings
-from app.core.session import SessionLocal
+from app.core.session import SessionLocal, current_session
 from app.core.state import cluster_state
 from app.core.auth_rbac import security_manager, MUTATIONS, authorized_mutation, is_cancellation
 from app.tools.sre_tools import SRE_TOOL_MAP, execute_remediation
 from app.tools.tool_schemas import SRE_TOOL_DEFINITIONS
+from app.tools.tool_contract import validate_tool_request
 from app.services.lemur_service import lemur_service
 
 SYSTEM_PROMPT = """You are J.A.R.V.I.S., an advanced, highly intelligent voice AI assistant and SRE Incident Commander. You were designed to act as a hyper-competent, witty, and loyal system manager.
@@ -50,7 +51,9 @@ class AgentOrchestrator:
         self.history = self.history[-100:]
         cluster_state.add_event('voice', f'{"Engineer" if speaker == "user" else "IncidentVoice"}: {text}')
         blackbox_service.record_event(speaker, text, 'voice')
-        audit_ledger.record_event('VOICE_TURN', security_manager.session_operator, security_manager.current_role.value, speaker, {'text': text})
+        session = current_session.get()
+        actor = f"{session.operator} ({session.operator_id})" if (session and session.operator_id) else security_manager.session_operator
+        audit_ledger.record_event('VOICE_TURN', actor, security_manager.current_role.value, speaker, {'text': text})
 
     def reset(self):
         self.__init__()
@@ -92,9 +95,14 @@ class AgentOrchestrator:
             return 'An action is already pending. Confirm or cancel it before requesting another change.', {'status': 'staged', **self.staged_action}
         challenge = security_manager.generate_phonetic_challenge()
         now = time.time()
+        session = current_session.get()
+        op_id = getattr(session, "operator_id", "op-demo") if session else "op-demo"
+        op_name = security_manager.session_operator
+        op_role = security_manager.current_role.value
         self.staged_action = {'id': secrets.token_urlsafe(18), 'action': action, 'service_name': service_name,
             'params': dict(params), 'challenge_code': challenge, 'staged_at': now, 'expires_at': now + 30,
-            'simulated': settings.infrastructure_mode == 'simulation'}
+            'simulated': settings.infrastructure_mode == 'simulation',
+            'operator_id': op_id, 'operator_name': op_name, 'operator_role': op_role}
         self.awaiting_confirmation = True
         if self.autopilot_mode and settings.infrastructure_mode == 'simulation':
             spoken, tools = self.confirm_staged_remediation(self.staged_action['id'])
@@ -102,8 +110,14 @@ class AgentOrchestrator:
         label = action.replace('_', ' ')
         spoken = f'{"Simulation: " if settings.infrastructure_mode == "simulation" else ""}{label.capitalize()} on {service_name} is staged. Say confirm or use the approval card within 30 seconds.'
         from app.services.audit_ledger import audit_ledger
-        audit_ledger.record_event('MUTATION_STAGED', security_manager.session_operator, security_manager.current_role.value, action,
+        actor_str = f"{op_name} ({op_id})" if op_id else op_name
+        audit_ledger.record_event('MUTATION_STAGED', actor_str, op_role, action,
                                   {'service_name': service_name, 'action_id': self.staged_action['id']})
+        try:
+            from app.services.wal_service import wal_service
+            wal_service.append('STAGE_MUTATION', dict(self.staged_action))
+        except Exception:
+            pass
         return spoken, {'status': 'staged', **self.staged_action, 'message': spoken}
 
     def confirm_staged_remediation(self, action_id=None):
@@ -124,6 +138,11 @@ class AgentOrchestrator:
         spoken = ('Simulation applied. ' if result.get('simulated') else 'Confirmed. ') + str(result.get('message', '')) if result.get('success') else 'Action failed: ' + str(result.get('error', 'Unknown infrastructure error'))
         from app.services.runbook_engine import runbook_engine
         runbook_engine.complete_pending_step(staged['id'], result)
+        try:
+            from app.services.wal_service import wal_service
+            wal_service.append('CONFIRM_MUTATION', {'id': staged['id'], 'action': staged['action'], 'service_name': staged['service_name']})
+        except Exception:
+            pass
         return spoken, [event]
 
     def set_autopilot(self, enabled):
@@ -151,7 +170,14 @@ class AgentOrchestrator:
 
     async def call_tool(self, name, args):
         start = time.perf_counter()
-        if name in {'investigate_incident', 'generate_postmortem'} and not security_manager.is_action_permitted(name):
+        try:
+            validate_tool_request(name, args)
+            invalid = None
+        except ValueError as exc:
+            invalid = str(exc)
+        if invalid:
+            result = {'success': False, 'error': invalid}
+        elif name in {'investigate_incident', 'generate_postmortem'} and not security_manager.is_action_permitted(name):
             result = {'success': False, 'error': 'Insufficient operator permissions'}
         elif name == 'investigate_incident':
             from app.services.investigation import investigation_service
@@ -163,10 +189,13 @@ class AgentOrchestrator:
             result = await session_work(self.dispatch_tool, name, args)
         duration = (time.perf_counter() - start) * 1000
         self.last_tool_ms += duration
-        return {'tool_name': name, 'arguments': args, 'result': result, 'timestamp': time.time(), 'duration_ms': round(duration, 1)}
+        return {'tool_name': name if isinstance(name, str) else 'unknown', 'arguments': args if isinstance(args, dict) else {}, 'result': result, 'timestamp': time.time(), 'duration_ms': round(duration, 1)}
 
     async def process_user_turn(self, user_transcript):
         text = user_transcript.strip()[:4000]
+        # A vocative addresses the assistant; it is not an identity question.
+        command = re.sub(r'^(?:(?:hey|hi|hello)\s+)?j\.?a\.?r\.?v\.?i\.?s\.?[\s,:!]*', '', text, flags=re.I).strip()
+        command = command or 'Who are you?'
         if not text: return '', [], None
         self.last_provider_error = None
         self.last_tool_ms = 0
@@ -176,16 +205,18 @@ class AgentOrchestrator:
         tools = []
         if self.expire_staged_remediation():
             spoken = 'The approval expired. Please request the action again.'
-        elif re.search(r'\b(?:abort|cancel|stop)\s+(?:the\s+)?runbook\b', text.lower()) and not re.search(r"\b(?:not|never)\b|don['’]?t", text.lower()):
+        elif re.search(r'\b(?:abort|cancel|stop)\s+(?:the\s+)?(?:active\s+)?runbook\b', text.lower()) and not re.search(r"\b(?:not|never)\b|don['’]?t", text.lower()):
             tools = [await self.call_tool('abort_runbook', {})]
             spoken = tools[0]['result'].get('spoken') or tools[0]['result'].get('error', 'Runbook stopped.')
         elif self.staged_action:
             if is_cancellation(text): spoken = self.cancel_staged_remediation()
-            elif security_manager.verify_vocal_authorization(text)[0]:
+            elif security_manager.verify_vocal_authorization(command)[0]:
                 spoken, tools = await session_work(self.confirm_staged_remediation, self.staged_action['id'])
             else: spoken = 'An action is awaiting approval. Say confirm to execute, or cancel to discard it.'
         elif is_cancellation(text):
             spoken = 'No changes applied. Tell me what you would like to investigate.'
+        elif self._mutation_clarification(command):
+            spoken = self._mutation_clarification(command)
         elif any(p in text.lower() for p in ['investigate incident', 'investigate the incident', 'incident brief', 'diagnose incident', 'diagnose the incident', 'what is causing', 'what caused']):
             tools = [await self.call_tool('investigate_incident', {})]
             result = tools[0]['result']
@@ -206,39 +237,64 @@ class AgentOrchestrator:
                 try:
                     spoken, tools = await self._call_dynamic_llm(text)
                     self.last_reasoning = settings.llm_provider
+                    if not tools and any(w in text.lower() for w in ['restart', 'flush', 'rollback', 'roll back', 'scale', 'failover', 'circuit breaker', 'health', 'inspect', 'log', 'runbook', 'vitals']):
+                        self.last_reasoning = 'hybrid'
+                        spoken, tools = await self._deterministic_agent_reasoning(command)
                 except (httpx.HTTPError, ValueError, KeyError, IndexError) as exc:
                     self.last_provider_error = f'{settings.llm_provider} fallback ({type(exc).__name__}).'
                     self.last_reasoning = 'scripted'
-                    spoken, tools = await self._deterministic_agent_reasoning(text)
+                    spoken, tools = await self._deterministic_agent_reasoning(command)
             else:
                 self.last_reasoning = 'scripted'
-                spoken, tools = await self._deterministic_agent_reasoning(text)
+                spoken, tools = await self._deterministic_agent_reasoning(command)
         self.record_turn('agent', spoken)
         return spoken, tools, self.postmortem_result
 
-    async def _deterministic_agent_reasoning(self, text):
+    def _mutation_clarification(self, text):
         lower = text.lower()
+        actions = re.findall(r'\b(?:restart(?:ing)?|flush(?:ing)?|rollback|roll back|scal(?:e|ing)|failover|circuit breaker)\b', lower)
+        if not actions: return None
+        if re.match(r'^(?:what|why|how|explain|describe)\b', lower):
+            return 'Remediation requests stage a specific change for review. Name one action and target service when you want to stage it; nothing executes before approval.'
+        targets = {sid for sid in cluster_state.services if sid in lower or sid.replace('-', ' ') in lower}
+        aliases = [('redis', 'redis-cache'), ('database', 'order-db'), ('postgres', 'order-db'), ('ingress', 'ingress-gateway'), ('payment', 'payment-service')]
+        targets.update(sid for word, sid in aliases if re.search(r'\b' + word + r'\b', lower))
+        if len(set(actions)) > 1 or len(targets) > 1:
+            return 'Please request one action on one target at a time so each change has its own approval. Which action and service should come first?'
+        if not targets:
+            return 'Which configured service should this action target? No action is staged yet.'
+        return None
+
+    async def _deterministic_agent_reasoning(self, text):
+        lower = re.sub(r'^(?:(?:hey|hi|hello)\s+)?j\.?a\.?r\.?v\.?i\.?s\.?[\s,:!]*', '', text, flags=re.I).strip().lower()
+        lower = lower or 'who are you?'
         target = next((s for s in cluster_state.services if s in lower or s.replace('-', ' ') in lower), None)
         if not target:
             target = next((sid for word, sid in [('redis', 'redis-cache'), ('database', 'order-db'), ('postgres', 'order-db'), ('ingress', 'ingress-gateway'), ('payment', 'payment-service')] if word in lower), 'payment-service')
 
         # Conversational Intelligence & SRE Identity
-        if any(w in lower for w in ['who are you', 'what is your name', 'what are you', 'introduce yourself', 'jarvis']):
+        if any(w in lower for w in ['who are you', 'what is your name', 'what are you', 'introduce yourself']):
             return 'I am J.A.R.V.I.S., your autonomous AI assistant and Incident Commander. I monitor systems, analyze anomalies, and await your orders, Sir.', []
         if any(w in lower for w in ['how do you work', 'architecture', 'dual engine', 'how does this work']):
             return 'I am equipped with a dual-engine architecture, Sir. Path 1 leverages AssemblyAI for low-latency 24kHz interactions, while Path 2 utilizes Streaming v3 STT. Both employ cryptographic safety protocols to prevent unauthorized mishaps.', []
         if any(w in lower for w in ['safety', 'guardrail', 'barrier', 'prevent mistake', 'trust you']):
             return 'You can trust my two-phase safety barrier, Boss. All destructive mutations are staged with a 30-second TTL. I await your explicit verbal or UI confirmation before executing anything critical.', []
-        if any(w in lower for w in ['what is wrong', 'why is it slow', 'what is the issue', 'diagnosis', 'what should we do', 'recommendation']):
-            crit = [s for s in cluster_state.services.values() if s.status == 'critical']
-            deg = [s for s in cluster_state.services.values() if s.status == 'degraded']
-            if crit:
-                names = [s.id for s in crit]
-                return f'I have detected {len(crit)} critical service{"s" if len(crit)>1 else ""}: {", ".join(names)}. Telemetry indicates anomalies. I advise an immediate investigation or pod restart, Sir.', []
-            elif deg:
-                names = [s.id for s in deg]
-                return f'{len(deg)} degraded service{"s" if len(deg)>1 else ""}: {", ".join(names)}. Latency is rather elevated. I suggest verifying telemetry before things spiral, Boss.', []
-            return 'All systems are operating within optimal parameters, Sir. No anomalies detected.', []
+        if any(w in lower for w in ['what is wrong', 'why is it slow', 'what is the issue', 'diagnosis', 'diagnostics', 'what should we do', 'recommendation']):
+            event = await self.call_tool('investigate_incident', {})
+            return self._summarize_tool(event), [event]
+        if any(w in lower for w in ['what time', 'current time', 'what day', 'date today', "what's the time"]):
+            import datetime
+            now = datetime.datetime.now()
+            return f"The current time is {now.strftime('%I:%M %p on %A, %B %d')}, Sir.", []
+        if any(w in lower for w in ['host vital', 'pc vital', 'hardware', 'system stats', 'system load', 'my pc', 'my computer', 'host cpu', 'host memory', 'machine']):
+            event = await self.call_tool('query_host_telemetry', {})
+            return self._summarize_tool(event), [event]
+        if any(w in lower for w in ['what can you do', 'capabilities', 'what do you do', 'features']):
+            return 'As your AI assistant and SRE commander, I can monitor cluster telemetry, analyze real-time microservice anomalies, inspect container logs, step through operational runbooks, check live host machine performance, and synthesize post-mortem reports upon request, Sir.', []
+        if any(w in lower for w in ['joke', 'funny', 'laugh']):
+            return 'Why do developers prefer dark mode, Sir? Because light attracts bugs. I still recommend running the tests, Sir.', []
+        if any(w in lower for w in ['thank you', 'thanks', 'good job', 'well done', 'great work']):
+            return 'Always an honor to assist you, Sir. Let me know if you require further telemetry checks or remediation.', []
         if any(w in lower for w in ['hello', 'hi ', 'hey', 'good morning', 'good afternoon', 'help', 'wake up']):
             return 'J.A.R.V.I.S. online and at your service, Boss. The cluster is under my watch. Shall we inspect the telemetry, or do you have a specific target in mind?', []
 
@@ -260,35 +316,56 @@ class AgentOrchestrator:
             name = 'get_service_topology'
         elif 'log' in lower or 'why' in lower:
             name, args = 'inspect_service_logs', {'service_name': target}
+        elif any(w in lower for w in ['host', 'pc ', 'machine']) and any(w in lower for w in ['cpu', 'memory', 'metric', 'telemetry']):
+            name, args = 'query_host_telemetry', {}
         elif any(w in lower for w in ['cpu', 'memory', 'metric', 'telemetry', 'latency']):
             name, args = 'query_telemetry', {'service_name': target}
         elif 'page ' in lower or 'escalat' in lower:
             name, args = 'trigger_pager', {'team': 'on-call', 'message': text}
         elif not any(w in lower for w in ['health', 'alert', 'status', 'failing', 'overview']):
-            return 'I am actively monitoring the cluster. You can ask me to inspect cluster health, check logs for payment-service or order-db, execute an SRE runbook, or stage a pod restart.', []
+            return 'I am actively monitoring the cluster, Sir. You can ask me to inspect cluster health, check logs for payment-service or order-db, check host vitals, execute an SRE runbook, or stage a pod restart.', []
         event = await self.call_tool(name, args)
-        result = event['result']
-        if result.get('error'): spoken = str(result['error'])
-        elif result.get('status') == 'staged': spoken = result.get('message', 'An action is staged. Confirm or cancel it.')
-        elif result.get('spoken'): spoken = result['spoken']
-        elif name == 'list_runbooks': spoken = 'Available runbooks: ' + ', '.join(r['title'] for r in result['runbooks'])
-        elif name == 'get_cluster_health':
-            critical = [s['id'] for s in result['critical_services']]
-            spoken = f'{len(critical)} critical services: {", ".join(critical)}. Inspect their logs to investigate.' if critical else ('Some service health checks are unverified.' if result['unknown_services'] else 'No critical services. Review degraded services and remaining alerts before closing the incident.')
-        elif name == 'inspect_service_logs': spoken = f'{target}: ' + (result['logs'][-1] if result['logs'] else 'No log entries returned.')
-        elif name == 'query_telemetry': spoken = f'{target} is {result["status"]}, with {result["replicas"]} replicas. ' + (f'Error rate is {result["error_rate"]} percent; P99 latency is {result["latency_p99"]} milliseconds.' if result['error_rate'] is not None else 'Application performance metrics are unavailable.')
-        else: spoken = result.get('message') or result.get('confirmation', 'Request completed.')
-        return spoken, [event]
+        return self._summarize_tool(event), [event]
+
+    def _summarize_tool(self, event):
+        name, result = event['tool_name'], event['result']
+        if result.get('error'): return str(result['error'])
+        if result.get('status') == 'staged': return result.get('message', 'Review the pending approval.')
+        if result.get('spoken'): return result['spoken']
+        if name == 'get_cluster_health':
+            affected = []
+            for label, key in [('critical', 'critical_services'), ('degraded', 'degraded_services'), ('unverified', 'unknown_services')]:
+                ids = [service['id'] for service in result.get(key, [])]
+                if ids: affected.append(f'{len(ids)} {label}: {", ".join(ids)}')
+            if affected: return '; '.join(affected) + '. Review the observations before choosing a change.'
+            if result.get('total_active_alerts'): return 'Services report healthy, but active alerts still require review.'
+            return 'All configured services report healthy in the current observation.'
+        if name == 'query_host_telemetry':
+            metrics = result.get('host_metrics')
+            if not isinstance(metrics, dict): return result.get('message', 'Backend host telemetry is unavailable.')
+            if metrics.get('error'): return 'Backend host telemetry is unavailable: ' + str(metrics['error'])
+            readings = []
+            for key, label, unit in [('host_cpu_percent', 'CPU', 'percent'), ('host_memory_used_gb', 'memory used', 'gigabytes'), ('disk_used_percent', 'disk used', 'percent')]:
+                if metrics.get(key) is not None: readings.append(f'{label} {metrics[key]} {unit}')
+            return 'Backend host: ' + ', '.join(readings) + '.' if readings else 'Backend host measurements are unavailable.'
+        if name == 'list_runbooks': return 'Available runbooks: ' + ', '.join(r['title'] for r in result.get('runbooks', []))
+        if name == 'inspect_service_logs':
+            target = event['arguments'].get('service_name', 'Service')
+            return f'{target}: ' + (result['logs'][-1] if result.get('logs') else 'No log entries returned.')
+        if name == 'query_telemetry':
+            target = event['arguments'].get('service_name', 'Service')
+            return f'{target} is {result["status"]}, with {result["replicas"]} replicas. ' + (f'Error rate is {result["error_rate"]} percent; P99 latency is {result["latency_p99"]} milliseconds.' if result.get('error_rate') is not None else 'Application performance metrics are unavailable.')
+        return result.get('message') or result.get('summary') or result.get('confirmation', 'Tool result is available in the workspace.')
 
     async def _call_assemblyai_gateway(self, user_text):
-        tool_summaries = "\n".join([f"- {t['function']['name']}: {t['function']['description']}" for t in SRE_TOOL_DEFINITIONS])
+        tool_summaries = json.dumps([tool['function'] for tool in SRE_TOOL_DEFINITIONS])
         system = (
             f"{SYSTEM_PROMPT}\nInfrastructure mode: {settings.infrastructure_mode}.\n\n"
             f"Available SRE Tools:\n{tool_summaries}\n\n"
             "CRITICAL INSTRUCTIONS:\n"
-            "1. If the operator wants to check cluster health, inspect logs, run a runbook, or remediate, output ONLY a valid JSON object:\n"
+            "1. If the operator wants to check cluster health, inspect logs, run a runbook, query host vitals, or remediate, output ONLY a valid JSON object:\n"
             '{"tool": "<tool_name>", "arguments": {<args>}}\n'
-            "2. If the operator asks a conversational question, greeting, or explanation, respond directly with 1-2 spoken sentences. Do NOT use JSON."
+            "2. If the operator asks a conversational question, greeting, or explanation, respond directly with 1 to 2 spoken sentences as J.A.R.V.I.S. Address them respectfully as 'Sir' or 'Boss'. NEVER use markdown asterisks, bullet points, headers, or JSON for conversational replies."
         )
         history = self.history[-8:]
         messages = [{'role': 'system', 'content': system}] + [
@@ -308,31 +385,18 @@ class AgentOrchestrator:
             self.last_llm_ms = round((time.perf_counter() - started) * 1000, 1)
             response.raise_for_status()
             raw = response.json()['choices'][0]['message']['content'].strip()
-            match = re.search(r'\{.*\}', raw, re.DOTALL)
-            if match:
-                try:
-                    tool_call = json.loads(match.group())
-                    name = tool_call.get('tool') or tool_call.get('name')
-                    args = tool_call.get('arguments') or tool_call.get('args') or {}
-                    if isinstance(args, str):
-                        try: args = json.loads(args)
-                        except: args = {}
-                    event = await self.call_tool(name, args)
-                    res = event['result']
-                    if self.awaiting_confirmation:
-                        spoken = res.get('message', 'Review the pending action.')
-                    elif res.get('error'):
-                        spoken = f"Tool {name} failed: {res['error']}"
-                    elif res.get('spoken'):
-                        spoken = res['spoken']
-                    elif name == 'get_cluster_health':
-                        crit = [s['id'] for s in res.get('critical_services', [])]
-                        spoken = f"{len(crit)} critical services detected: {', '.join(crit)}. Inspect their logs to triage." if crit else "All monitored services report healthy."
-                    else:
-                        spoken = res.get('message') or res.get('summary') or f"Action {name} completed."
-                    return spoken, [event]
-                except Exception:
-                    pass
+            # Parse and validate before dispatch. Never substitute empty/default
+            # arguments or hide failures after a tool has changed state.
+            if raw.startswith('```'):
+                raw = re.sub(r'^```(?:json)?\s*|\s*```$', '', raw).strip()
+            if raw.startswith(('{', '[')):
+                tool_call = json.loads(raw)
+                if not isinstance(tool_call, dict): raise ValueError('Expected a tool request object.')
+                name = tool_call.get('tool') or tool_call.get('name')
+                args = tool_call.get('arguments', tool_call.get('args', {}))
+                name, args = validate_tool_request(name, args)
+                event = await self.call_tool(name, args)
+                return self._summarize_tool(event), [event]
             return raw, []
 
     async def _call_dynamic_llm(self, user_text):

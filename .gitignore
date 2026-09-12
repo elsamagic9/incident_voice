@@ -53,4 +53,5 @@ Thumbs.db
 # Logs and runtime artifacts
 logs/
 *.log
+*.jsonl
 .agents/

@@ -33,6 +33,7 @@ class Settings(BaseSettings):
     port: int = 8000
     debug: bool = True
     infrastructure_mode: Literal["simulation", "docker", "kubernetes"] = "simulation"
+    wal_storage_dir: str = "data"
     operator_access_token: str = ""
     cookie_secure: bool = False
     docker_targets: dict[str, str] = {"payment-service": "incident-payment", "order-db": "incident-order-db", "redis-cache": "incident-redis"}

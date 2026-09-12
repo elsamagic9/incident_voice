@@ -75,7 +75,12 @@ def query_telemetry(service_name):
             'replicas': svc.replicas, 'cpu_utilization': svc.cpu_percent if svc.metrics_available else None,
             'memory_utilization': svc.memory_percent if svc.metrics_available else None,
             'error_rate': svc.error_rate_pct if svc.metrics_available else None,
-            'latency_p99': svc.latency_p99_ms if svc.metrics_available else None, 'alerts': svc.active_alerts}
+            'latency_p99': svc.latency_p99_ms if svc.metrics_available else None,
+            'traffic_rps': getattr(svc, 'traffic_rps', None) if svc.metrics_available else None,
+            'saturation_pct': getattr(svc, 'saturation_pct', None) if svc.metrics_available else None,
+            'measured_at': getattr(svc, 'measured_at', time.time()),
+            'alerts': svc.active_alerts}
+
 
 
 def execute_remediation(action, service_name, count=4):
@@ -197,15 +202,20 @@ def verify_recovery():
     from app.services.investigation import investigation_service, service_snapshot, fingerprint
     refresh_live_services()
     current = {sid: service_snapshot(svc) for sid, svc in cluster_state.services.items()}
-    remaining = [sid for sid, svc in current.items() if svc['status'] != 'healthy']
+    remaining = [sid for sid, svc in current.items() if svc['status'] != 'healthy'
+                 or (svc.get('error_rate_pct') is not None and svc['error_rate_pct'] > 1.0)
+                 or (svc.get('latency_p99_ms') is not None and svc['latency_p99_ms'] > 500.0)]
     baseline = investigation_service.brief['baseline'] if investigation_service.brief else None
+    recovery_verified = not remaining
     result = {'source': settings.infrastructure_mode, 'current': current, 'baseline': baseline,
             'captured_at': time.time(),
-            'remaining_services': remaining, 'recovery_verified': not remaining,
-            'message': ('All configured services are healthy in the simulation.' if settings.infrastructure_mode == 'simulation' else 'All configured service health checks passed.') if not remaining else
+            'remaining_services': remaining, 'recovery_verified': recovery_verified,
+            'slo_criteria': {'max_error_rate_pct': 1.0, 'max_latency_p99_ms': 500.0},
+            'message': ('All configured services are healthy in the simulation.' if settings.infrastructure_mode == 'simulation' else 'All configured service health checks passed.') if recovery_verified else
                        f'Recovery is incomplete: {", ".join(remaining)} still need attention or health verification.'}
     investigation_service.verification = {**result, 'fingerprint': fingerprint()}
     return result
+
 
 
 SRE_TOOL_MAP = {name: globals()[name] for name in ['verify_recovery', 'get_cluster_health', 'inspect_service_logs', 'query_telemetry',

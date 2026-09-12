@@ -34,6 +34,8 @@ class AssemblyAIVoiceAgentSession:
         self.seen_calls = set()
         self.ignore_audio = False
         self.reply_epoch = 0
+        self.agent_partial = ''
+        self.agent_reply_id = None
 
     @property
     def staged_action(self): return agent_orchestrator.staged_action
@@ -112,9 +114,20 @@ class AssemblyAIVoiceAgentSession:
             text = data.get('text', '')
             if text: await self._call_cb(self.on_user_turn, text, kind == 'transcript.user', None)
         elif kind in {'transcript.agent.delta', 'transcript.agent'}:
-            text = data.get('text') or data.get('delta', '')
-            if text: await self._call_cb(self.on_agent_turn, text, kind == 'transcript.agent')
+            reply_id = data.get('reply_id')
+            if reply_id and self.agent_reply_id and reply_id != self.agent_reply_id: return
+            final = kind == 'transcript.agent'
+            if final or data.get('text'):
+                text = data.get('text', '')
+            else:
+                delta = data.get('delta', '')
+                joiner = '' if not self.agent_partial or not delta or delta[0] in ",.!?:;'’ " or self.agent_partial.endswith(' ') else ' '
+                text = (self.agent_partial + joiner + delta)[-8000:]
+            self.agent_partial = '' if final else text
+            if text: await self._call_cb(self.on_agent_turn, text, final)
         elif kind == 'reply.started':
+            self.agent_reply_id = data.get('reply_id')
+            self.agent_partial = ''
             self.reply_done.clear()
             self.ignore_audio = False
             await self._call_cb(self.on_agent_state, 'thinking')

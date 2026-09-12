@@ -26,6 +26,7 @@ services:
       - DEBUG=False
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
+      - incident_voice_data:/app/backend/data
     restart: unless-stopped
     depends_on:
       - incident-payment
@@ -73,3 +74,7 @@ services:
       interval: 10s
       timeout: 3s
       retries: 2
+
+volumes:
+  incident_voice_data:
+

@@ -5,13 +5,16 @@ from pydantic import BaseModel, Field
 class ServiceNode(BaseModel):
     id: str
     name: str
-    status: str = "healthy"  # "healthy", "degraded", "critical"
+    status: str = "healthy"  # "healthy", "degraded", "critical", "unknown"
     metrics_available: bool = True
     replicas: int = 3
     cpu_percent: float = 24.5
     memory_percent: float = 48.0
     error_rate_pct: float = 0.05
     latency_p99_ms: float = 42.0
+    traffic_rps: float = 120.0
+    saturation_pct: float = 35.0
+    measured_at: float = Field(default_factory=time.time)
     active_alerts: List[str] = Field(default_factory=list)
     recent_logs: List[str] = Field(default_factory=list)
 
@@ -54,6 +57,8 @@ class ClusterState:
                 memory_percent=55.0,
                 error_rate_pct=14.8,
                 latency_p99_ms=480.0,
+                traffic_rps=1450.0,
+                saturation_pct=72.0,
                 active_alerts=["HighDownstream5xxRate"],
                 recent_logs=[
                     "[WARN] Ingress: upstream /api/v1/checkout returning 503 Service Unavailable",
@@ -69,6 +74,8 @@ class ClusterState:
                 memory_percent=89.2,
                 error_rate_pct=42.6,
                 latency_p99_ms=2850.0,
+                traffic_rps=420.0,
+                saturation_pct=95.0,
                 active_alerts=["PodCrashLoopBackoff", "PostgresPoolExhausted", "P99LatencyBreach"],
                 recent_logs=[
                     "[ERROR] DBConnectionPoolTimeout: connection acquired timeout after 5000ms (max_connections=50 reached)",
@@ -86,6 +93,8 @@ class ClusterState:
                 memory_percent=32.0,
                 error_rate_pct=0.01,
                 latency_p99_ms=18.0,
+                traffic_rps=850.0,
+                saturation_pct=22.0,
                 active_alerts=[],
                 recent_logs=["[INFO] Auth tokens refreshed: 12,400 active sessions valid"]
             ),
@@ -98,6 +107,8 @@ class ClusterState:
                 memory_percent=91.0,
                 error_rate_pct=12.0,
                 latency_p99_ms=1450.0,
+                traffic_rps=320.0,
+                saturation_pct=92.0,
                 active_alerts=["ConnectionCountMaxed", "SlowQueryLockWait"],
                 recent_logs=[
                     "[WARN] postgres: max_connections limit 200 reached by client payment-service",
@@ -113,6 +124,8 @@ class ClusterState:
                 memory_percent=81.0,
                 error_rate_pct=6.5,
                 latency_p99_ms=180.0,
+                traffic_rps=2800.0,
+                saturation_pct=84.0,
                 active_alerts=["MemoryUsageAbove80Pct"],
                 recent_logs=[
                     "[WARN] Redis: eviction policy volatile-lru dropping 450 keys/sec due to memory pressure"
@@ -133,11 +146,17 @@ class ClusterState:
             self.add_event("system", "Operator started an infrastructure investigation. Severity and root cause are unassessed.")
 
     def add_event(self, event_type: str, text: str):
-        self.incident.timeline_events.append({
+        evt = {
             "timestamp": time.time(),
             "type": event_type,
             "text": text
-        })
+        }
+        self.incident.timeline_events.append(evt)
+        try:
+            from app.services.wal_service import wal_service
+            wal_service.append("TIMELINE_EVENT", evt)
+        except Exception:
+            pass
 
     def apply_remediation(self, action: str, service_name: str, params: Dict[str, Any] = None) -> Dict[str, Any]:
         from app.core.config import settings
@@ -158,6 +177,9 @@ class ClusterState:
             svc.memory_percent = 42.0
             svc.error_rate_pct = 0.5
             svc.latency_p99_ms = 65.0
+            svc.traffic_rps = 450.0
+            svc.saturation_pct = 35.0
+            svc.measured_at = time.time()
             svc.active_alerts = []
             svc.recent_logs.append(f"[INFO] Rolling pod restart completed successfully at {time.strftime('%H:%M:%S')}")
             result["details"] = f"Graceful rolling restart executed for {service_name}. Clean pods spawned."
@@ -168,6 +190,8 @@ class ClusterState:
             svc.replicas = new_count
             svc.cpu_percent = max(15.0, svc.cpu_percent / 2)
             svc.error_rate_pct = max(0.1, svc.error_rate_pct / 3)
+            svc.saturation_pct = max(15.0, svc.saturation_pct / 2)
+            svc.measured_at = time.time()
             result["details"] = f"Scaled {service_name} from {old_count} to {new_count} replicas."
 
         elif action == "flush_cache":
@@ -176,6 +200,8 @@ class ClusterState:
             svc.status = "healthy"
             svc.memory_percent = 35.0
             svc.error_rate_pct = 0.01
+            svc.saturation_pct = 28.0
+            svc.measured_at = time.time()
             svc.active_alerts = []
             svc.recent_logs.append("[INFO] Redis cache flushed and connection pool recycled.")
             result["details"] = "Redis cache memory flushed and stale distributed locks released."
@@ -183,6 +209,8 @@ class ClusterState:
         elif action == "enable_circuit_breaker":
             svc.status = "degraded"
             svc.error_rate_pct = min(svc.error_rate_pct, 1.0)
+            svc.saturation_pct = 40.0
+            svc.measured_at = time.time()
             svc.active_alerts = ["CircuitBreakerActive"]
             svc.recent_logs.append(f"[INFO] Circuit breaker tripped for {service_name}. Synthetic fallback enabled.")
             result["details"] = f"Circuit breaker engaged for {service_name}; fallback is serving while recovery remains incomplete."
@@ -191,6 +219,8 @@ class ClusterState:
             svc.status = "healthy"
             svc.error_rate_pct = 0.02
             svc.latency_p99_ms = 45.0
+            svc.saturation_pct = 25.0
+            svc.measured_at = time.time()
             svc.active_alerts = []
             svc.recent_logs.append("[INFO] Rolled back deployment to git commit sha-a49e10d (v2.14.0 stable)")
             result["details"] = f"Deployment for {service_name} rolled back to previous stable release."
@@ -199,6 +229,8 @@ class ClusterState:
             if svc.status == "critical":
                 svc.status = "degraded"
                 svc.error_rate_pct = max(1.0, svc.error_rate_pct / 3)
+            svc.saturation_pct = max(30.0, svc.saturation_pct / 2)
+            svc.measured_at = time.time()
             result["details"] = f"Simulated traffic for {service_name} shifted to a failover region; verify recovery separately."
 
         else:

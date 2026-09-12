@@ -8,6 +8,7 @@ import type { AgentStatus, Turn } from '../types';
 interface Props {
   turns: Turn[];
   interimTranscript: string;
+  agentTranscript?: string;
   isRecording: boolean;
   audioLevel?: number;
   agentStatus: AgentStatus;
@@ -22,23 +23,25 @@ interface Props {
 }
 
 const welcomePrompts = [
-  { title: 'Build an incident brief', text: 'Investigate the incident', icon: '01' },
-  { title: 'Investigate Container Logs', text: 'Inspect logs for payment-service', icon: '02' },
-  { title: 'Execute Runbook Workflow', text: 'Start runbook postgres connection pool', icon: '03' },
+  { title: 'Jarvis, Run Diagnostics', text: 'Jarvis, run full diagnostics', icon: '01' },
+  { title: 'Check Backend Host Vitals', text: 'Jarvis, check host vitals', icon: '02' },
+  { title: 'Build Incident Brief', text: 'Investigate the incident', icon: '03' },
 ];
 
 const quickChips = [
+  'Jarvis, check host vitals',
   'Investigate the incident',
-  'What alerts are firing?',
-  'Inspect payment-service',
-  'Show dependency topology',
+  'What is causing the outage?',
   'Restart payment-service',
+  'Show dependency topology',
+  'What time is it, Jarvis?',
   'Generate postmortem',
 ];
 
 export const LiveTranscriptHUD: React.FC<Props> = ({
   turns,
   interimTranscript,
+  agentTranscript = '',
   isRecording,
   audioLevel = 0,
   agentStatus,
@@ -79,7 +82,7 @@ export const LiveTranscriptHUD: React.FC<Props> = ({
         behavior: window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
       });
     }
-  }, [turns, interimTranscript, thinking, awaiting]);
+  }, [turns, interimTranscript, agentTranscript, thinking, awaiting]);
 
   const send = (event: React.FormEvent) => {
     event.preventDefault();
@@ -98,8 +101,8 @@ export const LiveTranscriptHUD: React.FC<Props> = ({
             <AudioLines size={20} className={speaking || isRecording ? 'animate-pulse text-cyan-400' : ''} />
           </span>
           <div className="min-w-0">
-            <h2 id="conversation-heading" className="truncate">Voice SRE Incident Copilot</h2>
-            <p className="muted truncate">Speak naturally. Stay in control.</p>
+            <h2 id="conversation-heading" className="truncate">J.A.R.V.I.S. Voice Commander</h2>
+            <p className="muted truncate">Autonomous AI Assistant & Incident Copilot</p>
           </div>
         </div>
 
@@ -134,7 +137,7 @@ export const LiveTranscriptHUD: React.FC<Props> = ({
         aria-live="polite"
         aria-relevant="additions text"
       >
-        {!turns.length && !interimTranscript ? (
+        {!turns.length && !interimTranscript && !agentTranscript ? (
           <div className="conversation-welcome">
             <div className="welcome-symbol">
               <AudioLines size={34} strokeWidth={1.75} />
@@ -206,7 +209,9 @@ export const LiveTranscriptHUD: React.FC<Props> = ({
               </div>
             )}
 
-            {thinking && (
+            {agentTranscript && <article className="conversation-message message-agent" aria-label="Live agent caption" aria-live="off"><span className="message-avatar"><Bot size={16} /></span><div className="message-content"><div className="message-meta"><strong>J.A.R.V.I.S.</strong><small>Speaking · live caption</small></div><p>{agentTranscript}</p></div></article>}
+
+            {thinking && !agentTranscript && (
               <div className="thinking-message">
                 <span className="thinking-dots">
                   <i /><i /><i />

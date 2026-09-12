@@ -132,7 +132,7 @@ function Workspace() {
       {voice.stagedRemediation && <ApprovalCard action={voice.stagedRemediation} disabled={disabled} onApprove={voice.authorizeRemediation} onCancel={voice.cancelRemediation} />}
 
       <div className="workspace-grid">
-        <LiveTranscriptHUD turns={voice.turns} interimTranscript={voice.currentInterimTranscript} isRecording={voice.isRecording}
+        <LiveTranscriptHUD turns={voice.turns} interimTranscript={voice.currentInterimTranscript} agentTranscript={voice.currentAgentTranscript} isRecording={voice.isRecording}
           audioLevel={voice.audioLevel} agentStatus={voice.isPlaying ? 'speaking' : voice.agentStatus}
           disabled={disabled} voiceAvailable={!!voice.operator?.assemblyai_configured} isConnected={voice.isConnected}
           providerState={voice.providerState} providerMessage={voice.providerMessage}

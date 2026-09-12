@@ -12,7 +12,7 @@ from app.core.auth_rbac import security_manager
 from app.services.assemblyai_stream import AssemblyAIStreamSession
 from app.services.assemblyai_voice_agent import AssemblyAIVoiceAgentSession
 from app.services.orchestrator import agent_orchestrator
-from app.services.tts_service import tts_service
+from app.services.tts_service import tts_service, clean_speech_text
 from app.services.blackbox_service import blackbox_service
 from app.services.runbook_engine import runbook_engine
 from app.services.investigation import investigation_service
@@ -83,7 +83,7 @@ async def voice_agent_websocket(websocket: WebSocket):
                 result = await asyncio.wait_for(tts_service.synthesize(text), 15)
                 if epoch != speech_epoch: return
                 if result.get('warning'): await send({'type': 'notice', 'message': result['warning']})
-                payload = {'type': 'audio_stream', 'encoding': result['encoding'], 'text': text, 'epoch': epoch}
+                payload = {'type': 'audio_stream', 'encoding': result['encoding'], 'text': result.get('text', clean_speech_text(text)), 'epoch': epoch}
                 if result.get('audio'): payload['data'] = base64.b64encode(result['audio']).decode()
                 await send(payload)
                 await send({'type': 'latency_breakdown', 'stats': {'stt_ms': None,
@@ -92,7 +92,7 @@ async def voice_agent_websocket(websocket: WebSocket):
                     'total_ms': round((time.perf_counter()-started)*1000, 1) if started else None}})
             except asyncio.TimeoutError:
                 await send({'type': 'notice', 'message': 'Speech synthesis timed out. Using browser speech.'})
-                await send({'type': 'audio_stream', 'encoding': 'browser', 'text': text, 'epoch': epoch})
+                await send({'type': 'audio_stream', 'encoding': 'browser', 'text': clean_speech_text(text), 'epoch': epoch})
             except asyncio.CancelledError: raise
         tts_task = asyncio.create_task(synthesis())
 

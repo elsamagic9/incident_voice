@@ -20,6 +20,7 @@ export function useVoiceStream() {
   const [isRecording, setIsRecording] = useState(false);
   const [turns, setTurns] = useState<Turn[]>([]);
   const [currentInterimTranscript, setCurrentInterimTranscript] = useState('');
+  const [currentAgentTranscript, setCurrentAgentTranscript] = useState('');
   const [executedTools, setExecutedTools] = useState<ToolExecution[]>([]);
   const [incident, setIncident] = useState<IncidentRecord | null>(null);
   const [services, setServices] = useState<Record<string, ServiceNode>>({});
@@ -146,7 +147,7 @@ export function useVoiceStream() {
       ws.onclose = event => {
         clearInterval(ping);
         if (disposed) return;
-        releaseMicrophone(); stopPlayback(); setIsConnected(false); setBusy(false); setStagedRemediation(null);
+        releaseMicrophone(); stopPlayback(); setIsConnected(false); setBusy(false); setStagedRemediation(null); setCurrentAgentTranscript('');
         setProviderState('idle');
         if (event.code === 4401) { setLoginRequired(true); setOperator(null); return; }
         if (event.code === 4409) { setError('This session is open in another tab. Close that connection and reconnect here.'); return; }
@@ -179,9 +180,11 @@ export function useVoiceStream() {
                 }
               }
               if (data.end_of_turn) {
+                if (data.speaker === 'agent') setCurrentAgentTranscript('');
                 setCurrentInterimTranscript('');
                 setTurns(prev => [...prev.slice(-199), { id: crypto.randomUUID(), speaker: data.speaker, transcript: data.transcript, end_of_turn: true, timestamp: data.timestamp || Date.now() / 1000 }]);
               } else if (data.speaker === 'user') setCurrentInterimTranscript(data.transcript);
+              else if (data.speaker === 'agent') setCurrentAgentTranscript(data.transcript);
               break;
             case 'cluster_sync':
               setIncident(data.incident); setServices(data.services || {}); setTopology(data.topology); setActiveRunbook(data.active_runbook);
@@ -193,7 +196,7 @@ export function useVoiceStream() {
               setExecutedTools(prev => [...prev.slice(-99), { ...data, id: crypto.randomUUID() }]); break;
             case 'agent_state': setAgentStatus(data.state); break;
             case 'interrupt':
-              audioEpoch.current = data.epoch; suppressAudio.current = false; stopPlayback(); break;
+              audioEpoch.current = data.epoch; suppressAudio.current = false; stopPlayback(); setCurrentAgentTranscript(''); break;
             case 'audio_stream':
               if (!suppressAudio.current && data.epoch === audioEpoch.current) enqueueAudio(data); break;
             case 'latency_breakdown': setLatency(data.stats); break;
@@ -202,6 +205,7 @@ export function useVoiceStream() {
             case 'error': setError(data.message); break;
             case 'command_complete': setBusy(false); break;
             case 'session_reset':
+              setCurrentAgentTranscript('');
               releaseMicrophone(); stopPlayback(); setTurns([]); setExecutedTools([]); setPostMortem(null); setStagedRemediation(null);
               setInvestigation(null); setRecoveryChecks([]);
               setActiveRunbook(null); setNotice('A fresh incident session is ready.'); setCurrentInterimTranscript(''); setAutopilotEnabled(false);
@@ -246,7 +250,7 @@ export function useVoiceStream() {
 
   return { operator, loginRequired, login, reconnect: () => void login(), isConnected, agentStatus, activeEngine,
     providerState, providerMessage, reasoningProvider, stagedRemediation, autopilotEnabled, isRecording, isPlaying,
-    turns, currentInterimTranscript, executedTools, incident, services, topology, activeRunbook, postMortem,
+    turns, currentInterimTranscript, currentAgentTranscript, executedTools, incident, services, topology, activeRunbook, postMortem,
     audioLevel, latency, investigation, recoveryChecks, error, notice, busy, clearError: () => setError(''), clearNotice: () => setNotice(''),
     startRecording, stopRecording, toggleRecording: () => (isRecording || wantsRecording.current) ? stopRecording() : void startRecording(),
     sendTextCommand: (text: string) => command('text_command', { text }),
