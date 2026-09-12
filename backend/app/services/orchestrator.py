@@ -346,6 +346,8 @@ class AgentOrchestrator:
             ).strip(' ?!.,')
             if not query_text or any(k == query_text for k in ['news', 'the news', 'tech news', 'latest news', 'headlines']):
                 query_text = 'latest cloud infrastructure and tech news'
+            elif any(w in lower for w in ['news', 'headline', 'headlines', 'breaking', 'update', 'updates']) and not any(w in query_text.lower() for w in ['news', 'headline', 'update']):
+                query_text = f"{query_text} news"
             name, args = 'search_web_or_docs', {'query': query_text}
         elif any(w in lower for w in ['inspect document', 'read document', 'read pdf', 'read docx', 'inspect pdf', 'read file']):
             match_file = re.search(r'(?:document|file|pdf|docx)\s+([^\s]+\.(?:pdf|docx|md|txt))', lower)
@@ -404,6 +406,23 @@ class AgentOrchestrator:
         if name == 'query_telemetry':
             target = event['arguments'].get('service_name', 'Service')
             return f'{target} is {result["status"]}, with {result["replicas"]} replicas. ' + (f'Error rate is {result["error_rate"]} percent; P99 latency is {result["latency_p99"]} milliseconds.' if result.get('error_rate') is not None else 'Application performance metrics are unavailable.')
+        if name == 'search_web_or_docs':
+            items = result.get('results', [])
+            query_q = result.get('query', '')
+            if not items:
+                return f"Sir, my live web search for '{query_q}' returned no active advisories or news reports."
+            top = items[0]
+            title = top.get('title', 'Web source')
+            snippet = top.get('snippet', '').strip()
+            is_news = any(w in query_q.lower() for w in ['news', 'headline', 'breaking', 'update', 'latest'])
+            if is_news:
+                briefing = f"Sir, here is the latest news: {snippet}"
+                if len(items) > 1 and len(briefing) < 220:
+                    second = items[1].get('snippet', '').strip()
+                    if second:
+                        briefing += f" In related coverage, {second}"
+                return briefing
+            return f"According to {title}: {snippet}"
         return result.get('message') or result.get('summary') or result.get('confirmation', 'Tool result is available in the workspace.')
 
     async def _call_assemblyai_gateway(self, user_text):

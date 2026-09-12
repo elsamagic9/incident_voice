@@ -329,12 +329,14 @@ def search_web_or_docs(query: str, max_results: int = 4):
             "url": "https://sre.google/sre-book/monitoring-distributed-systems/"
         })
 
+    top = results[0] if results else None
+    top_summary = f"{top['title']}: {top['snippet']}" if top else f"No search results found for '{clean_query}'."
     return {
         "status": "success",
         "query": clean_query,
         "result_count": len(results),
         "results": results[:max_results],
-        "summary": f"Found {len(results)} search results for '{clean_query}'. Top result: {results[0]['title']} ({results[0]['url']})"
+        "summary": top_summary
     }
 
 
