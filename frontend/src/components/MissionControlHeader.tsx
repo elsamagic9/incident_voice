@@ -96,7 +96,7 @@ export const MissionControlHeader: React.FC<Props> = ({
         </div>
 
         {/* Top-Level Page Navigation */}
-        <nav className="flex items-center gap-1 p-1 bg-slate-900/90 border border-slate-800 rounded-xl shadow-inner backdrop-blur-md" aria-label="Page navigation">
+        <nav className="main-page-nav items-center gap-1 p-1 bg-slate-900/90 border border-slate-800 rounded-xl shadow-inner backdrop-blur-md" aria-label="Page navigation">
           <button
             type="button"
             onClick={() => onNavigate?.('mission_control')}

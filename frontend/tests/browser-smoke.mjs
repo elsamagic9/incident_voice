@@ -70,6 +70,25 @@ try {
   await page.getByRole('dialog').waitFor();
   await page.getByRole('button', { name: 'Close incident review' }).click();
 
+  // Test Top-Level Navigation to Usage & Analytics
+  await page.getByRole('button', { name: 'Usage & Analytics' }).click();
+  await page.getByRole('heading', { name: 'Usage Graph & Acoustic Telemetry' }).waitFor();
+  assert(await page.getByText('Total Tokens').isVisible());
+  assert(await page.getByText('Four-Stage Acoustic Latency Waterfall').isVisible());
+  await page.screenshot({ path: '/tmp/opencode/incident-voice-usage.png', fullPage: true });
+
+  // Test Top-Level Navigation to System Settings
+  await page.getByRole('button', { name: 'System Settings' }).click();
+  await page.getByRole('heading', { name: 'Workspace Settings & SRE Policies' }).waitFor();
+  assert(await page.getByText('AssemblyAI Orchestration Mode').isVisible());
+  await page.getByRole('button', { name: 'AI Gateway' }).click();
+  assert(await page.getByText('Reasoning Model & Synthesis Architecture').isVisible());
+  await page.screenshot({ path: '/tmp/opencode/incident-voice-settings.png', fullPage: true });
+
+  // Navigate back to Mission Control
+  await page.getByLabel('Back to Mission Control').click();
+  await page.getByRole('heading', { name: /Less typing/ }).waitFor();
+
   for (const viewport of [{ width: 375, height: 812 }, { width: 812, height: 375 }, { width: 768, height: 1024 }]) {
     await page.setViewportSize(viewport);
     if (viewport.width === 375) await page.screenshot({ path: '/tmp/opencode/incident-voice-mobile.png', fullPage: true });
