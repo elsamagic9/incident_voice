@@ -1,10 +1,12 @@
 import React, { useState } from 'react';
 import {
   AudioLines, ChevronDown, Settings2, RefreshCw, Zap, Sliders,
-  ShieldCheck, Activity, Radio, Cpu
+  ShieldCheck, Activity, Radio, Cpu, BarChart3, LayoutDashboard
 } from 'lucide-react';
 import { AgentStatus, IncidentRecord, VoiceEngine } from '../types';
 import { LatencyStats } from '../hooks/useVoiceStream';
+
+export type ActivePage = 'mission_control' | 'usage' | 'settings';
 
 interface Props {
   incident: IncidentRecord | null;
@@ -19,6 +21,8 @@ interface Props {
   onToggleAutopilot?: () => void;
   onSelectEngine: (engine: VoiceEngine) => void;
   onReset: () => void;
+  activePage?: ActivePage;
+  onNavigate?: (page: ActivePage) => void;
 }
 
 export const MissionControlHeader: React.FC<Props> = ({
@@ -33,6 +37,8 @@ export const MissionControlHeader: React.FC<Props> = ({
   onSelectEngine,
   onReset,
   agentStatus,
+  activePage = 'mission_control',
+  onNavigate,
 }) => {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const disabled = !isConnected || busy;
@@ -89,8 +95,53 @@ export const MissionControlHeader: React.FC<Props> = ({
           </div>
         </div>
 
+        {/* Top-Level Page Navigation */}
+        <nav className="flex items-center gap-1 p-1 bg-slate-900/90 border border-slate-800 rounded-xl shadow-inner backdrop-blur-md" aria-label="Page navigation">
+          <button
+            type="button"
+            onClick={() => onNavigate?.('mission_control')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all duration-200 ${
+              activePage === 'mission_control' || !activePage
+                ? 'bg-gradient-to-r from-cyan-600 to-blue-600 text-white shadow-[0_0_12px_rgba(6,182,212,0.35)] border border-cyan-400/40'
+                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
+            }`}
+          >
+            <LayoutDashboard size={13} className={activePage === 'mission_control' || !activePage ? 'text-cyan-300' : 'text-slate-400'} />
+            <span className="hidden sm:inline">Mission Control</span>
+            <span className="sm:hidden">Mission</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => onNavigate?.('usage')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all duration-200 ${
+              activePage === 'usage'
+                ? 'bg-gradient-to-r from-cyan-600 to-blue-600 text-white shadow-[0_0_12px_rgba(6,182,212,0.35)] border border-cyan-400/40'
+                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
+            }`}
+          >
+            <BarChart3 size={13} className={activePage === 'usage' ? 'text-cyan-300' : 'text-slate-400'} />
+            <span className="hidden sm:inline">Usage & Analytics</span>
+            <span className="sm:hidden">Usage</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => onNavigate?.('settings')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all duration-200 ${
+              activePage === 'settings'
+                ? 'bg-gradient-to-r from-cyan-600 to-blue-600 text-white shadow-[0_0_12px_rgba(6,182,212,0.35)] border border-cyan-400/40'
+                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
+            }`}
+          >
+            <Sliders size={13} className={activePage === 'settings' ? 'text-cyan-300' : 'text-slate-400'} />
+            <span className="hidden sm:inline">System Settings</span>
+            <span className="sm:hidden">Config</span>
+          </button>
+        </nav>
+
         {/* Center: Dual-Engine Switcher HUD */}
-        <div className="hidden md:flex items-center gap-1 p-1 bg-slate-900/80 border border-slate-800/90 rounded-xl shadow-inner backdrop-blur-md">
+        <div className="hidden xl:flex items-center gap-1 p-1 bg-slate-900/80 border border-slate-800/90 rounded-xl shadow-inner backdrop-blur-md">
           <button
             type="button"
             disabled={disabled}
@@ -256,6 +307,28 @@ export const MissionControlHeader: React.FC<Props> = ({
               ))}
             </dl>
             <p className="field-help mt-2">AssemblyAI Universal-3 Pro yields sub-300ms transcription turn-around.</p>
+          </div>
+
+          <div className="col-span-full pt-3 mt-1 border-t border-slate-800/80 flex flex-wrap items-center justify-between gap-3">
+            <span className="text-xs text-slate-400">Deep tuning, API credentials, and incident forensics:</span>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                className="button button-secondary text-xs flex items-center gap-1.5"
+                onClick={() => { setSettingsOpen(false); onNavigate?.('usage'); }}
+              >
+                <BarChart3 size={13} className="text-cyan-400" />
+                <span>Open Usage Graph</span>
+              </button>
+              <button
+                type="button"
+                className="button button-primary text-xs flex items-center gap-1.5"
+                onClick={() => { setSettingsOpen(false); onNavigate?.('settings'); }}
+              >
+                <Sliders size={13} />
+                <span>Open System Settings</span>
+              </button>
+            </div>
           </div>
         </section>
       )}

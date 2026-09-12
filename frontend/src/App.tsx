@@ -12,6 +12,9 @@ import { PostMortemViewer } from './components/PostMortemViewer';
 import { LiveTelemetryDrawer } from './components/LiveTelemetryDrawer';
 import { InvestigationPanel } from './components/InvestigationPanel';
 import { ApprovalCard } from './components/ApprovalCard';
+import { SettingsView } from './components/SettingsView';
+import { UsageAnalyticsView } from './components/UsageAnalyticsView';
+import { ActivePage } from './components/MissionControlHeader';
 
 class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean }> {
   state = { hasError: false };
@@ -26,6 +29,7 @@ type View = 'brief' | 'services' | 'runbooks' | 'topology' | 'demo';
 
 function Workspace() {
   const voice = useVoiceStream();
+  const [activePage, setActivePage] = useState<ActivePage>('mission_control');
   const [view, setView] = useState<View>('services');
   const [activityView, setActivityView] = useState<'tools' | 'timeline'>('tools');
   const [reportOpen, setReportOpen] = useState(false);
@@ -64,10 +68,34 @@ function Workspace() {
       isConnected={voice.isConnected} latency={voice.latency} activeEngine={voice.activeEngine}
       infrastructureMode={voice.operator?.infrastructure_mode} rbacRole={voice.operator?.role} busy={voice.busy}
       autopilotEnabled={voice.autopilotEnabled} onToggleAutopilot={simulation ? voice.toggleAutopilot : undefined}
-      onSelectEngine={voice.selectEngine} onReset={voice.resetIncident} />
+      onSelectEngine={voice.selectEngine} onReset={voice.resetIncident}
+      activePage={activePage} onNavigate={setActivePage} />
 
     <main id="workspace" className="workspace-main">
-      <section className="workspace-heading">
+      {activePage === 'settings' ? (
+        <SettingsView
+          onNavigateBack={() => setActivePage('mission_control')}
+          onSelectEngine={voice.selectEngine}
+          onResetIncident={voice.resetIncident}
+          currentEngine={voice.activeEngine}
+          currentAutopilot={voice.autopilotEnabled}
+          onToggleAutopilot={simulation ? voice.toggleAutopilot : undefined}
+          rbacRole={voice.operator?.role}
+          infrastructureMode={voice.operator?.infrastructure_mode}
+        />
+      ) : activePage === 'usage' ? (
+        <UsageAnalyticsView
+          onNavigateBack={() => setActivePage('mission_control')}
+          latency={voice.latency}
+          turns={voice.turns}
+          executedTools={voice.executedTools}
+          isRecording={voice.isRecording}
+          audioLevel={voice.audioLevel}
+          incidentId={voice.incident?.id}
+        />
+      ) : (
+        <>
+          <section className="workspace-heading">
         <div>
           <p className="eyebrow">OPERATIONS / INCIDENT WORKSPACE</p>
           <h1>Less typing. Faster triage<span className="accent-text">.</span></h1>
@@ -159,6 +187,8 @@ function Workspace() {
           </section>
         </div>
       </div>
+        </>
+      )}
 
       <footer className="workspace-footer" aria-label="Connection and provider status">
         <span>
