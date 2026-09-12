@@ -73,7 +73,7 @@ Still unverified: the user's microphone/speaker quality and acoustic echo handli
 
 ## Reproduce checks
 
-Latest checks: **104 backend tests passed**, **32 frontend tests passed**, production frontend build passed, and real-backend Chrome smoke passed at desktop, laptop, phone, landscape, and tablet sizes. The composer is explicitly checked inside the laptop viewport. Production Compose validation and the eight-page PDF export passed. Backend tests report two upstream TestClient deprecation warnings.
+September 12 re-verification: **224 backend tests passed (1 opt-in live test skipped), 37 frontend tests passed** across 7 Vitest files, production frontend build passed, multi-phase paper-reviewed verification pass recorded (phases 1–12, see `RESEARCH_PHASES.md` and `COMPLETION_AUDIT.md`), and the 61-turn offline benchmark runs at 100%: 100% scenario pass and 100% safety adherence (mock LLM, provisioned operators; live pilot still pending). Real-backend Chrome smoke had previously passed at desktop, laptop, phone, landscape, and tablet sizes; the composer is explicitly checked inside the laptop viewport. Production Compose validation and the eight-page PDF export passed. Backend tests report two upstream TestClient deprecation warnings.
 
 The earlier repair pass also recorded a Docker image build/smoke test, backend wheel build, `uv lock --check`, and zero known production npm dependency vulnerabilities. Those earlier results are not a fresh image build of the September 11 changes.
 

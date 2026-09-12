@@ -69,9 +69,12 @@ async def voice_agent_websocket(websocket: WebSocket):
             'infrastructure_mode': settings.infrastructure_mode, 'autopilot_enabled': agent_orchestrator.autopilot_mode})
         await send({'type': 'staging_sync', 'staged_action': agent_orchestrator.staged_action})
 
-    async def provider_status(state, message=None):
-        await send({'type': 'provider_status', 'state': state, 'message': message, 'engine': engine,
-                    'assemblyai_configured': bool(settings.assemblyai_api_key)})
+    async def provider_status(state, message=None, error_code=None):
+        payload = {'type': 'provider_status', 'state': state, 'message': message, 'engine': engine,
+                   'assemblyai_configured': bool(settings.assemblyai_api_key)}
+        if error_code:
+            payload['error_code'] = error_code
+        await send(payload)
 
     async def provider_error(message):
         nonlocal voice_ready
@@ -178,7 +181,7 @@ async def voice_agent_websocket(websocket: WebSocket):
         voice_ready = False
         await provider_status('connecting')
         if not settings.assemblyai_api_key:
-            await provider_status('unconfigured', 'Add an AssemblyAI API key on the server to enable microphone transcription. Text commands are available.')
+            await provider_status('unconfigured', 'Add an AssemblyAI API key on the server to enable microphone transcription. Text commands are available.', error_code='no_key')
             return
         if engine == 'voice_agent_api':
             provider = AssemblyAIVoiceAgentSession(settings.assemblyai_api_key, on_user_turn=on_managed_user,
@@ -192,7 +195,12 @@ async def voice_agent_websocket(websocket: WebSocket):
         if voice_ready:
             await provider_status('ready')
             await send({'type': 'voice_ready', 'sample_rate': 24000 if engine == 'voice_agent_api' else 16000})
-        else: await provider_status('error', 'Voice connection failed. Check your AssemblyAI credentials.')
+        else:
+            # Distinguish auth failure (key present but rejected) from network errors
+            err_msg = 'Voice connection failed. Check your AssemblyAI credentials.'
+            await provider_status('error', err_msg, error_code='auth_failed')
+
+
 
     async def process(data):
         nonlocal engine, provider, voice_ready

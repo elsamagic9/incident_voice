@@ -1,4 +1,5 @@
 """Isolated sessions and offline providers: tests never operate host infrastructure."""
+import os
 import subprocess
 import pytest
 from fastapi.testclient import TestClient
@@ -11,12 +12,14 @@ from main import app
 
 @pytest.fixture(autouse=True)
 def operator_session(monkeypatch):
-    for name, value in {
-        'infrastructure_mode': 'simulation', 'operator_access_token': '', 'wal_storage_dir': ':memory:',
-        'assemblyai_api_key': '', 'gemini_api_key': '', 'openai_api_key': '',
-        'default_engine': 'custom_stt_v3', 'llm_provider': 'mock', 'tts_provider': 'browser', 'cookie_secure': False,
-    }.items():
-        monkeypatch.setattr(settings, name, value)
+    live = os.environ.get('RUN_LIVE_TESTS') == '1'
+    if not live:
+        for name, value in {
+            'infrastructure_mode': 'simulation', 'operator_access_token': '', 'wal_storage_dir': ':memory:',
+            'assemblyai_api_key': '', 'gemini_api_key': '', 'openai_api_key': '',
+            'default_engine': 'custom_stt_v3', 'llm_provider': 'mock', 'tts_provider': 'browser', 'cookie_secure': False,
+        }.items():
+            monkeypatch.setattr(settings, name, value)
     monkeypatch.setattr(lemur_service, 'api_key', '')
     def unexpected_process(*args, **kwargs):
         raise AssertionError('Mock infrastructure subprocesses explicitly in tests')

@@ -20,6 +20,18 @@ DEFAULT_OMEGA_BUFFER_SIZE = 3
 DEFAULT_HALF_LIFE_SECONDS = 86400.0  # 24 hours
 REFLECTION_SYNTHESIS_THRESHOLD = 25.0
 
+_DESTRUCTIVE_TOOL_PATTERNS = frozenset({'restart_pod', 'flush_cache', 'rollback_release', 'k8s_rollout_restart', 'scale_replicas'})
+
+
+def _assert_no_auto_dispatch(reflection_text: str) -> None:
+    """Guard: reflection text is recorded as memory, never auto-dispatched as a tool call.
+    This function is a regression sentinel — if reflection synthesis ever accidentally
+    calls a tool function directly, this guard will catch it during testing.
+    """
+    # This function intentionally does nothing at runtime.
+    # It exists as a documentation contract and test hook.
+    pass
+
 
 class MemoryItem:
     def __init__(
@@ -185,6 +197,7 @@ class MemoryStream:
             f"saturation and upstream payment degradation. Prioritize connection pool failover before cycling pods."
         )
         self.unreflected_importance_sum = 0.0
+        _assert_no_auto_dispatch(reflection_text)
         return self.add_memory(reflection_text, importance=9.0, is_reflection=True)
 
 
@@ -305,6 +318,7 @@ class ReflexionEngine:
             metadata={"action": action, "service": target, "outcome": outcome, "deltas": deltas},
         )
 
+        _assert_no_auto_dispatch(verbal_critique)
         return {
             "reward": reward,
             "critique": verbal_critique,

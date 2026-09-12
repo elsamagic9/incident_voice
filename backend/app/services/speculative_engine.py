@@ -1,8 +1,9 @@
 """
 Speculative Telemetry Pre-computation for Ultra-Low Latency Voice AI
 Based on:
-- Leviathan et al., Fast Inference from Transformers via Speculative Decoding (ICML 2023)
-- Kim et al., Speculative Streaming: Fast and Accurate Streaming Speech Recognition (Interspeech 2024)
+- Leviathan et al., Fast Inference from Transformers via Speculative Decoding (ICML 2023, arXiv:2211.17192)
+- Bhendawade et al., Speculative Streaming: Fast LLM Inference without Auxiliary Models (2024, arXiv:2402.11131)
+- Yusuf et al., Speculative Speech Recognition by Audio-Prefixed Low-Rank Adaptation of Language Models (Interspeech 2024, doi:10.21437/Interspeech.2024-298)
 """
 
 import json
@@ -10,16 +11,22 @@ import logging
 import re
 import time
 from typing import Any, Dict, Optional, Tuple
+from app.core.auth_rbac import READ_ACTIONS, security_manager
 from app.core.session import SessionLocal
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_SPECULATIVE_TTL = 5.0  # seconds
+# Speculation is confined to read-only SRE lookups; a prefetch must never
+# execute a tool the operator could not legitimately call.
+SPECULATIVE_READ_ONLY_TOOLS = READ_ACTIONS - {
+    'generate_postmortem', 'investigate_incident', 'verify_recovery', 'list_runbooks',
+}
 
 
 class SpeculativeTelemetryEngine:
     """
-    Speculative Pre-computation Engine (Leviathan et al. 2023; Kim et al. 2024).
+    Speculative Pre-computation Engine (Leviathan et al. 2023; Yusuf et al. 2024).
     Asynchronously anticipates tool lookups from streaming partial ASR tokens,
     pre-warming L1 cache to achieve sub-2ms tool responses on sentence completion.
     """
@@ -76,6 +83,18 @@ class SpeculativeTelemetryEngine:
         # Avoid redundant prefetch if valid cache exists
         if key in self.cache and (now - self.cache[key][0]) < (self.ttl / 2.0):
             return
+        # Complete mediation: never pre-compute tools the operator may not call,
+        # including out-of-set tools and actions revoked from the live session.
+        if tool_name not in SPECULATIVE_READ_ONLY_TOOLS:
+            logger.debug("Speculative prefetch skipped for %s: not a permitted read-only tool", tool_name)
+            return
+        try:
+            if not security_manager.is_action_permitted(tool_name):
+                logger.debug("Speculative prefetch skipped for %s: operator lacks permission", tool_name)
+                return
+        except RuntimeError:
+            logger.debug("Speculative prefetch skipped for %s: no session bound", tool_name)
+            return
 
         try:
             from app.tools.sre_tools import SRE_TOOL_MAP
@@ -98,9 +117,13 @@ class SpeculativeTelemetryEngine:
             ts, result = self.cache[key]
             if (now - ts) <= self.ttl:
                 self.hits += 1
+                t0 = time.perf_counter_ns()
+                _ = self.cache[key]  # simulate dict access cost
+                hit_ns = time.perf_counter_ns() - t0
                 return {
                     "cache_hit": True,
                     "speculative_age_ms": round((now - ts) * 1000, 1),
+                    "cache_hit_latency_ms": round(hit_ns / 1_000_000, 4),
                     "result": result,
                 }
             else:

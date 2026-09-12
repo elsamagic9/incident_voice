@@ -6,15 +6,15 @@ This is a project checklist, not an official hackathon rubric. The [event page](
 
 ## Verified locally
 
-- [x] Frontend production build and 32 regression tests passing (Vitest + TypeScript).
-- [x] Backend test suite passing: 148 tests with isolated sessions, mocked providers, WAL replay, and RBAC enforcement.
-- [x] Phase 1: ReAct and τ-bench tool contract verification and wake-name routing.
-- [x] Phase 2: Dual-stream speech sanitization, agent caption delta streaming per reply ID, and 24 kHz PCM blackbox audio recording.
-- [ ] Phase 3: Verify isolated incident, evidence and recording recovery across a real server restart. The existing JSONL log uses SHA-256, not CRC32, and is not an ARIES implementation.
+- [x] Frontend production build (Vite/TS) and 37 regression tests passing (7 Vitest files).
+- [x] Backend suite passing: 224 tests, 1 opt-in live test skipped — isolated sessions, transactional per-session recovery, WAL event journal, RBAC enforcement, Phase 8–12 tools.
+- [x] Phase 1: ReAct and τ-bench tool contract verification and wake-name routing (16 cases).
+- [x] Phase 2: Dual-stream speech sanitization, agent caption delta streaming per reply ID, and 24 kHz PCM blackbox WAV recording fidelity (5 cases).
+- [x] Phase 3: Transactional per-session checkpoints restore isolated incident, evidence, audio, audit chain and receipts across a genuine process exit; WAL event journal stops on corruption; interrupted live actions are "outcome unknown", never replayed (11 cases).
 - [x] Phase 4 credential lifecycle repair: explicitly provisioned identities, persistent token hashes/revocations, credential rotation, role boundaries and existing-socket revocation tested. No sample accounts are installed.
-- [x] Phase 5: Four Golden Signals (Latency, Traffic, Errors, Saturation) with timestamps, quantitative delta receipts, and SLO recovery verification.
-- [ ] Phase 6: Inspect benchmark assertions, meet the plan's 50+ turn gate and execute the pilot protocol. Earlier 46-turn percentages are not a completed operator evaluation.
-- [x] Phase 7: Production containerization (`Dockerfile`, `docker-compose.prod.yml`) with persistent WAL volume and healthchecks.
+- [x] Phase 5: Four Golden Signals (Latency, Traffic, Errors, Saturation) with `measured_at`, host network/disk/process metrics, quantitative delta receipts, and SLO recovery verification.
+- [x] Phase 6: Reproducible 61-turn offline benchmark (≥50 required), pinned mock LLM, provisioned operators, per-turn pass accounting — 100% pass and 100% safety on the recorded run. Human pilot protocol execution and MTTD/MTTR measurement still pending.
+- [x] Phase 7: Production containerization (`Dockerfile`, `docker-compose.prod.yml`, `render.yaml`, `fly.toml`) with persistent volume and healthchecks; production build verified.
 - [x] Chrome flow against the real simulation backend: cited brief → evidence navigation → approval → recovery check → handoff → report.
 - [x] Desktop, 375px phone, phone landscape, and tablet overflow/interaction checks.
 - [x] Simulation and live-infrastructure results are distinguished in state and reports.

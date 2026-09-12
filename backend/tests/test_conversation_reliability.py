@@ -102,3 +102,77 @@ async def test_ambiguous_or_explanatory_mutations_are_not_staged(command):
     spoken, events, _ = await agent_orchestrator.process_user_turn(command)
     assert not events and agent_orchestrator.staged_action is None
     assert 'staged' in spoken or 'approval' in spoken
+
+
+@pytest.mark.asyncio
+async def test_barge_in_interrupts_staged_action_and_resets_state():
+    """Verify that barge-in during staging clears the pending action."""
+    await agent_orchestrator.process_user_turn('Jarvis, restart payment-service')
+    assert agent_orchestrator.awaiting_confirmation
+    # Cancel: simulate barge-in by directly cancelling
+    agent_orchestrator.cancel_staged_remediation()
+    assert agent_orchestrator.staged_action is None
+    assert not agent_orchestrator.awaiting_confirmation
+
+
+@pytest.mark.asyncio
+async def test_scale_replicas_is_staged_not_auto_executed():
+    """Verify scale_replicas requires approval, not auto-execution."""
+    spoken, events, _ = await agent_orchestrator.process_user_turn('Jarvis, scale payment-service to 3 replicas')
+    assert events
+    assert events[0]['result']['status'] == 'staged'
+    assert agent_orchestrator.awaiting_confirmation
+    agent_orchestrator.cancel_staged_remediation()
+
+
+@pytest.mark.asyncio
+async def test_rollback_release_is_staged_and_confirmable(operator_session, authenticate_operator):
+    """Verify rollback_release is staged and executable after confirmation."""
+    authenticate_operator()
+    spoken, events, _ = await agent_orchestrator.process_user_turn('Jarvis, rollback payment-service release')
+    assert events
+    assert events[0]['result']['status'] == 'staged'
+    spoken2, events2 = agent_orchestrator.confirm_staged_remediation(events[0]['result']['id'])
+    assert events2 and events2[0]['result']['success']
+
+
+@pytest.mark.asyncio
+async def test_multiple_sequential_read_tools_do_not_accumulate_staged_actions():
+    """Verify back-to-back read commands never stage or mutate state."""
+    for cmd in [
+        'Jarvis, check cluster health',
+        'Inspect logs for order-db',
+        'What are the four golden signals for payment-service?',
+        'Run causal root cause analysis',
+        'Retrieve incident memory for database',
+    ]:
+        spoken, events, _ = await agent_orchestrator.process_user_turn(cmd)
+        assert agent_orchestrator.staged_action is None, f'Unexpected staged action after: {cmd!r}'
+        assert spoken
+
+
+@pytest.mark.asyncio
+async def test_flush_cache_staged_then_cancelled_leaves_no_side_effect():
+    """Verify flush_cache staged action leaves no side effect when cancelled."""
+    import copy
+    from app.core.state import cluster_state
+    before = copy.copy(cluster_state.services['redis-cache'].status)
+    spoken, events, _ = await agent_orchestrator.process_user_turn('Jarvis, flush redis cache')
+    assert events and events[0]['result']['status'] == 'staged'
+    agent_orchestrator.cancel_staged_remediation(events[0]['result']['id'])
+    assert cluster_state.services['redis-cache'].status == before
+
+
+@pytest.mark.asyncio
+async def test_operator_context_is_required_for_destructive_tool_on_live_mode(monkeypatch):
+    """Verify that executing a destructive tool without operator context reports auth failure."""
+    monkeypatch.setattr('app.core.config.settings.infrastructure_mode', 'live')
+    spoken, events, _ = await agent_orchestrator.process_user_turn('Jarvis, restart payment-service')
+    # In live mode without authenticated operator, the tool reports auth required
+    # It may still be staged (pending operator auth) or rejected — either is correct.
+    # Key assertion: no silent unauthorized infrastructure execution.
+    if events:
+        result = events[0]['result']
+        assert result.get('status') == 'staged' or result.get('success') is False or 'authentication' in result.get('error', '').lower() or 'auth' in spoken.lower()
+    else:
+        assert 'authentication' in spoken.lower() or 'auth' in spoken.lower() or 'staged' in spoken.lower()

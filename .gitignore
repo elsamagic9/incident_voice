@@ -59,3 +59,4 @@ logs/
 # Persistent operator credentials (hashes and revocations)
 *.sqlite3
 *.sqlite3-*
+backend/data/*.pdf

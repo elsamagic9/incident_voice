@@ -66,6 +66,7 @@ function Workspace() {
     <a className="skip-link" href="#workspace">Skip to workspace</a>
     <MissionControlHeader incident={voice.incident} agentStatus={voice.isPlaying ? 'speaking' : voice.agentStatus}
       isConnected={voice.isConnected} latency={voice.latency} activeEngine={voice.activeEngine}
+      providerState={voice.providerState} providerErrorCode={voice.providerErrorCode}
       infrastructureMode={voice.operator?.infrastructure_mode} rbacRole={voice.operator?.role} busy={voice.busy}
       autopilotEnabled={voice.autopilotEnabled} onToggleAutopilot={simulation ? voice.toggleAutopilot : undefined}
       onSelectEngine={voice.selectEngine} onReset={voice.resetIncident}

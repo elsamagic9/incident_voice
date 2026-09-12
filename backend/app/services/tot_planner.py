@@ -102,6 +102,7 @@ class ToTWorldModel:
             "projected_delta_saturation_pct": delta_sat,
             "risk_penalty": risk_penalty,
             "simulation_rationale": rationale,
+            "needs_approval": action in {"restart_pod", "flush_cache", "rollback_release"},
         }
 
 
@@ -140,6 +141,26 @@ class TreeOfThoughtsPlanner:
                 {"action": "enable_circuit_breaker", "target": "ingress-gateway"},
             ]
         return candidates
+
+    DESTRUCTIVE_ACTIONS = frozenset({'restart_pod', 'flush_cache', 'rollback_release'})
+
+    def _safety_filter(self, trajectories: list) -> list:
+        """Remove any trajectory where a destructive step lacks needs_approval=True."""
+        safe = []
+        for traj in trajectories:
+            steps = traj.get('steps', [])
+            rejected = any(
+                step.get('action') in self.DESTRUCTIVE_ACTIONS and not step.get('needs_approval')
+                for step in steps
+            )
+            if rejected:
+                logger.info(
+                    'Safety filter removed trajectory %s: destructive step without approval flag.',
+                    traj.get('plan_id'),
+                )
+            else:
+                safe.append(traj)
+        return safe
 
     def plan_mitigation_tree(self, max_depth: int = 2) -> Dict[str, Any]:
         """
@@ -195,6 +216,7 @@ class TreeOfThoughtsPlanner:
                 })
 
         trajectories.sort(key=lambda t: t["cumulative_value_score"], reverse=True)
+        trajectories = self._safety_filter(trajectories)
         best_trajectory = trajectories[0] if trajectories else None
 
         summary = (

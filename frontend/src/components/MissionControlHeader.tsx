@@ -14,6 +14,8 @@ interface Props {
   isConnected: boolean;
   latency: LatencyStats;
   activeEngine: VoiceEngine;
+  providerState?: string;
+  providerErrorCode?: string | null;
   infrastructureMode?: string;
   rbacRole?: string;
   busy?: boolean;
@@ -29,6 +31,8 @@ export const MissionControlHeader: React.FC<Props> = ({
   isConnected,
   latency,
   activeEngine,
+  providerState = 'idle',
+  providerErrorCode,
   infrastructureMode,
   rbacRole,
   busy,
@@ -42,6 +46,18 @@ export const MissionControlHeader: React.FC<Props> = ({
 }) => {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const disabled = !isConnected || busy;
+
+  // Engine connection badge
+  const engineConnected = providerState === 'ready';
+  const engineError = providerState === 'error' || providerState === 'unconfigured';
+  const engineConnecting = providerState === 'connecting';
+  const engineBadge = engineConnected
+    ? { label: activeEngine === 'voice_agent_api' ? 'PATH 1 ✓' : 'PATH 2 ✓', cls: 'text-emerald-300 bg-emerald-500/10 border-emerald-500/30' }
+    : engineError
+    ? { label: providerErrorCode === 'no_key' ? 'NO KEY' : providerErrorCode === 'auth_failed' ? 'AUTH ERR' : 'ERROR', cls: 'text-amber-300 bg-amber-500/10 border-amber-500/30' }
+    : engineConnecting
+    ? { label: 'CONNECTING', cls: 'text-blue-300 bg-blue-500/10 border-blue-500/30' }
+    : null;
 
   const isSpeaking = agentStatus === 'speaking';
   const isThinking = agentStatus === 'thinking';
@@ -171,6 +187,13 @@ export const MissionControlHeader: React.FC<Props> = ({
             <Cpu size={13} className={activeEngine === 'custom_stt_v3' ? 'text-cyan-300' : 'text-slate-400'} />
             <span>Path 2: Streaming v3 + LLM Gateway</span>
           </button>
+
+          {/* Engine connection badge */}
+          {engineBadge && (
+            <span className={`ml-1 px-2 py-0.5 rounded-full text-[10px] font-bold border tracking-wide ${engineBadge.cls}`}>
+              {engineBadge.label}
+            </span>
+          )}
         </div>
 
         {/* Right Header Actions & Live Telemetry Pills */}

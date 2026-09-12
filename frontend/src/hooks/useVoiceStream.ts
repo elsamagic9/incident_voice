@@ -14,6 +14,7 @@ export function useVoiceStream() {
   const [activeEngine, setActiveEngine] = useState<VoiceEngine>('voice_agent_api');
   const [providerState, setProviderState] = useState('idle');
   const [providerMessage, setProviderMessage] = useState('');
+  const [providerErrorCode, setProviderErrorCode] = useState<string | null>(null);
   const [reasoningProvider, setReasoningProvider] = useState('scripted');
   const [stagedRemediation, setStagedRemediation] = useState<StagedRemediation | null>(null);
   const [autopilotEnabled, setAutopilotEnabled] = useState(false);
@@ -163,6 +164,7 @@ export function useVoiceStream() {
             case 'engine_sync': setActiveEngine(data.engine); break;
             case 'provider_status':
               setProviderState(data.state); setProviderMessage(data.message || '');
+              setProviderErrorCode(data.error_code || null);
               if (['error', 'unconfigured'].includes(data.state)) releaseMicrophone();
               break;
             case 'voice_ready': void beginCapture(data.sample_rate); break;
@@ -249,7 +251,7 @@ export function useVoiceStream() {
   }, [getAudioContext, stopAudio, send]);
 
   return { operator, loginRequired, login, reconnect: () => void login(), isConnected, agentStatus, activeEngine,
-    providerState, providerMessage, reasoningProvider, stagedRemediation, autopilotEnabled, isRecording, isPlaying,
+    providerState, providerMessage, providerErrorCode, reasoningProvider, stagedRemediation, autopilotEnabled, isRecording, isPlaying,
     turns, currentInterimTranscript, currentAgentTranscript, executedTools, incident, services, topology, activeRunbook, postMortem,
     audioLevel, latency, investigation, recoveryChecks, error, notice, busy, clearError: () => setError(''), clearNotice: () => setNotice(''),
     startRecording, stopRecording, toggleRecording: () => (isRecording || wantsRecording.current) ? stopRecording() : void startRecording(),

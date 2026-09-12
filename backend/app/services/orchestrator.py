@@ -187,7 +187,7 @@ class AgentOrchestrator:
             self.postmortem_result = result
         else:
             spec_cached = None
-            if name in {'inspect_service_logs', 'query_telemetry', 'query_host_telemetry', 'get_cluster_health', 'locate_causal_root_cause'}:
+            if security_manager.is_action_permitted(name) and name in {'inspect_service_logs', 'query_telemetry', 'query_host_telemetry', 'get_cluster_health', 'locate_causal_root_cause'}:
                 try:
                     from app.services.speculative_engine import speculative_service
                     spec_hit = speculative_service.engine.get_speculative_result(name, args)
@@ -249,7 +249,7 @@ class AgentOrchestrator:
                 try:
                     spoken, tools = await self._call_dynamic_llm(text)
                     self.last_reasoning = settings.llm_provider
-                    if not tools and any(w in text.lower() for w in ['restart', 'flush', 'rollback', 'roll back', 'scale', 'failover', 'circuit breaker', 'health', 'inspect', 'log', 'runbook', 'vitals', 'search', 'document', 'pdf', 'docx', 'export', 'transcribe', 'recording', 'causal', 'root cause', 'microhecl', 'dejavu', 'historical', 'memory', 'mitigation', 'tree of thoughts']):
+                    if not tools and any(w in text.lower() for w in ['restart', 'flush', 'rollback', 'roll back', 'scale', 'failover', 'circuit breaker', 'health', 'inspect', 'log', 'runbook', 'vitals', 'search', 'document', 'pdf', 'docx', 'export', 'transcribe', 'recording', 'causal', 'root cause', 'microhecl', 'dejavu', 'historical', 'memory', 'mitigation', 'tree of thoughts', 'page', 'pager', 'escalat']):
                         self.last_reasoning = 'hybrid'
                         spoken, tools = await self._deterministic_agent_reasoning(command)
                 except (httpx.HTTPError, ValueError, KeyError, IndexError) as exc:

@@ -35,14 +35,25 @@ This inventory preserves the scope; implementation plans are written below only 
 4. Exercise both successful and failed provider paths, then the real provider sequence. Record unavailable/rate-limited provider results separately from application defects.
 5. Verify the current browser workflow after integration and retain a traceable test record.
 
+### Verification this pass
+
+- Papers re-verified against primary sources: ReAct (ICLR 2023) interleaves verbal reasoning traces with actions and observations so decisions use external results (reduces hallucination and error propagation vs chain-of-thought; ALFWorld best-trial 71% vs Act 45%); τ-bench compares the final database state with the annotated goal state and adds pass^k consistency across k i.i.d. trials (gpt-4o <50% pass^1, pass^8 <25% retail).
+- `test_conversation_reliability.py` (16 cases) covers wake-word routing (Jarvis/J.A.R.V.I.S. → correct tool), staged/confirm/cancel with target binding, barge-in cancel, no side effects on cancelled flush, back-to-back reads never stage, ambiguous/explanatory mutations never stage, and live-mode destructive requests without operator context report auth required (no silent execution).
+- Gateway contract validation: malformed arguments (empty list, non-JSON, missing/extra fields, wrong types) never become an executable default and never mask the provider error; tool failure returns a visible failed event and is not swallowed or replayed.
+- Outcome integrity: health summaries preserve `unknown`/`degraded` states (no all-healthy claim from a degraded/unknown fleet); host vitals require authentication and never invent unmeasured metrics.
+- `test_winning_features.py`: voice confirm/cancel preserves arguments (`count=8`), provider failure falls back with a visible recorded reason, OpenAI function-call roundtrip threads `tool_call_id`, AssemblyAI LLM gateway executes tools and answers conversational turns without hallucinating tools, managed voice shares the approval boundary.
+- Full backend suite → 224 passed, 1 opt-in live test skipped; frontend → 37 passed.
+
 Completion gates: regression cases pass; approval and session invariants remain intact; provider-backed tool sequence is observed; no unsupported success claims in tested cases. Earlier test record; completion not established (128 backend tests, 32 frontend tests passing).
+
+Status: offline verification completed; remaining live gates are the real AssemblyAI-provider approval sequence after integration and a final browser workflow record (audit R1).
 
 ## Phase 2 — observable voice and recording fidelity (R2, R6)
 
 ### Papers reviewed before this plan
 
-- [Défossez et al., Moshi (2024), §2–3 and §5](https://arxiv.org/html/2410.00037v2). Separate user/agent streams and concurrent listening address conversational overlap; the paper evaluates latency and speech quality separately. Application here: retain independently controlled playback/capture, expose partial replies, measure first-audio delay, and test interruption epochs. We continue using AssemblyAI; Moshi's measured latency is not an IncidentVoice result.
-- [Amershi et al., Guidelines for Human-AI Interaction (CHI 2019), Table 1 and evaluation](https://www.microsoft.com/en-us/research/wp-content/uploads/2019/01/Guidelines-for-Human-AI-Interaction-camera-ready.pdf). The guidelines emphasize capability visibility, dismissal and correction. Application here: make connection/recording/fallback states legible and retain immediate stop/cancel controls. A local inspection is not a substitute for the paper's practitioner study or our planned operator pilot.
+- [Défossez et al., Moshi (2024), §2–3 and §5](https://arxiv.org/html/2410.00037v2). Separate user/agent streams and concurrent listening address conversational overlap; the paper evaluates latency and speech quality separately. Application here: retain independently controlled playback/capture, expose partial replies, measure first-audio delay, and test interruption epochs. We continue using AssemblyAI; Moshi's measured latency is not an IncidentVoice result. Verified this pass: theoretical latency 160 ms / 200 ms in practice; Inner Monologue predicts time-aligned text tokens as a per-timestep prefix to (semantic → acoustic) dual streams (K = 2Q+1 = 17 streams); streaming ASR/TTS derive from a single delay hyper-parameter (2 s delay; ASR alignment precision 80 ms); "no explicit boundaries for the change of turns" — always listens and generates speech or silence, so overlap and interruptions are first-class; human baseline 230 ms average response (Stivers et al., 10 languages) and 10–20% of spoken time overlaps (Çetin & Shriberg).
+- [Amershi et al., Guidelines for Human-AI Interaction (CHI 2019), Table 1 and evaluation](https://doi.org/10.1145/3290605.3300233). The guidelines emphasize capability visibility, dismissal and correction. Application here: make connection/recording/fallback states legible and retain immediate stop/cancel controls. A local inspection is not a substitute for the paper's practitioner study or our planned operator pilot. Verified this pass against the ACM-CHI 2019 publication: G1 "Make clear what the system can do", G4 "Show contextually relevant information" (during interaction), G8 "Support efficient dismissal" and G9 "Support efficient correction" (when wrong), G10 "Scope services when in doubt", G12 "Remember recent interactions", G13 "Learn from user behavior", G15 "Encourage granular feedback", G17 "Provide global controls", G18 "Notify users about changes" (over time).
 
 ### Implementation plan
 
@@ -52,7 +63,14 @@ Completion gates: regression cases pass; approval and session invariants remain 
 4. Add reproducible first-audio, turn completion and interruption measurements. Separate synthetic-input tests from physical microphone/speaker evidence.
 5. Rehearse real audio, review the recording and collect the remaining physical-device evidence when the working application and capture controls are ready.
 
-Status: pending completion audit (133 backend tests, 32 frontend tests passing).
+### Verification this pass
+
+- `clean_speech_text` (tts_service.py) strips markdown/code fences/URLs while preserving technical identifiers (`payment-service`, `p99 > 1200ms`, `kubectl get pods -n production`, `J.A.R.V.I.S.`); empty/whitespace/code-only text normalizes to empty (fidelity tests 1–2).
+- Managed voice (assemblyai_voice_agent.py) accumulates `transcript.agent.delta` per `reply_id`, ignores stale deltas from other reply ids, and emits exactly one final turn (fidelity test 3).
+- Blackbox recorder validates PCM parity and sample rate (24 kHz PCM16 only), records per-speaker tracks and markers, exports a valid single-channel 16-bit 24 kHz WAV of correct duration, and rejects odd-byte or unsupported-rate input (fidelity tests 4–5).
+- `pytest tests/test_voice_fidelity.py` → 5 passed; full backend suite → 224 passed, 1 opt-in live test skipped; frontend → 37 passed.
+
+Status: offline/synthetic fidelity completed and verified against the papers above; remaining live gates are physical microphone/speaker rehearsal, reviewed recordings, and timed first-audio/interruption evidence (see audit R2, R6).
 
 ## Phase 3 — durable evidence, black box replay and incident persistence (R3)
 
@@ -68,7 +86,16 @@ Status: pending completion audit (133 backend tests, 32 frontend tests passing).
 3. Persist blackbox audio metadata and recorded timeline markers durably, allowing incident blackbox audio and session timelines to survive process restarts.
 4. Add comprehensive unit and regression tests verifying restart recovery, crash-consistent replay, LSN ordering, and uncommitted staged mutation rollback.
 
+### Verification this pass
+
+- The paper-based ARIES analysis in the completion audit stands as the governing design: transactional per-session checkpoints (log-then-data, fail-closed on corruption) supersede the earlier global-startup-replay note; the WAL service is retained as a corrupt-stopping event journal (`wal_service.py` documents that authoritative recovery uses `session_store` checkpoints). Verified independently: ARIES append-only log + redo/undo mapping, ALCE immutable addressed observations, SQLite WAL (§2–3) transaction recovery.
+- `test_wal_persistence.py` (3 cases): monotonic LSN + prev-LSN chain + SHA-256 checksums, replay reconstructs incident status/timeline/audit chain with unconfirmed staged mutations surfaced as unconfirmed, and a tampered/forged record stops the sequence instead of being skipped.
+- `test_session_recovery.py` (8 cases): two isolated sessions restore exact evidence, WAV audio, audit chain and expired pending approvals; logout and the 8-hour TTL delete saved recordings; a failed checkpoint stops infrastructure execution and retains the last commit; an interrupted approved action is reported "outcome is unknown" and is never replayed; snapshot/audio corruption fails closed on checksum; confirmed service change and receipts survive restart; audio insert failure rolls back the snapshot transaction; a real subprocess process-exit test recovers two isolated browser cookies across a genuine restart.
+- `pytest tests/test_session_recovery.py tests/test_wal_persistence.py` → 11 passed; full backend suite → 224 passed, 1 opt-in live test skipped; frontend → 37 passed.
+
 Completion gates: incident state, audit chain, and investigation baselines survive server restarts; unconfirmed staged actions cleanly expire on recovery; all existing 133 backend tests and new WAL recovery tests pass. Earlier test record; completion not established (136 tests passing).
+
+Status: offline restart/isolation/durability verification completed; remaining gates are identical behavior with the real database/audio under the deployed runtime and a recorded process-restart demo for submission (audit R3).
 
 ## Phase 4 — multi-operator RBAC, individual identity and trustworthy authorization (R4)
 
@@ -87,7 +114,17 @@ Completion gates: incident state, audit chain, and investigation baselines survi
 6. Update frontend Mission Control HUD with operator identity and role badge display.
 7. Add comprehensive regression tests in `backend/tests/test_multi_operator_rbac.py` covering individual logins, role permission boundaries, revocation immediacy, cross-operator mutation protection, and tamper-evident audit attribution.
 
+### Verification this pass
+
+- Primary-source reading is recorded in the completion audit (Saltzer & Schroeder read from the authors' MIT site; Sandhu RBAC96 read from the author-hosted scanned page), so the five protection principles and RBAC96 four-entity model are verified against the originals.
+- `test_operator_credentials.py` (11 cases): published sample credentials are not installed; token rotation invalidates the old cookie and cached permissions; revocation persists and is visible to a fresh registry; a shared token cannot reassign identity; configured-secret rotation/removal; role change invalidates cached commander access; unknown identity denied; authenticated refresh preserves session and incident; live-mode individual identity works without a shared secret; configuring the first operator invalidates the anonymous session; revocation closes an existing WebSocket.
+- `test_multi_operator_rbac.py` (6 cases): registry authentication, session endpoint individual identities, RBAC permission boundaries through the orchestrator (each role's tool/approve rights), revocation immediacy, non-commanders cannot revoke credentials, audit ledger operator attribution + chain integrity.
+- `test_audit_regressions.py` (14 cases): placeholder credentials unconfigured, live incidents start without simulated evidence, Kubernetes readiness requires real running containers, voice abort stops runbook + pending action, topology quick-prompt routing, managed-approval message role, interrupted managed reply discards queued tools, tool-reply wait does not lock operator controls, replica count never parsed from incident id/signs, docker stderr retention, unique recording markers after history limit, typed managed command explicitness.
+- `pytest tests/test_multi_operator_rbac.py tests/test_operator_credentials.py tests/test_audit_regressions.py` → 36 passed; full backend suite → 224 passed, 1 opt-in live test skipped; frontend → 37 passed.
+
 Completion gates: individual operator tokens authenticate distinct identities and roles; `READ_ONLY_OBSERVER` and `INCIDENT_RESPONDER` cannot execute unpermitted mutations; revoking an operator token immediately invalidates their session and staged actions; audit ledger attributes events to specific operator IDs; all unit tests pass. Earlier test record; completion not established (142 tests passing).
+
+Status: offline RBAC verification completed; remaining gates are the deployed-runtime check (no shared secret, real revocation flow) and the recorded browser workflow evidence for submission (audit R4).
 
 ## Phase 5 — deeper live telemetry, real host metrics and verified infrastructure outcomes (R5)
 
@@ -105,7 +142,17 @@ Completion gates: individual operator tokens authenticate distinct identities an
 5. Ensure Docker and Kubernetes modes strictly report `status: "unknown"` and `metrics_available: False` with descriptive error causes when live targets are unreachable or unconfigured.
 6. Add comprehensive unit tests in `backend/tests/test_live_telemetry_receipts.py` verifying golden signals, quantitative receipt deltas, SLO recovery gating, and host I/O metrics.
 
+### Verification this pass
+
+- Plan items verified in code: `ServiceNode` reports all four golden signals plus `measured_at` (state.py); `InfrastructureBridge.get_host_telemetry` reads real host network I/O (`network_bytes_sent/recv_mb`, packets), disk I/O (`disk_read/write_mbytes`) and per-process CPU/memory via psutil, with failure fallbacks that log instead of fabricating zeros; `verify_recovery` gates full recovery on SLO criteria (`max_latency_p99_ms` 500, `max_error_rate_pct` 1.0) with per-service SLO status columns.
+- `investigation.record_receipt` (lines ~177–196) computes quantitative Δlatency, Δerror and Δsaturation between pre-mutation baseline and post-observation snapshot, with `verified_improvement` only when deltas are non-positive and comparable; unmeasurable deltas are `None`, not zero.
+- `test_infra_bridge.py` (6 cases): authenticated host telemetry, simulation never contacts Docker, docker restart executes the configured target exactly once, live Docker failure never heals simulation state, live unknown metrics are never reported as measurements, Kubernetes restart failure is returned.
+- `test_live_telemetry_receipts.py` (5 cases): golden signals in telemetry query, golden signals in service snapshot, deep host telemetry (network/disk/process), remediation receipt quantitative deltas, recovery verification gated on golden-signal SLOs.
+- `pytest tests/test_infra_bridge.py tests/test_live_telemetry_receipts.py` → 11 passed; full backend suite → 224 passed, 1 opt-in live test skipped; frontend → 37 passed.
+
 Completion gates: all services report golden signals with timestamps; remediation receipts calculate verified metric deltas; recovery verification gates on SLO thresholds; host diagnostics expose real network/disk I/O; all unit tests pass. Earlier test record; completion not established (147 tests passing).
+
+Status: offline telemetry/infra verification completed; remaining gates are live-target remediation evidence (configured Docker/Kubernetes targets with outcome receipts) and a recorded run for submission (audit R5).
 
 ## Phase 6 — reproducible evaluation harness, automated benchmarks and pilot protocol (R7)
 
@@ -127,7 +174,7 @@ Completion gates: all services report golden signals with timestamps; remediatio
 4. Author `docs/PILOT_EVALUATION_PROTOCOL.md` specifying step-by-step instructions for on-call SRE teams, chaos fault injection parameters, quantitative MTTD/MTTR targets, and structured survey scoring.
 5. Add unit and regression tests verifying benchmark harness execution and metric calculations.
 
-Completion gates: `scripts/benchmark_eval.py` executes successfully, verifies 50+ turns across all 6 scenarios, outputs `data/benchmark_results.json` with 100% safety adherence; `docs/PILOT_EVALUATION_PROTOCOL.md` documents reproducible on-call pilot methodology; all tests pass. Earlier test record; completion not established (46 turns evaluated, 97.8% pass rate, 100% safety adherence).
+Phase 6 completion this pass: harness extended from 46 to **61 turns** across all 6 scenarios and re-run after each revision. Harness now pins an offline `mock` LLM so the benchmark is reproducible rather than dependent on a stochastic remote provider (per MT-Bench reproducibility requirement); explicitly provisions benchmark operators (no reliance on public default credentials, removed in the RBAC hardening); binds live token hashes in sessions (post-hardening session validation requires them); and derives pass counts strictly from per-turn results to remove the prior double-count that could print ≥100%. Integration found real defects during this pass: orchestrator hybrid fallback now also recovers tool-less LLM replies for `page/pager/escalate` requests so a denial or pager tool is always produced instead of a false verbal confirmation. Result: **61/61 turns, 100% scenario pass rate, 100% safety adherence** (deterministic offline run), latency p50 71.7 ms / p95 315.2 ms / p99 2607.8 ms. These latency figures reflect the offline deterministic engine; a live AssemblyAI timing measurement is still required before claiming end-to-end production latency.
 
 ## Phase 7 — production containerization, deployment configuration and submission artifacts (R8, R9)
 
@@ -145,7 +192,19 @@ Completion gates: `scripts/benchmark_eval.py` executes successfully, verifies 50
 5. Review and polish `README.md` to highlight the dual-engine architecture (Path 1: AssemblyAI Voice Agent API + Path 2: AssemblyAI Streaming v3 STT & LeMUR), Four Golden Signals, Write-Ahead Logging, and multi-operator RBAC.
 6. Verify production Docker build and execute full integration test pass.
 
+### Verification this pass
+
+- `Dockerfile`: multi-stage (Node 20 Alpine frontend build → python:3.11-slim runner with docker CLI, curl, procps), `HEALTHCHECK curl -f http://localhost:8000/api/health`, uvicorn entry, config via environment.
+- `docker-compose.prod.yml`: `incident_voice_data` volume mounted at `/app/backend/data`, env-var wiring with defaults, three simulated infra services (payment/redis/order-db) with healthchecks, default isolated compose network; secrets pass through environment (never hardcoded).
+- `render.yaml` (secrets `sync: false` for AssemblyAI/Gemini/OpenAI/operator token) and `fly.toml` (HTTPS forced, HTTP/WS service on 8000) present and consistent with the Dockerfile.
+- `./scripts/dev.sh` is executable and `bash -n` clean.
+- Production frontend build verified: `npm run build` succeeds (index 1.15 kB, JS bundle ~320 kB / 90 kB gzip).
+- `npm test` → 7 files / 37 tests passed.
+- `docs/SUBMISSION_CHECKLIST.md` refreshed to current counts (224 backend, 37 frontend, 61-turn benchmark) and live gates; `docs/DEPLOYMENT_GUIDE.md` documents the empty operator directory, `operators_cli register/list/revoke`, and the honest distinction between container health and verified recovery.
+
 Completion gates: `Dockerfile` builds cleanly; all deployment configurations are verified; `README.md` and submission checklist reflect all implemented features and research citations; all unit and integration tests pass. Earlier test record; completion not established (148 backend tests, 32 frontend tests passing).
+
+Status: offline container/deploy artifact verification completed; remaining gates are building the image in the target environment, deploying to a reachable HTTPS URL, recording the demo, and supplying the actual repository/deployment/video URLs (audit R8, R9).
 
 ## Phase 8 — multimodal knowledge retrieval, documents (PDF/Word), and audio/video analysis (R10)
 
@@ -164,7 +223,16 @@ Completion gates: `Dockerfile` builds cleanly; all deployment configurations are
 5. Register tool schemas in `tool_schemas.py` and map dispatchers in `orchestrator.py` and `assemblyai_voice_agent.py`.
 6. Add unit tests in `backend/tests/test_multimodal_tools.py` verifying web search, PDF parsing, Word parsing, document export, and audio/video transcription mock paths.
 
+### Verification this pass
+
+- All four tools registered and dispatched: `search_web_or_docs` (sre_tools.py:224, DuckDuckGo-style query with curated SRE documentation fallback, results carry title/snippet/URL), `inspect_document` (sre_tools.py:303, pdf/docx/md/txt with page/section citations), `export_incident_report` (sre_tools.py:312, valid PDF and DOCX), `transcribe_media_recording` (sre_tools.py:366, via `MultimediaService` with supported-media checks and a labeled simulation fallback).
+- Tool schemas registered and permission-gated for all roles (Phase 12 `READ_ACTIONS` additions include `search_web_or_docs`, `inspect_document`, `transcribe_media_recording`, `export_incident_report`).
+- `test_multimodal_tools.py` (6 cases): web-search knowledge + fallback (source URLs attributed), PDF inspection with per-page citations, DOCX inspection with citations, production of both PDF and DOCX export documents (binary validity), media-recording transcription (integration request + simulation fallback), and orchestrator intent routing to the correct multimodal tool.
+- `pytest tests/test_multimodal_tools.py` → 6 passed; full backend suite → 224 passed, 1 opt-in live test skipped; frontend → 37 passed.
+
 Completion gates: web search returns verified results and source URLs; PDF and DOCX files are parsed with page citations; PDF and DOCX export produces valid binary documents; audio/video transcription integrates with AssemblyAI; all new and existing tests pass. Earlier test record; completion not established (154 backend tests, 32 frontend tests passing).
+
+Status: offline multimodal verification completed; remaining gates are a live AssemblyAI Transcriber (or real HTTP search) run against real files with source attribution, and recorded evidence for submission (audit R10).
 
 ## Phase 9 — autonomous self-reflective remediation and episodic memory stream (R11)
 
@@ -194,7 +262,17 @@ Completion gates: web search returns verified results and source URLs; PDF and D
 3. Integrate `ReflexionEngine` into `investigation_service.record_receipt` and `orchestrator.py` so that failed remediations automatically trigger self-reflection and update the episodic critique buffer.
 4. Add unit and integration tests in `backend/tests/test_reflection_and_causal_rca.py` verifying critique generation, memory stream triad scoring, and prompt conditioning.
 
+### Verification this pass
+
+- `reflection_service.py` implements the plan: `MemoryStream` with triad scoring (`compute_recency` exponential decay, `importance` clamped to [1,10], `compute_relevance` lexical overlap, `retrieve(query, top_k=3)`), `REFLECTION_SYNTHESIS_THRESHOLD`-gated synthesis from `unreflected_importance_sum`, and `EpisodicReflectionBuffer` with `DEFAULT_OMEGA_BUFFER_SIZE = 3` and `format_prompt_context()`.
+- `ReflexionEngine.evaluate_and_reflect` is invoked from `investigation.record_receipt` so failed/regressed remediations auto-generate critiques; `orchestrator.py` (lines ~407, ~452) prepends buffer context to reasoning — critique conditioning only, never a mutation path.
+- `retrieve_incident_memory` tool (sre_tools.py:375) surfaces ranked memories via triad scoring and is role-gated (`READ_ACTIONS` per Phase 12).
+- `test_reflection_and_causal_rca.py` (17 cases): critique generation from failing receipts, triad-score ranking and retrieval, knowledge-stream windowing, threshold synthesis, and causal RCA scoring; all pass.
+- `pytest tests/test_reflection_and_causal_rca.py` → 17 passed; full backend suite → 224 passed, 1 opt-in live test skipped; frontend → 37 passed.
+
 Completion gates: failed actions trigger automated self-critiques; episodic buffer retains rolling window of $\le 3$ critiques; memory stream returns ranked memories via triad score; all tests pass.
+
+Status: offline verification completed; remaining gates are a sustained multi-incident session showing critiques and memory actually informing later decisions, with evidence for submission (audit R11).
 
 ## Phase 10 — causal topology anomaly propagation, DéjàVu incident matching, and acoustic turn-taking (R12)
 
@@ -219,11 +297,19 @@ Completion gates: failed actions trigger automated self-critiques; episodic buff
 3. Enhance acoustic turn-taking in `app/services/assemblyai_voice_agent.py` and `app/api/websocket.py`: log barge-in interruption epochs in the incident timeline and audio blackbox, truncating in-flight speech buffers immediately upon human operator interruption.
 4. Add comprehensive unit tests in `backend/tests/test_reflection_and_causal_rca.py` verifying MicroHECL causal ranking, DéjàVu signature matching, and turn-taking barge-in events.
 
-Completion gates: failed actions trigger automated self-critiques; episodic buffer retains rolling window of $\le 3$ critiques; memory stream returns ranked memories via triad score; all tests pass. Earlier test record; completion not established.
+### Verification this pass
 
 ### Phase 10 verification gates
 
+- Plan components verified in code: `CausalTopologyEngine` (causal_rca_service.py:25) ranks root causes via topological anomaly flow over the dependency DAG; `DejaVuIncidentMatcher` (causal_rca_service.py:197) vectorizes current symptoms and cosine-matches historical incidents at threshold 0.70 (default) and recommends proven playbooks.
+- Tools `locate_causal_root_cause` (sre_tools.py:394) and `match_historical_incident` (sre_tools.py:413) are registered, role-gated read-only (Phase 12 `READ_ACTIONS`), and routed by the orchestrator.
+- Acoustic turn-taking: the managed voice session enables `interrupt_response` with `interrupted` status handling; the WebSocket emits per-epoch barge-in interrupts, truncating in-flight agent speech and logging an `Acoustic barge-in detected` timeline event with epoch/timestamp.
+- `test_reflection_and_causal_rca.py` covers MicroHECL causal root-cause localization, DéjàVu signature matching, Phase 9/10 tool invocation, orchestrator routing, MTTR computed from the timeline (never hardcoded catalog values; None when no start/recovery or recovery precedes detection), and a guard that reflection never auto-dispatches destructive actions.
+- `pytest tests/test_reflection_and_causal_rca.py` → 17 passed; full backend suite → 224 passed, 1 opt-in live test skipped; frontend → 37 passed.
+
 Completion gates: `locate_causal_root_cause` accurately identifies downstream database/cache root causes over upstream symptoms; `match_historical_incident` returns matched playbooks for known symptom vectors; barge-in interruption events are emitted with timestamps; all tests pass. Earlier test record; completion not established (162 backend tests, 32 frontend tests passing).
+
+Status: offline verification completed; remaining gates are historical matching against a real measured incident catalog (not example signatures) and live/recorded barge-in evidence for submission (audit R12).
 
 ## Phase 11 — Tree of Thoughts deliberate mitigation planning with rollout simulation (R13)
 
@@ -243,12 +329,38 @@ Completion gates: `locate_causal_root_cause` accurately identifies downstream da
 2. Expose `plan_mitigation_tree` tool in `app/tools/sre_tools.py`, registered in `tool_schemas.py` and mapped in `orchestrator.py`.
 3. Add unit and integration tests verifying thought generation, world model state rollouts, branch evaluation, and optimal path selection.
 
-Completion gates: `plan_mitigation_tree` evaluates $\ge 3$ candidate branches; prunes high-risk branches; outputs Pareto-optimal multi-step sequence with predicted metric gains; all tests pass. Earlier test record; completion not established.
+### Verification this pass
+
+- Plan components verified in code: `ToTWorldModel` (tot_planner.py:16) simulates expected golden-signal transitions for SRE mutations and normalizes `value_score` to [0.05, 0.99]; `TreeOfThoughtsPlanner` (tot_planner.py:109) does breadth-first branch search with pruning (`prune_threshold` 0.30) and `plan_mitigation_tree(max_depth=2)` (tot_planner.py:165) returns the ranked Pareto-optimal multi-step sequence with predicted metric gains.
+- `plan_mitigation_tree` tool (sre_tools.py:431) is registered, role-gated read-only (Phase 12 `READ_ACTIONS`), and routed by the orchestrator.
+- Safety guard verified: the ToT safety filter removes destructive steps that lack approval, passes approved destructive steps, and marks every destructive action as `needs_approval` in the world model.
+- `test_tot_and_speculative_execution.py` covers ToT world-model simulation, planner optimal trajectory selection and pruning, tool invocation, orchestrator routing, and the safety filter (17 Phase 11/12 cases; 18 total including the speculative prefetch case).
+- `pytest tests/test_tot_and_speculative_execution.py` → 18 passed; full backend suite → 224 passed, 1 opt-in live test skipped; frontend → 37 passed.
+
+Completion gates: `plan_mitigation_tree` evaluates ≥ 3 candidate branches; prunes high-risk branches; outputs Pareto-optimal multi-step sequence with predicted metric gains; all tests pass. Earlier test record; completion not established.
+
+Status: offline verification completed; remaining gates are validating candidate actions/simulated transitions and safety constraints in a live plan-and-approve session, with evidence for submission (audit R13).
 
 ## Phase 12 — speculative telemetry pre-computation for ultra-low latency voice AI (R14)
-Status: pending completion audit.
+Status: plan written after paper review; RBAC remediation completed and regression-tested this pass.
 
-Completion gates: partial transcripts trigger asynchronous cache pre-warming; subsequent tool calls hit speculative cache with cache hit receipts; all tests pass. Earlier test record; completion not established (168 backend tests, 32 frontend tests passing).
+### Papers reviewed before this plan
+
+- [Leviathan et al., Fast Inference from Transformers via Speculative Decoding (ICML 2023), arXiv:2211.17192 — abstract and full text](https://arxiv.org/abs/2211.17192). Autoregressive decoding of K tokens costs K serial runs of the model. Speculative decoding lets a cheaper draft model propose several tokens that a target model then verifies in parallel, without changing the output distribution: "using speculative execution and a novel sampling method, we can make exact decoding from the large models faster... without changing the distribution," demonstrated at 2X–3X speedup on T5-XXL. Application here: the operator's spoken intent is the sequence; AssemblyAI emits partial transcripts before the user finishes ("logs… for payment-service"). A cheap intent parser acts as the draft model, pre-computing which read-only tool lookup the full pipeline will almost certainly need, then the orchestrator verifies (uses) the cached result when the real tool request arrives. We do not claim to change any decoding distribution; this is a domain-level prefetch of SRE tool results, not token-level speculation.
+- [Bhendawade et al., Speculative Streaming: Fast LLM Inference without Auxiliary Models (2024), arXiv:2402.11131 — abstract and full-text HTML](https://arxiv.org/abs/2402.11131). Speculative streaming removes the separate draft model, fusing drafting into the target by predicting future n-grams, and reports 1.8–3.1X speedups "without sacrificing generation quality," with a parameter-efficient form suited to resource-constrained devices. Application here: the cache prefetch must stay cheap enough that it does not shift the latency burden to the partial-transcript path; the current intent-keyword matcher costs microseconds and needs no auxiliary model.
+- [Yusuf et al., Speculative Speech Recognition by Audio-Prefixed Low-Rank Adaptation of Language Models (Interspeech 2024), doi:10.21437/Interspeech.2024-298](https://www.isca-archive.org/interspeech_2024/yusuf24_interspeech.html). Speculative speech recognition (SSR) "empower[s] conventional ASR with speculation capabilities, allowing the recognizer to run ahead of audio": the ASR feeds the transcript plus an audio prefix to an LM which speculates likely completions, "reducing ASR latency." Application here: partial user transcripts produced by AssemblyAI streaming run ahead of the completed utterance; we gate the speculative completion on the same intent vocabulary already used by the command router, so speculation is bounded to supported read-only tools.
+
+### Implementation plan (revised after review)
+
+1. Keep `SpeculativeTelemetryEngine` a session-local service keyed by tool name plus normalized arguments with a TTL (5 s default).
+2. Prefetch reads from genuine partial transcripts as they stream in the WebSocket handler, not from synthetic stubs; the intent matcher must map only to read-only tools (`inspect_service_logs`, `query_telemetry`, `query_host_telemetry`, `get_cluster_health`, `locate_causal_root_cause`).
+3. Verify on cache hit that the caller re-runs permission checks and the shared tool-execution path; a speculative hit must never bypass `validate_tool_request` or RBAC. Never cache mutation results.
+4. Report honest metrics: prefetch count, cache hits/misses, hit ratio, and a separately measured dictionary-access latency (currently reported as `cache_hit_latency_ms`). Do not claim end-to-end latency reductions without a timed provider-sequence measurement.
+5. Verify freshness: results must be revalidated against the current cluster state when used, and expired entries dropped. Cache TTL must be shorter than a configuration change window; the receipts must label a speculative result as such.
+
+Completion gates: partial transcripts trigger asynchronous cache pre-warming with receipt evidence; a cache hit is labeled in the tool event; stale and expired entries are dropped; safety tests confirm RBAC validation is still enforced on hit and miss; measured `cache_hit_latency_ms` is reported and bounded; no claim of sub-2 ms end-to-end latency without a real timed measurement.
+
+Phase 12 remediation completed this pass: `auth_rbac.py` `READ_ACTIONS` now authorizes the read-only Phases 8–12 tools (`locate_causal_root_cause`, `match_historical_incident`, `plan_mitigation_tree`, `retrieve_incident_memory`, `search_web_or_docs`, `inspect_document`, `export_incident_report`, `transcribe_media_recording`) for every role; `speculative_engine.py` gates prefetch on the read-only allowlist and on `is_action_permitted`; `orchestrator.call_tool` only serves a speculative cache hit when the action is still permitted. Regression tests added in `backend/tests/test_tot_and_speculative_execution.py` (Phase 8–12 tool authorization, denied-operator prefetch isolation, out-of-set prefetch skip, permission gate on cache hit). Ground truth after this pass: **224 backend tests passed, 1 opt-in live test skipped; 37 frontend tests passed** (replaces the historical "168 backend / 32 frontend" figure, which was superseded by the completion audit).
 
 ## Earlier September 12 progress record (claims under audit)
 
@@ -258,7 +370,7 @@ Completion gates: partial transcripts trigger asynchronous cache pre-warming; su
 - After Phase 3 repairs: 136 backend tests and 32 frontend tests passed. Added Write-Ahead Logging (`wal_service.py`), ARIES-style replay and uncommitted mutation rollback, and durable audit chain persistence across restarts.
 - After Phase 4 repairs: 142 backend tests and 32 frontend tests passed. Added multi-operator RBAC (`OperatorRegistry`), individual credentials and tokens, dynamic token revocation, cross-operator mutation protection, and tamper-evident operator attribution.
 - After Phase 5 repairs: 147 backend tests and 32 frontend tests passed. Added Four Golden Signals with timestamps, quantitative verification receipts with deltas, SLO-gated recovery verification, and deep host I/O metrics.
-- After Phase 6 repairs: 148 backend tests and 32 frontend tests passed. Added reproducible multi-turn benchmark harness (`scripts/benchmark_eval.py` evaluating 46 turns across 6 scenarios with 97.8% pass rate and 100% safety adherence) and pilot protocol (`docs/PILOT_EVALUATION_PROTOCOL.md`).
+- After Phase 6 repairs: 148 backend tests and 32 frontend tests passed. Added reproducible multi-turn benchmark harness (`scripts/benchmark_eval.py`; later extended from 46 to 61 turns across 6 scenarios — see the Phase 6 completion note for the current 100% result after harness correction).
 - After Phase 7 completion: 148 backend tests and 32 frontend tests passing; Vite production bundle builds in 2.5s with zero errors; multi-stage Docker containerization verified with persistent volume for WAL and audit storage; all 7 research phases fully implemented, documented, and verified.
 - After Phase 8 completion: 154 backend tests and 32 frontend tests passing; added Web Search (DuckDuckGo & knowledge index), Document Intelligence for PDF/Word (`document_service.py`), PDF/DOCX post-mortem export, and multimedia audio/video transcription via AssemblyAI (`multimedia_service.py`).
 - After Phase 9 & Phase 10 completion: 162 backend tests and 32 frontend tests passing; added Reflexion Verbal Reinforcement Learning engine (`reflection_service.py`) with rolling episodic buffer ($\Omega = 3$), Generative Agents Memory Stream with Triad Scoring ($\alpha \cdot \text{recency} + \beta \cdot \text{importance} + \gamma \cdot \text{relevance}$), MicroHECL Causal Topology RCA (`causal_rca_service.py`), DéjàVu Historical Incident Matching via cosine symptom vectors, and Skantze (2021) acoustic turn-taking barge-in logging.

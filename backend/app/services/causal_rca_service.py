@@ -293,17 +293,39 @@ class DejaVuIncidentMatcher:
         }
 
 
+def _compute_incident_mttr(incident) -> Optional[int]:
+    """Compute MTTR in seconds from incident timeline events.
+    Returns None if no recovery event exists yet.
+    """
+    start_ts = None
+    recovery_ts = None
+    for event in getattr(incident, 'timeline_events', []):
+        etype = event.get('type', '')
+        ts = event.get('timestamp')
+        if ts is None:
+            continue
+        if etype in ('incident_start', 'detection') and start_ts is None:
+            start_ts = float(ts)
+        elif etype == 'recovery':
+            recovery_ts = float(ts)
+    if start_ts is not None and recovery_ts is not None and recovery_ts > start_ts:
+        return int(recovery_ts - start_ts)
+    return None
+
+
 class CausalRCAService:
     def __init__(self):
         self.causal_engine = CausalTopologyEngine()
         self.dejavu_matcher = DejaVuIncidentMatcher()
 
     def analyze(self) -> Dict[str, Any]:
+        from app.core.state import cluster_state
         rca = self.causal_engine.locate_root_cause()
         dejavu = self.dejavu_matcher.match_incident(rca["anomaly_scores"])
         return {
             "causal_rca": rca,
             "dejavu_match": dejavu,
+            "current_mttr_seconds": _compute_incident_mttr(cluster_state.incident),
         }
 
 
