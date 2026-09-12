@@ -55,3 +55,7 @@ logs/
 *.log
 *.jsonl
 .agents/
+
+# Persistent operator credentials (hashes and revocations)
+*.sqlite3
+*.sqlite3-*

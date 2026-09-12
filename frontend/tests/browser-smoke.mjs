@@ -1,16 +1,17 @@
 // Local Chrome + the real backend in isolated simulation mode. Run after npm run build.
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { mkdir } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright-core';
 
 const backend = fileURLToPath(new URL('../../backend/', import.meta.url));
 const port = 18932;
+const runtimeDir = await mkdtemp('/tmp/incident-browser-');
 const server = spawn(`${backend}.venv/bin/python`, ['-m', 'uvicorn', 'main:app', '--host', '127.0.0.1', '--port', String(port)], {
   cwd: backend, stdio: 'ignore', env: { ...process.env, INFRASTRUCTURE_MODE: 'simulation',
     ASSEMBLYAI_API_KEY: '', GEMINI_API_KEY: '', OPENAI_API_KEY: '', OPERATOR_ACCESS_TOKEN: '',
-    LLM_PROVIDER: 'mock', TTS_PROVIDER: 'browser', COOKIE_SECURE: 'false' },
+    WAL_STORAGE_DIR: runtimeDir, DEFAULT_ENGINE: 'custom_stt_v3', LLM_PROVIDER: 'mock', TTS_PROVIDER: 'browser', COOKIE_SECURE: 'false' },
 });
 let browser;
 try {
@@ -110,4 +111,6 @@ try {
 } finally {
   if (browser) await browser.close();
   server.kill('SIGTERM');
+  await new Promise(resolve => { if (server.exitCode !== null) resolve(); else server.once('exit', resolve); });
+  await rm(runtimeDir, { recursive: true, force: true });
 }

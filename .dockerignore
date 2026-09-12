@@ -7,3 +7,8 @@
 **/.pytest_cache
 **/*.tsbuildinfo
 frontend/dist
+**/*.sqlite3
+**/*.sqlite3-*
+**/*.jsonl
+data
+backend/data

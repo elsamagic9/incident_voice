@@ -34,7 +34,7 @@ def test_wal_append_monotonic_lsn_and_checksum(tmp_wal_dir):
     assert records[1]["payload"]["text"] == "Investigating order-db"
 
 
-def test_wal_aries_recovery_and_uncommitted_undo(tmp_wal_dir):
+def test_legacy_event_inspection_identifies_unconfirmed_intents(tmp_wal_dir):
     wal = WriteAheadLogService(storage_dir=tmp_wal_dir)
     audit = CryptographicAuditLedger()
 
@@ -60,7 +60,7 @@ def test_wal_aries_recovery_and_uncommitted_undo(tmp_wal_dir):
     res = wal.replay_into_state(recovered_state, recovered_audit)
 
     assert res["recovered_records"] == 8
-    assert res["uncommitted_staged_mutations_rolled_back"] == ["stage-unconfirmed"]
+    assert res["unconfirmed_staged_mutations"] == ["stage-unconfirmed"]
     assert recovered_state.incident.status == "MITIGATING"
     assert "restart_pod" in recovered_state.incident.mitigations_applied
     assert any(e["text"] == "Payment 503 spike" for e in recovered_state.incident.timeline_events)
@@ -71,7 +71,7 @@ def test_wal_aries_recovery_and_uncommitted_undo(tmp_wal_dir):
     assert count >= 2  # genesis + recovered block
 
 
-def test_wal_corrupted_record_discarded(tmp_wal_dir):
+def test_wal_corruption_stops_the_sequence(tmp_wal_dir):
     wal = WriteAheadLogService(storage_dir=tmp_wal_dir)
     wal.append("TIMELINE_EVENT", {"text": "Valid record 1", "type": "alert"})
 
@@ -91,8 +91,8 @@ def test_wal_corrupted_record_discarded(tmp_wal_dir):
     wal.last_lsn = 2
     wal.append("TIMELINE_EVENT", {"text": "Valid record 3", "type": "voice"})
 
-    records = wal.read_records()
-    # The tampered record must be rejected
-    assert len(records) == 2
-    assert records[0]["payload"]["text"] == "Valid record 1"
-    assert records[1]["payload"]["text"] == "Valid record 3"
+    # Recovery must not jump over an invalid record and accept later state.
+    with pytest.raises(RuntimeError, match='checksum or sequence'):
+        wal.read_records()
+    with pytest.raises(RuntimeError, match='checksum or sequence'):
+        WriteAheadLogService(storage_dir=tmp_wal_dir)

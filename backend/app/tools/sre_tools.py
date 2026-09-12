@@ -94,7 +94,8 @@ def execute_remediation(action, service_name, count=4):
     if settings.infrastructure_mode != 'simulation':
         from app.core.session import current_session
         session = current_session.get()
-        if not settings.operator_access_token or not session or not session.authenticated:
+        from app.core.auth_rbac import operator_registry
+        if not session or not session.authenticated or not operator_registry.session_is_valid(session):
             return {'success': False, 'status': 'denied', 'error': 'Live operations require an authenticated operator'}
     if action != 'cordon_node' and not resolve_service(service_name):
         return {'success': False, 'error': 'Service not found'}
@@ -143,7 +144,9 @@ def execute_remediation(action, service_name, count=4):
 
 def query_host_telemetry():
     from app.core.session import current_session
-    if not current_session.get().authenticated:
+    from app.core.auth_rbac import operator_registry
+    session = current_session.get()
+    if not session or not session.authenticated or session.operator_id == "op-demo" or not operator_registry.session_is_valid(session):
         return {'source': 'unavailable', 'message': 'Host telemetry requires operator authentication.'}
     return {'source': 'backend_host', 'host_metrics': infra_bridge.get_host_telemetry(), 'top_processes': infra_bridge.get_top_processes()}
 

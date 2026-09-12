@@ -3,6 +3,7 @@ from app.core.async_work import session_work
 import base64
 import json
 import secrets
+import sqlite3
 import time
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from app.core.config import settings
@@ -36,12 +37,26 @@ async def voice_agent_websocket(websocket: WebSocket):
     tts_task = None
     speech_epoch = 0
     closed = False
+    storage_failed = False
     voice_queue = asyncio.Queue(maxsize=16)
     send_lock = asyncio.Lock()
 
     async def send(payload):
+        nonlocal closed, storage_failed
         if closed: return
         async with send_lock:
+            if (payload.get('type') in {'cluster_sync', 'staging_sync', 'command_complete', 'tool_executed', 'postmortem_ready'}
+                or payload.get('type') == 'turn' and payload.get('end_of_turn')
+                or payload.get('type') == 'agent_state' and payload.get('state') == 'listening'):
+                from app.core.session_store import checkpoint_session
+                try:
+                    checkpoint_session()
+                except (OSError, sqlite3.Error, RuntimeError):
+                    storage_failed = True
+                    await websocket.send_json({'type': 'error', 'message': 'Incident storage failed. Results could not be saved; inspect live infrastructure before retrying.'})
+                    closed = True
+                    await websocket.close(code=1011)
+                    raise
             await websocket.send_json(payload)
 
     async def sync():
@@ -256,6 +271,9 @@ async def voice_agent_websocket(websocket: WebSocket):
             try:
                 if closed: return
                 async with session.lock:
+                    if not find_session(session.id):
+                        await websocket.close(code=4401)
+                        return
                     await process(data)
             except asyncio.CancelledError: raise
             except Exception as exc:
@@ -322,3 +340,12 @@ async def voice_agent_websocket(websocket: WebSocket):
         finally:
             agent_orchestrator.cancel_staged_remediation()
             if session.connection_id == connection_id: session.connection_id = None
+            from app.core.session_store import checkpoint_session, session_store
+            from app.core.session import sessions
+            from app.core.auth_rbac import operator_registry
+            if storage_failed:
+                pass  # Preserve the last durable checkpoint for recovery.
+            elif session.id in sessions and operator_registry.session_is_valid(session):
+                checkpoint_session()
+            else:
+                session_store.delete(session.id)

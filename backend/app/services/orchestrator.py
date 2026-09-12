@@ -113,11 +113,8 @@ class AgentOrchestrator:
         actor_str = f"{op_name} ({op_id})" if op_id else op_name
         audit_ledger.record_event('MUTATION_STAGED', actor_str, op_role, action,
                                   {'service_name': service_name, 'action_id': self.staged_action['id']})
-        try:
-            from app.services.wal_service import wal_service
-            wal_service.append('STAGE_MUTATION', dict(self.staged_action))
-        except Exception:
-            pass
+        from app.services.wal_service import wal_service
+        wal_service.append('STAGE_MUTATION', dict(self.staged_action))
         return spoken, {'status': 'staged', **self.staged_action, 'message': spoken}
 
     def confirm_staged_remediation(self, action_id=None):
@@ -131,6 +128,10 @@ class AgentOrchestrator:
             return 'Authorization is no longer valid. No changes were applied.', []
         # Consume staging before entering infrastructure code: one approval, one operation.
         self.cancel_staged_remediation()
+        from app.core.session_store import checkpoint_session
+        session = current_session.get()
+        session.mutation_in_flight = {'id': staged['id'], 'action': staged['action'], 'service_name': staged['service_name']}
+        checkpoint_session()  # Durable intent before contacting infrastructure; never replay this intent.
         with authorized_mutation(staged['action'], staged['service_name']):
             result = execute_remediation(staged['action'], staged['service_name'], count=staged['params'].get('count', 4))
         event = {'tool_name': 'execute_remediation', 'arguments': {'action': staged['action'], 'service_name': staged['service_name'], **staged['params']},
@@ -138,11 +139,10 @@ class AgentOrchestrator:
         spoken = ('Simulation applied. ' if result.get('simulated') else 'Confirmed. ') + str(result.get('message', '')) if result.get('success') else 'Action failed: ' + str(result.get('error', 'Unknown infrastructure error'))
         from app.services.runbook_engine import runbook_engine
         runbook_engine.complete_pending_step(staged['id'], result)
-        try:
-            from app.services.wal_service import wal_service
-            wal_service.append('CONFIRM_MUTATION', {'id': staged['id'], 'action': staged['action'], 'service_name': staged['service_name']})
-        except Exception:
-            pass
+        from app.services.wal_service import wal_service
+        wal_service.append('CONFIRM_MUTATION', {'id': staged['id'], 'action': staged['action'], 'service_name': staged['service_name']})
+        session.mutation_in_flight = None
+        checkpoint_session()
         return spoken, [event]
 
     def set_autopilot(self, enabled):

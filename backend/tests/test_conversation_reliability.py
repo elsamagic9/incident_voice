@@ -44,8 +44,8 @@ async def test_host_vitals_cannot_bypass_authentication(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_host_vitals_are_auditable_and_do_not_invent_missing_metrics(monkeypatch, operator_session):
-    operator_session.authenticated = True
+async def test_host_vitals_are_auditable_and_do_not_invent_missing_metrics(monkeypatch, operator_session, authenticate_operator):
+    authenticate_operator()
     monkeypatch.setattr(infra_bridge, 'get_host_telemetry', lambda: {'host_cpu_percent': 7.5})
     monkeypatch.setattr(infra_bridge, 'get_top_processes', lambda: [])
     spoken, events, _ = await agent_orchestrator.process_user_turn('Jarvis, check host vitals')

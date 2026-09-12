@@ -154,12 +154,9 @@ class ClusterState:
             "type": event_type,
             "text": text
         }
+        from app.services.wal_service import wal_service
+        wal_service.append("TIMELINE_EVENT", evt)
         self.incident.timeline_events.append(evt)
-        try:
-            from app.services.wal_service import wal_service
-            wal_service.append("TIMELINE_EVENT", evt)
-        except Exception:
-            pass
 
     def apply_remediation(self, action: str, service_name: str, params: Dict[str, Any] = None) -> Dict[str, Any]:
         from app.core.config import settings

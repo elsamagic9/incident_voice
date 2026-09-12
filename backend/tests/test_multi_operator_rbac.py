@@ -6,6 +6,16 @@ from app.services.orchestrator import agent_orchestrator
 from app.services.audit_ledger import audit_ledger
 from main import app
 
+@pytest.fixture(autouse=True)
+def explicit_test_operators(operator_session, monkeypatch):
+    from app.core import auth_rbac
+    registry = auth_rbac.operator_registry
+    monkeypatch.setitem(globals(), 'operator_registry', registry)
+    registry.register_operator('op-sarah-chen', 'Sarah Chen (Principal SRE)', SRERole.SRE_COMMANDER, 'token-commander-sarah')
+    registry.register_operator('op-alex-rivera', 'Alex Rivera (On-Call SRE)', SRERole.INCIDENT_RESPONDER, 'token-responder-alex')
+    registry.register_operator('op-jordan-lee', 'Jordan Lee (Security Auditor)', SRERole.READ_ONLY_OBSERVER, 'token-observer-jordan')
+
+
 def test_operator_registry_authentication():
     """Verify distinct operator authentication and role mappings."""
     commander = operator_registry.authenticate("token-commander-sarah")
@@ -75,7 +85,8 @@ def test_rbac_permission_boundaries_orchestration():
         operator_id=observer.operator_id,
         operator=observer.name,
         role=observer.role.value,
-        authenticated=True
+        authenticated=True,
+        token_hash=observer.token_hash
     )
     token = current_session.set(obs_session)
     try:
@@ -91,7 +102,8 @@ def test_rbac_permission_boundaries_orchestration():
         operator_id=responder.operator_id,
         operator=responder.name,
         role=responder.role.value,
-        authenticated=True
+        authenticated=True,
+        token_hash=responder.token_hash
     )
     token = current_session.set(resp_session)
     try:
@@ -106,7 +118,8 @@ def test_rbac_permission_boundaries_orchestration():
         operator_id=commander.operator_id,
         operator=commander.name,
         role=commander.role.value,
-        authenticated=True
+        authenticated=True,
+        token_hash=commander.token_hash
     )
     token = current_session.set(comm_session)
     try:
@@ -158,7 +171,8 @@ def test_audit_ledger_operator_attribution_and_chain_integrity():
         operator_id=commander.operator_id,
         operator=commander.name,
         role=commander.role.value,
-        authenticated=True
+        authenticated=True,
+        token_hash=commander.token_hash
     )
     token = current_session.set(session)
     try:

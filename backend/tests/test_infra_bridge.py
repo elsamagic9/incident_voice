@@ -7,9 +7,9 @@ from app.tools.sre_tools import query_host_telemetry, query_telemetry, refresh_l
 from app.tools.k8s_adapter import k8s_adapter
 
 
-def test_host_telemetry_requires_authenticated_operator(operator_session):
+def test_host_telemetry_requires_authenticated_operator(operator_session, authenticate_operator):
     assert query_host_telemetry()['source'] == 'unavailable'
-    operator_session.authenticated = True
+    authenticate_operator()
     metrics = query_host_telemetry()
     assert metrics['source'] == 'backend_host'
     assert metrics['host_metrics']['host_memory_total_gb'] > 0
@@ -21,10 +21,10 @@ def test_simulation_does_not_contact_docker():
     assert infra_bridge.list_running_containers() == []
 
 
-def test_docker_restart_executes_configured_target_once(monkeypatch, operator_session):
+def test_docker_restart_executes_configured_target_once(monkeypatch, operator_session, authenticate_operator):
     monkeypatch.setattr(settings, 'infrastructure_mode', 'docker')
     monkeypatch.setattr(settings, 'operator_access_token', 'test-token')
-    operator_session.authenticated = True
+    authenticate_operator()
     restart = Mock(return_value={'success': True})
     monkeypatch.setattr(infra_bridge, 'restart_container', restart)
     monkeypatch.setattr(infra_bridge, 'inspect_container', lambda _: {'success': True, 'running': True, 'health_verified': False})
@@ -37,10 +37,10 @@ def test_docker_restart_executes_configured_target_once(monkeypatch, operator_se
     assert agent_orchestrator.confirm_staged_remediation(staged['id'])[1] == []
 
 
-def test_live_docker_failure_never_heals_simulation(monkeypatch, operator_session):
+def test_live_docker_failure_never_heals_simulation(monkeypatch, operator_session, authenticate_operator):
     monkeypatch.setattr(settings, 'infrastructure_mode', 'docker')
     monkeypatch.setattr(settings, 'operator_access_token', 'test-token')
-    operator_session.authenticated = True
+    authenticate_operator()
     monkeypatch.setattr(infra_bridge, 'restart_container', lambda _: {'success': False, 'error': 'Docker unavailable'})
     _, staged = agent_orchestrator._stage_remediation('restart_pod', 'payment-service', {})
     _, events = agent_orchestrator.confirm_staged_remediation(staged['id'])

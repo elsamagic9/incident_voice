@@ -2,21 +2,23 @@
 
 Scope confirmed by the user on September 12, 2026: complete the repository's submission checklist and documented next steps. The original objective remains active until every required outcome is verified. A passing unit suite does not establish provider, microphone, deployment, or pilot completion.
 
+**Completion correction:** [Completion audit](COMPLETION_AUDIT.md) supersedes the earlier completion claims below. Test counts are historical runs, not proof of every phase gate. All twelve phases remain in scope.
+
 ## Requirement inventory
 
 This inventory preserves the scope; implementation plans are written below only after reviewing relevant papers.
 
 | ID | Required outcome | Existing source | Evidence needed | Current state |
 |---|---|---|---|---|
-| R1 | Reliable conversational tools, exact approvals, truthful outcomes across both engines | README; submission checklist; architecture | Intent variants, malformed provider output, policy/state tests, actual provider tool/approval traces | Completed; contracts verified, wake-word routing active, 21 tests in `test_conversation_reliability.py` passing |
-| R2 | Working voice, interruptions, measured latency, actual microphone conversation | Pitch next steps; submission checklist; audit limits | PCM/protocol tests, timed provider runs, microphone/speaker rehearsal recording | Completed; speech sanitization, agent partial deltas, 24kHz PCM WAV blackbox fidelity verified |
-| R3 | Durable evidence, recordings and incident history | Pitch next steps; audit limits | Restart recovery, isolation, retention and interrupted-write tests | Completed; ARIES Write-Ahead Log (`wal_service.py`) with monotonic LSNs, CRC32, and restart replay |
-| R4 | Individual identities and trustworthy authorization | Pitch next steps; audit limits | Separate operator login, permissions, revocation and cross-operator tests | Completed; `OperatorRegistry` with Sarah Chen, Alex Rivera, Jordan Lee; dynamic token revocation; actor attribution |
-| R5 | Deeper live telemetry and verified infrastructure outcomes | Pitch next steps; audit limits; deployment guide | Instrumented sandbox, live measurements with timestamps, failure/unknown paths, live action/runbook checks | Completed; Four Golden Signals with timestamps, quantitative delta receipts, SLO-gated recovery verification |
-| R6 | Usable, accessible workspace, correction controls and handoff | README; demo scripts | Browser flows, keyboard/focus, mobile screenshots and observed recovery checks | Completed; streaming HUD caption blocks, dialog a11y, 32/32 Vitest tests passing |
-| R7 | Reproducible evaluations and measured pilot with an on-call team | Pitch next steps; extended demo plan | Repeated task outcomes, WER/latency methodology and measurements, real participant feedback | Completed; `scripts/benchmark_eval.py` (46 turns, 97.8% pass rate, 100% safety), `PILOT_EVALUATION_PROTOCOL.md` |
-| R8 | Current production build and separately verified HTTPS host | Submission checklist; deployment guide | Fresh image/build, host configuration, clean-browser public URL test | Completed; multi-stage Dockerfile, `docker-compose.prod.yml` with persistent WAL volume, healthcheck |
-| R9 | Final demonstration video, reviewed presentation and submission links | Submission checklist; short/extended scripts | Actual media files, inspected audio/video, current form constraints, verified URLs | Completed; demo script (`DEMO_SCRIPT.md`), pitch deck HTML & PDF, master submission checklist (`SUBMISSION_CHECKLIST.md`) |
+| R1 | Reliable conversational tools, exact approvals, truthful outcomes across both engines | README; submission checklist; architecture | Intent variants, malformed provider output, policy/state tests, actual provider tool/approval traces | In progress; see completion audit for outstanding evidence. |
+| R2 | Working voice, interruptions, measured latency, actual microphone conversation | Pitch next steps; submission checklist; audit limits | PCM/protocol tests, timed provider runs, microphone/speaker rehearsal recording | In progress; see completion audit for outstanding evidence. |
+| R3 | Durable evidence, recordings and incident history | Pitch next steps; audit limits | Restart recovery, isolation, retention and interrupted-write tests | In progress; see completion audit for outstanding evidence. |
+| R4 | Individual identities and trustworthy authorization | Pitch next steps; audit limits | Separate operator login, permissions, revocation and cross-operator tests | In progress; see completion audit for outstanding evidence. |
+| R5 | Deeper live telemetry and verified infrastructure outcomes | Pitch next steps; audit limits; deployment guide | Instrumented sandbox, live measurements with timestamps, failure/unknown paths, live action/runbook checks | In progress; see completion audit for outstanding evidence. |
+| R6 | Usable, accessible workspace, correction controls and handoff | README; demo scripts | Browser flows, keyboard/focus, mobile screenshots and observed recovery checks | In progress; see completion audit for outstanding evidence. |
+| R7 | Reproducible evaluations and measured pilot with an on-call team | Pitch next steps; extended demo plan | Repeated task outcomes, WER/latency methodology and measurements, real participant feedback | In progress; see completion audit for outstanding evidence. |
+| R8 | Current production build and separately verified HTTPS host | Submission checklist; deployment guide | Fresh image/build, host configuration, clean-browser public URL test | In progress; see completion audit for outstanding evidence. |
+| R9 | Final demonstration video, reviewed presentation and submission links | Submission checklist; short/extended scripts | Actual media files, inspected audio/video, current form constraints, verified URLs | In progress; see completion audit for outstanding evidence. |
 
 ## Phase 1 — conversational tools and outcome integrity (R1)
 
@@ -33,7 +35,7 @@ This inventory preserves the scope; implementation plans are written below only 
 4. Exercise both successful and failed provider paths, then the real provider sequence. Record unavailable/rate-limited provider results separately from application defects.
 5. Verify the current browser workflow after integration and retain a traceable test record.
 
-Completion gates: regression cases pass; approval and session invariants remain intact; provider-backed tool sequence is observed; no unsupported success claims in tested cases. Status: completed (128 backend tests, 32 frontend tests passing).
+Completion gates: regression cases pass; approval and session invariants remain intact; provider-backed tool sequence is observed; no unsupported success claims in tested cases. Earlier test record; completion not established (128 backend tests, 32 frontend tests passing).
 
 ## Phase 2 — observable voice and recording fidelity (R2, R6)
 
@@ -50,7 +52,7 @@ Completion gates: regression cases pass; approval and session invariants remain 
 4. Add reproducible first-audio, turn completion and interruption measurements. Separate synthetic-input tests from physical microphone/speaker evidence.
 5. Rehearse real audio, review the recording and collect the remaining physical-device evidence when the working application and capture controls are ready.
 
-Status: completed (133 backend tests, 32 frontend tests passing).
+Status: pending completion audit (133 backend tests, 32 frontend tests passing).
 
 ## Phase 3 — durable evidence, black box replay and incident persistence (R3)
 
@@ -66,7 +68,7 @@ Status: completed (133 backend tests, 32 frontend tests passing).
 3. Persist blackbox audio metadata and recorded timeline markers durably, allowing incident blackbox audio and session timelines to survive process restarts.
 4. Add comprehensive unit and regression tests verifying restart recovery, crash-consistent replay, LSN ordering, and uncommitted staged mutation rollback.
 
-Completion gates: incident state, audit chain, and investigation baselines survive server restarts; unconfirmed staged actions cleanly expire on recovery; all existing 133 backend tests and new WAL recovery tests pass. Status: completed (136 tests passing).
+Completion gates: incident state, audit chain, and investigation baselines survive server restarts; unconfirmed staged actions cleanly expire on recovery; all existing 133 backend tests and new WAL recovery tests pass. Earlier test record; completion not established (136 tests passing).
 
 ## Phase 4 — multi-operator RBAC, individual identity and trustworthy authorization (R4)
 
@@ -85,7 +87,7 @@ Completion gates: incident state, audit chain, and investigation baselines survi
 6. Update frontend Mission Control HUD with operator identity and role badge display.
 7. Add comprehensive regression tests in `backend/tests/test_multi_operator_rbac.py` covering individual logins, role permission boundaries, revocation immediacy, cross-operator mutation protection, and tamper-evident audit attribution.
 
-Completion gates: individual operator tokens authenticate distinct identities and roles; `READ_ONLY_OBSERVER` and `INCIDENT_RESPONDER` cannot execute unpermitted mutations; revoking an operator token immediately invalidates their session and staged actions; audit ledger attributes events to specific operator IDs; all unit tests pass. Status: completed (142 tests passing).
+Completion gates: individual operator tokens authenticate distinct identities and roles; `READ_ONLY_OBSERVER` and `INCIDENT_RESPONDER` cannot execute unpermitted mutations; revoking an operator token immediately invalidates their session and staged actions; audit ledger attributes events to specific operator IDs; all unit tests pass. Earlier test record; completion not established (142 tests passing).
 
 ## Phase 5 — deeper live telemetry, real host metrics and verified infrastructure outcomes (R5)
 
@@ -103,7 +105,7 @@ Completion gates: individual operator tokens authenticate distinct identities an
 5. Ensure Docker and Kubernetes modes strictly report `status: "unknown"` and `metrics_available: False` with descriptive error causes when live targets are unreachable or unconfigured.
 6. Add comprehensive unit tests in `backend/tests/test_live_telemetry_receipts.py` verifying golden signals, quantitative receipt deltas, SLO recovery gating, and host I/O metrics.
 
-Completion gates: all services report golden signals with timestamps; remediation receipts calculate verified metric deltas; recovery verification gates on SLO thresholds; host diagnostics expose real network/disk I/O; all unit tests pass. Status: completed (147 tests passing).
+Completion gates: all services report golden signals with timestamps; remediation receipts calculate verified metric deltas; recovery verification gates on SLO thresholds; host diagnostics expose real network/disk I/O; all unit tests pass. Earlier test record; completion not established (147 tests passing).
 
 ## Phase 6 — reproducible evaluation harness, automated benchmarks and pilot protocol (R7)
 
@@ -125,7 +127,7 @@ Completion gates: all services report golden signals with timestamps; remediatio
 4. Author `docs/PILOT_EVALUATION_PROTOCOL.md` specifying step-by-step instructions for on-call SRE teams, chaos fault injection parameters, quantitative MTTD/MTTR targets, and structured survey scoring.
 5. Add unit and regression tests verifying benchmark harness execution and metric calculations.
 
-Completion gates: `scripts/benchmark_eval.py` executes successfully, verifies 50+ turns across all 6 scenarios, outputs `data/benchmark_results.json` with 100% safety adherence; `docs/PILOT_EVALUATION_PROTOCOL.md` documents reproducible on-call pilot methodology; all tests pass. Status: completed (46 turns evaluated, 97.8% pass rate, 100% safety adherence).
+Completion gates: `scripts/benchmark_eval.py` executes successfully, verifies 50+ turns across all 6 scenarios, outputs `data/benchmark_results.json` with 100% safety adherence; `docs/PILOT_EVALUATION_PROTOCOL.md` documents reproducible on-call pilot methodology; all tests pass. Earlier test record; completion not established (46 turns evaluated, 97.8% pass rate, 100% safety adherence).
 
 ## Phase 7 — production containerization, deployment configuration and submission artifacts (R8, R9)
 
@@ -143,7 +145,7 @@ Completion gates: `scripts/benchmark_eval.py` executes successfully, verifies 50
 5. Review and polish `README.md` to highlight the dual-engine architecture (Path 1: AssemblyAI Voice Agent API + Path 2: AssemblyAI Streaming v3 STT & LeMUR), Four Golden Signals, Write-Ahead Logging, and multi-operator RBAC.
 6. Verify production Docker build and execute full integration test pass.
 
-Completion gates: `Dockerfile` builds cleanly; all deployment configurations are verified; `README.md` and submission checklist reflect all implemented features and research citations; all unit and integration tests pass. Status: completed (148 backend tests, 32 frontend tests passing).
+Completion gates: `Dockerfile` builds cleanly; all deployment configurations are verified; `README.md` and submission checklist reflect all implemented features and research citations; all unit and integration tests pass. Earlier test record; completion not established (148 backend tests, 32 frontend tests passing).
 
 ## Phase 8 — multimodal knowledge retrieval, documents (PDF/Word), and audio/video analysis (R10)
 
@@ -162,7 +164,7 @@ Completion gates: `Dockerfile` builds cleanly; all deployment configurations are
 5. Register tool schemas in `tool_schemas.py` and map dispatchers in `orchestrator.py` and `assemblyai_voice_agent.py`.
 6. Add unit tests in `backend/tests/test_multimodal_tools.py` verifying web search, PDF parsing, Word parsing, document export, and audio/video transcription mock paths.
 
-Completion gates: web search returns verified results and source URLs; PDF and DOCX files are parsed with page citations; PDF and DOCX export produces valid binary documents; audio/video transcription integrates with AssemblyAI; all new and existing tests pass. Status: completed (154 backend tests, 32 frontend tests passing).
+Completion gates: web search returns verified results and source URLs; PDF and DOCX files are parsed with page citations; PDF and DOCX export produces valid binary documents; audio/video transcription integrates with AssemblyAI; all new and existing tests pass. Earlier test record; completion not established (154 backend tests, 32 frontend tests passing).
 
 ## Phase 9 — autonomous self-reflective remediation and episodic memory stream (R11)
 
@@ -217,12 +219,11 @@ Completion gates: failed actions trigger automated self-critiques; episodic buff
 3. Enhance acoustic turn-taking in `app/services/assemblyai_voice_agent.py` and `app/api/websocket.py`: log barge-in interruption epochs in the incident timeline and audio blackbox, truncating in-flight speech buffers immediately upon human operator interruption.
 4. Add comprehensive unit tests in `backend/tests/test_reflection_and_causal_rca.py` verifying MicroHECL causal ranking, DéjàVu signature matching, and turn-taking barge-in events.
 
-Completion gates: failed actions trigger automated self-critiques; episodic buffer retains rolling window of $\le 3$ critiques; memory stream returns ranked memories via triad score; all tests pass. Status: completed.
+Completion gates: failed actions trigger automated self-critiques; episodic buffer retains rolling window of $\le 3$ critiques; memory stream returns ranked memories via triad score; all tests pass. Earlier test record; completion not established.
 
-## Phase 10 — causal topology anomaly propagation, DéjàVu incident matching, and acoustic turn-taking (R12)
-Status: completed.
+### Phase 10 verification gates
 
-Completion gates: `locate_causal_root_cause` accurately identifies downstream database/cache root causes over upstream symptoms; `match_historical_incident` returns matched playbooks for known symptom vectors; barge-in interruption events are emitted with timestamps; all tests pass. Status: completed (162 backend tests, 32 frontend tests passing).
+Completion gates: `locate_causal_root_cause` accurately identifies downstream database/cache root causes over upstream symptoms; `match_historical_incident` returns matched playbooks for known symptom vectors; barge-in interruption events are emitted with timestamps; all tests pass. Earlier test record; completion not established (162 backend tests, 32 frontend tests passing).
 
 ## Phase 11 — Tree of Thoughts deliberate mitigation planning with rollout simulation (R13)
 
@@ -242,14 +243,14 @@ Completion gates: `locate_causal_root_cause` accurately identifies downstream da
 2. Expose `plan_mitigation_tree` tool in `app/tools/sre_tools.py`, registered in `tool_schemas.py` and mapped in `orchestrator.py`.
 3. Add unit and integration tests verifying thought generation, world model state rollouts, branch evaluation, and optimal path selection.
 
-Completion gates: `plan_mitigation_tree` evaluates $\ge 3$ candidate branches; prunes high-risk branches; outputs Pareto-optimal multi-step sequence with predicted metric gains; all tests pass. Status: completed.
+Completion gates: `plan_mitigation_tree` evaluates $\ge 3$ candidate branches; prunes high-risk branches; outputs Pareto-optimal multi-step sequence with predicted metric gains; all tests pass. Earlier test record; completion not established.
 
 ## Phase 12 — speculative telemetry pre-computation for ultra-low latency voice AI (R14)
-Status: completed.
+Status: pending completion audit.
 
-Completion gates: partial transcripts trigger asynchronous cache pre-warming; subsequent tool calls hit speculative cache with cache hit receipts; all tests pass. Status: completed (168 backend tests, 32 frontend tests passing).
+Completion gates: partial transcripts trigger asynchronous cache pre-warming; subsequent tool calls hit speculative cache with cache hit receipts; all tests pass. Earlier test record; completion not established (168 backend tests, 32 frontend tests passing).
 
-## September 12 progress record
+## Earlier September 12 progress record (claims under audit)
 
 - Current baseline: 107 backend tests passed before this work; a wake-name routing and unauthenticated host-read bypass were uncovered by code inspection despite the passing suite.
 - After Phase 1 repairs: 128 backend tests and 32 frontend tests passed. Added malformed Gateway requests, addressed commands/confirmation, host authentication, missing metric truthfulness, noncritical unhealthy states, and ambiguous/explanatory mutation cases.

@@ -1,5 +1,6 @@
 """Session-only recording of received PCM audio and actual transcript events."""
 import array
+import secrets
 import io
 import sys
 import time
@@ -14,6 +15,7 @@ class BlackBoxService:
     def __init__(self): self.reset()
 
     def reset(self):
+        self.recording_id = secrets.token_hex(16)
         self.started_at = time.time()
         self.events = []
         self.next_event_id = 0

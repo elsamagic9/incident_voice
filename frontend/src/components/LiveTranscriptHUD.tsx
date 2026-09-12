@@ -209,7 +209,7 @@ export const LiveTranscriptHUD: React.FC<Props> = ({
               </div>
             )}
 
-            {agentTranscript && <article className="conversation-message message-agent" aria-label="Live agent caption" aria-live="off"><span className="message-avatar"><Bot size={16} /></span><div className="message-content"><div className="message-meta"><strong>J.A.R.V.I.S.</strong><small>Speaking · live caption</small></div><p>{agentTranscript}</p></div></article>}
+            {agentTranscript && <article className="chat-message chat-agent" aria-label="Live agent caption" aria-live="off"><span className="chat-avatar"><Bot size={16} /></span><div><div className="chat-meta"><strong>J.A.R.V.I.S.</strong><small>Speaking · live caption</small></div><p>{agentTranscript}</p></div></article>}
 
             {thinking && !agentTranscript && (
               <div className="thinking-message">

@@ -64,3 +64,19 @@ Application CPU/latency/error-rate metrics are unavailable in Docker mode unless
 - Export artifacts before restarting the server, which clears in-memory sessions.
 
 Check the hackathon's current submission form for required links and media rather than relying on older pitch/checklist files in this repository.
+
+## Individual operators and credential rotation
+
+The operator directory starts empty. There are no built-in logins. An unconfigured simulation permits a demo session; live mode and a configured directory require authentication. `OPERATOR_ACCESS_TOKEN` remains available for a single configured commander.
+
+For individual identities, run this from the backend environment, using the same `WAL_STORAGE_DIR` volume as the server:
+
+```bash
+.venv/bin/python -m app.core.operators_cli register --id oncall-alice --name "Alice" --role SRE_COMMANDER
+.venv/bin/python -m app.core.operators_cli list
+.venv/bin/python -m app.core.operators_cli revoke --id oncall-alice
+```
+
+Registration prompts privately for a randomly generated token of at least 32 characters. Supported roles are `SRE_COMMANDER`, `INCIDENT_RESPONDER`, and `READ_ONLY_OBSERVER`. Re-registering the same ID with a new token rotates it. Old tokens and sessions stop working; revoked tokens cannot be reused. Role changes require signing in again. The browser retains its incident on an authenticated refresh.
+
+The private `operators.sqlite3` stores token hashes and revocations, never raw tokens. Mount its data directory persistently; do not include the database in the image or public repository. Revocation is rechecked on requests and tool dispatch; existing sockets close within the one-second session check interval. This does not undo an infrastructure operation that had already started.

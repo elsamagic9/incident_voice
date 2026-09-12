@@ -30,10 +30,6 @@ class OperatorSessionMiddleware:
             return await self.app(scope, receive, send)
         session = find_session(connection.cookies.get(COOKIE_NAME))
         valid = session and origin_allowed(connection)
-        if settings.operator_access_token and session and not session.authenticated:
-            valid = False
-        if settings.infrastructure_mode != 'simulation' and (not settings.operator_access_token or not session or not session.authenticated):
-            valid = False
         if not valid:
             if scope['type'] == 'websocket':
                 return await send({'type': 'websocket.close', 'code': 4401})
@@ -43,7 +39,12 @@ class OperatorSessionMiddleware:
         try:
             if scope['type'] == 'http':
                 async with session.lock:
-                    await self.app(scope, receive, send)
+                    async def durable_send(message):
+                        if message["type"] == "http.response.start":
+                            from app.core.session_store import checkpoint_session
+                            checkpoint_session()
+                        await send(message)
+                    await self.app(scope, receive, durable_send)
             else:
                 await self.app(scope, receive, send)
         finally:

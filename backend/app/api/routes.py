@@ -39,12 +39,12 @@ async def open_session(request: Request, payload: SessionLogin = Body(default=Se
 
     if settings.infrastructure_mode != "simulation" and not op and not (existing and existing.authenticated):
         raise HTTPException(503, "Live infrastructure requires an authenticated operator token")
-    if settings.operator_access_token and not op and not (existing and existing.authenticated):
+    if operator_registry.requires_authentication() and not op and not (existing and existing.authenticated):
         raise HTTPException(401, "An operator access token is required")
 
     try:
         if op:
-            session = create_session(operator=op)
+            session = existing if existing and existing.operator_id == op.operator_id and existing.token_hash == op.token_hash else create_session(operator=op)
         else:
             session = existing or create_session(authenticated=False)
     except RuntimeError as exc:
@@ -115,7 +115,10 @@ async def revoke_operator_endpoint(request: Request, payload: RevokeOperatorPayl
 async def close_session(request: Request):
     if not origin_allowed(request):
         raise HTTPException(403, "Origin not allowed")
-    sessions.pop(request.cookies.get(COOKIE_NAME, ""), None)
+    session_id = request.cookies.get(COOKIE_NAME, "")
+    sessions.pop(session_id, None)
+    from app.core.session_store import session_store
+    session_store.delete(session_id)
     response = JSONResponse({"status": "signed_out"})
     response.delete_cookie(COOKIE_NAME)
     return response

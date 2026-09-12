@@ -6,6 +6,9 @@ from contextvars import ContextVar
 from enum import Enum
 from dataclasses import dataclass, field
 import hashlib
+import sqlite3
+import threading
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 from app.core.session import SessionLocal, current_session
 
@@ -26,7 +29,7 @@ ROLE_PERMISSIONS = {
 
 @dataclass
 class Operator:
-    """Individual operator identity conforming to Saltzer & Schroeder (1975) and RBAC96."""
+    """An explicitly provisioned operator and its assigned role."""
     operator_id: str
     name: str
     role: SRERole
@@ -47,90 +50,139 @@ class Operator:
         return data
 
 class OperatorRegistry:
-    """
-    Central directory of individual operator identities and role authorizations.
-    Enforces complete mediation, fail-safe defaults, and token revocation.
-    """
-    def __init__(self):
-        self._operators: Dict[str, Operator] = {}
-        self._token_to_id: Dict[str, str] = {}
-        self._revoked_tokens: set[str] = set()
-        self._initialize_defaults()
+    """Explicit identities; SQLite transactions retain rotations and revocations.
 
-    def _hash_token(self, token: str) -> str:
+    No sample credentials are installed. A missing path gives an isolated in-memory
+    directory for tests; the application singleton uses the configured data volume.
+    """
+    CONFIGURED_ID = 'op-configured-commander'
+
+    def __init__(self, path=None):
+        if path is not None:
+            path = Path(path)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.touch(mode=0o600, exist_ok=True)
+            path.chmod(0o600)
+        self._lock = threading.RLock()
+        self._db = sqlite3.connect(str(path) if path else ':memory:', check_same_thread=False)
+        self._db.row_factory = sqlite3.Row
+        with self._db:
+            self._db.execute("PRAGMA synchronous=FULL")
+            self._db.execute("""CREATE TABLE IF NOT EXISTS operators (
+                operator_id TEXT PRIMARY KEY, name TEXT NOT NULL, role TEXT NOT NULL,
+                token_hash TEXT NOT NULL UNIQUE, revoked INTEGER NOT NULL DEFAULT 0,
+                created_at REAL NOT NULL)""")
+            self._db.execute("CREATE TABLE IF NOT EXISTS revoked_tokens (token_hash TEXT PRIMARY KEY)")
+        if path:
+            path.chmod(0o600)
+
+    @staticmethod
+    def _hash_token(token):
         return hashlib.sha256(token.encode('utf-8')).hexdigest()
 
-    def _initialize_defaults(self):
-        # Pre-configured operators for multi-operator SRE triage
-        self.register_operator('op-sarah-chen', 'Sarah Chen (Principal SRE)', SRERole.SRE_COMMANDER, 'token-commander-sarah')
-        self.register_operator('op-alex-rivera', 'Alex Rivera (On-Call SRE)', SRERole.INCIDENT_RESPONDER, 'token-responder-alex')
-        self.register_operator('op-jordan-lee', 'Jordan Lee (Security Auditor)', SRERole.READ_ONLY_OBSERVER, 'token-observer-jordan')
+    @staticmethod
+    def _operator(row):
+        if row is None:
+            return None
+        return Operator(row['operator_id'], row['name'], SRERole(row['role']),
+                        row['token_hash'], bool(row['revoked']), row['created_at'])
 
     def register_operator(self, operator_id: str, name: str, role: SRERole, raw_token: str) -> Operator:
+        if not operator_id or operator_id in {'op-demo', 'op-authenticated'} or not name.strip() or not raw_token:
+            raise ValueError('A distinct operator ID, name and nonempty token are required')
+        role = SRERole(role)
         token_h = self._hash_token(raw_token)
-        op = Operator(
-            operator_id=operator_id,
-            name=name,
-            role=role if isinstance(role, SRERole) else SRERole(role),
-            token_hash=token_h,
-            revoked=False
-        )
-        self._operators[operator_id] = op
-        self._token_to_id[token_h] = operator_id
-        return op
+        with self._lock, self._db:
+            if self._db.execute('SELECT 1 FROM revoked_tokens WHERE token_hash=?', (token_h,)).fetchone():
+                raise ValueError('A revoked credential cannot be reused; supply a new token')
+            duplicate = self._db.execute('SELECT operator_id FROM operators WHERE token_hash=?', (token_h,)).fetchone()
+            if duplicate and duplicate['operator_id'] != operator_id:
+                raise ValueError('A credential cannot be shared between operators')
+            old = self._db.execute('SELECT * FROM operators WHERE operator_id=?', (operator_id,)).fetchone()
+            if old and old['token_hash'] != token_h:
+                self._db.execute('INSERT OR IGNORE INTO revoked_tokens VALUES (?)', (old['token_hash'],))
+            self._db.execute("""INSERT INTO operators VALUES (?, ?, ?, ?, 0, ?)
+                ON CONFLICT(operator_id) DO UPDATE SET name=excluded.name,
+                role=excluded.role, token_hash=excluded.token_hash, revoked=0""",
+                (operator_id, name, role.value, token_h, time.time()))
+        return self.get_operator(operator_id)
 
     def authenticate(self, raw_token: str) -> Optional[Operator]:
+        from app.core.config import settings
         if not raw_token:
             return None
         token_h = self._hash_token(raw_token)
-        if token_h in self._revoked_tokens:
-            return None
-        op_id = self._token_to_id.get(token_h)
-        if op_id:
-            op = self._operators.get(op_id)
-            if op and not op.revoked:
-                return op
-            return None
-
-        # Check legacy configured operator_access_token fallback
-        from app.core.config import settings
-        if settings.operator_access_token and secrets.compare_digest(raw_token, settings.operator_access_token):
-            if 'op-configured-commander' not in self._operators:
-                self.register_operator('op-configured-commander', 'Configured SRE Commander', SRERole.SRE_COMMANDER, settings.operator_access_token)
-            return self._operators['op-configured-commander']
-
-        return None
+        with self._lock:
+            if self._db.execute('SELECT 1 FROM revoked_tokens WHERE token_hash=?', (token_h,)).fetchone():
+                return None
+            if settings.operator_access_token and secrets.compare_digest(raw_token, settings.operator_access_token):
+                op = self.get_operator(self.CONFIGURED_ID)
+                if not op or op.token_hash != token_h:
+                    op = self.register_operator(self.CONFIGURED_ID, 'Configured SRE Commander', SRERole.SRE_COMMANDER, raw_token)
+                return None if op.revoked else op
+            row = self._db.execute('SELECT * FROM operators WHERE token_hash=? AND revoked=0', (token_h,)).fetchone()
+            op = self._operator(row)
+            # Removing or rotating the environment secret must invalidate its old identity.
+            return op if op and op.operator_id != self.CONFIGURED_ID else None
 
     def get_operator(self, operator_id: str) -> Optional[Operator]:
-        return self._operators.get(operator_id)
+        with self._lock:
+            return self._operator(self._db.execute('SELECT * FROM operators WHERE operator_id=?', (operator_id,)).fetchone())
 
     def revoke_operator(self, operator_id: str) -> bool:
-        op = self._operators.get(operator_id)
-        if not op:
-            return False
-        op.revoked = True
-        self._revoked_tokens.add(op.token_hash)
+        with self._lock, self._db:
+            op = self.get_operator(operator_id)
+            if not op:
+                return False
+            self._db.execute('UPDATE operators SET revoked=1 WHERE operator_id=?', (operator_id,))
+            self._db.execute('INSERT OR IGNORE INTO revoked_tokens VALUES (?)', (op.token_hash,))
         return True
 
     def revoke_token(self, raw_token: str) -> bool:
+        if not raw_token:
+            return False
         token_h = self._hash_token(raw_token)
-        self._revoked_tokens.add(token_h)
-        op_id = self._token_to_id.get(token_h)
-        if op_id and op_id in self._operators:
-            self._operators[op_id].revoked = True
-            return True
+        with self._lock, self._db:
+            self._db.execute('INSERT OR IGNORE INTO revoked_tokens VALUES (?)', (token_h,))
+            self._db.execute('UPDATE operators SET revoked=1 WHERE token_hash=?', (token_h,))
         return True
 
     def is_revoked(self, operator_id: str) -> bool:
-        op = self._operators.get(operator_id)
-        if not op:
+        with self._lock:
+            op = self.get_operator(operator_id)
+            return not op or op.revoked or bool(self._db.execute(
+                'SELECT 1 FROM revoked_tokens WHERE token_hash=?', (op.token_hash,)).fetchone())
+
+    def requires_authentication(self):
+        from app.core.config import settings
+        with self._lock:
+            configured = bool(self._db.execute('SELECT 1 FROM operators LIMIT 1').fetchone())
+        return settings.infrastructure_mode != 'simulation' or bool(settings.operator_access_token) or configured
+
+    def session_is_valid(self, session):
+        from app.core.config import settings
+        if not session:
             return False
-        return op.revoked or op.token_hash in self._revoked_tokens
+        if session.operator_id == 'op-demo':
+            return not self.requires_authentication()
+        op = self.get_operator(session.operator_id)
+        if not session.authenticated or not op or self.is_revoked(op.operator_id):
+            return False
+        if not session.token_hash or not secrets.compare_digest(session.token_hash, op.token_hash):
+            return False
+        if session.role != op.role.value:
+            return False
+        if op.operator_id == self.CONFIGURED_ID:
+            return bool(settings.operator_access_token) and secrets.compare_digest(
+                op.token_hash, self._hash_token(settings.operator_access_token))
+        return True
 
     def list_operators(self) -> List[Dict[str, Any]]:
-        return [op.to_dict() for op in self._operators.values()]
+        with self._lock:
+            return [self._operator(row).to_dict() for row in self._db.execute('SELECT * FROM operators ORDER BY created_at')]
 
-operator_registry = OperatorRegistry()
+from app.core.config import settings
+operator_registry = OperatorRegistry(Path(settings.wal_storage_dir) / 'operators.sqlite3')
 
 NATO_PHONETIC_WORDS = ['Alpha', 'Bravo', 'Charlie', 'Delta', 'Echo', 'Foxtrot', 'Golf', 'Hotel', 'India', 'Juliet', 'Kilo', 'Lima', 'Mike', 'November', 'Oscar', 'Papa', 'Quebec', 'Romeo', 'Sierra', 'Tango', 'Uniform', 'Victor', 'Whiskey', 'Xray', 'Yankee', 'Zulu']
 PHONETIC_DIGITS = ['Zero', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Niner']
@@ -144,6 +196,7 @@ def is_cancellation(text):
 class EnterpriseSecurityManager:
     def __init__(self, default_role=None):
         session = current_session.get()
+        self._session = session
         if session and session.operator_id:
             op = operator_registry.get_operator(session.operator_id)
             if op and not op.revoked:
@@ -163,13 +216,13 @@ class EnterpriseSecurityManager:
         self.challenge_ttl_seconds = 30.0
 
     def is_action_permitted(self, action, role=None):
-        if self.operator_id and operator_registry.is_revoked(self.operator_id):
+        if not operator_registry.session_is_valid(self._session):
             return False
-        target_role = role or self.current_role
-        return action in ROLE_PERMISSIONS.get(target_role, [])
+        allowed = ROLE_PERMISSIONS.get(self.current_role, [])
+        return action in allowed and (role is None or action in ROLE_PERMISSIONS.get(role, []))
 
     def get_current_permissions(self):
-        if self.operator_id and operator_registry.is_revoked(self.operator_id):
+        if not operator_registry.session_is_valid(self._session):
             return []
         return ROLE_PERMISSIONS.get(self.current_role, [])
 
@@ -179,7 +232,7 @@ class EnterpriseSecurityManager:
         return self.active_challenge
 
     def verify_vocal_authorization(self, text):
-        if self.operator_id and operator_registry.is_revoked(self.operator_id):
+        if not operator_registry.session_is_valid(self._session):
             self.clear_challenge()
             return False, 'Operator credentials have been revoked.'
         if not self.active_challenge or time.time() - self.challenge_created_at > self.challenge_ttl_seconds:

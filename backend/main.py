@@ -18,15 +18,9 @@ logger = logging.getLogger("incident_voice_main")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    try:
-        from app.services.wal_service import wal_service
-        from app.core.state import cluster_state
-        from app.services.audit_ledger import audit_ledger
-        from app.services.investigation import investigation_service
-        recovered = wal_service.replay_into_state(cluster_state, audit_ledger, investigation_service)
-        logger.info(f"WAL Recovery complete: {recovered}")
-    except Exception as exc:
-        logger.warning(f"WAL recovery bypassed: {exc}")
+    from app.core.session_store import session_store
+    expired = session_store.purge_expired()
+    logger.info("Session storage ready; %s expired records removed. Sessions recover on authenticated access.", expired)
     yield
 
 app = FastAPI(

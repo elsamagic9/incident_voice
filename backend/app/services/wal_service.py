@@ -1,10 +1,12 @@
-"""Write-Ahead Logging (WAL) service implementing ARIES crash-recovery principles.
+"""Session-scoped diagnostic event journal with verified, contiguous sequences.
 
-Ensures that all incident mutations, timeline events, investigation baselines,
-and cryptographic audit blocks are persisted to an append-only log before state
-changes take effect or responses are returned.
+Authoritative browser/incident recovery uses transactional session_store checkpoints.
+This journal is not ARIES and must never replay external infrastructure commands.
 """
 import hashlib
+from copy import deepcopy
+from pathlib import Path
+from app.core.session import SessionLocal, current_session
 import json
 import os
 import threading
@@ -26,23 +28,8 @@ class WriteAheadLogService:
             self._init_lsn()
 
     def _init_lsn(self):
-        if not os.path.exists(self.wal_path):
-            self.last_lsn = 0
-            return
-        last = 0
-        try:
-            with open(self.wal_path, "r", encoding="utf-8") as f:
-                for line in f:
-                    line = line.strip()
-                    if line:
-                        try:
-                            rec = json.loads(line)
-                            last = max(last, rec.get("lsn", 0))
-                        except Exception:
-                            pass
-        except Exception:
-            pass
-        self.last_lsn = last
+        records = self.read_records()
+        self.last_lsn = records[-1]['lsn'] if records else 0
 
     def _compute_checksum(self, lsn: int, prev_lsn: int, timestamp: float, record_type: str, payload: Any) -> str:
         body = json.dumps({"lsn": lsn, "prev_lsn": prev_lsn, "timestamp": timestamp, "type": record_type, "payload": payload}, sort_keys=True)
@@ -64,7 +51,7 @@ class WriteAheadLogService:
                 "checksum": checksum,
             }
             if self.in_memory:
-                self.memory_records.append(record)
+                self.memory_records.append(deepcopy(record))
             else:
                 with open(self.wal_path, "a", encoding="utf-8") as f:
                     f.write(json.dumps(record) + "\n")
@@ -77,35 +64,29 @@ class WriteAheadLogService:
         """Reads all verified records from the WAL."""
         with self._lock:
             if self.in_memory:
-                return list(self.memory_records)
-            if not os.path.exists(self.wal_path):
+                candidates = deepcopy(self.memory_records)
+            elif not os.path.exists(self.wal_path):
                 return []
-            records = []
-            with open(self.wal_path, "r", encoding="utf-8") as f:
-                for line in f:
-                    line = line.strip()
-                    if not line:
-                        continue
-                    try:
-                        rec = json.loads(line)
-                        expected = self._compute_checksum(
-                            rec["lsn"], rec["prev_lsn"], rec["timestamp"], rec["type"], rec["payload"]
-                        )
-                        if rec.get("checksum") == expected:
-                            records.append(rec)
-                    except Exception:
-                        pass
-            return records
+            else:
+                try:
+                    with open(self.wal_path, 'r', encoding='utf-8') as stream:
+                        candidates = [json.loads(line) for line in stream if line.strip()]
+                except (ValueError, UnicodeError) as exc:
+                    raise RuntimeError('Event journal is truncated or invalid; recovery stopped') from exc
+            previous = 0
+            for rec in candidates:
+                try:
+                    expected = self._compute_checksum(rec['lsn'], rec['prev_lsn'], rec['timestamp'], rec['type'], rec['payload'])
+                    valid = rec['lsn'] == previous + 1 and rec['prev_lsn'] == previous and rec['checksum'] == expected
+                except (KeyError, TypeError, ValueError):
+                    valid = False
+                if not valid:
+                    raise RuntimeError('Event journal checksum or sequence failed; recovery stopped')
+                previous = rec['lsn']
+            return candidates
 
     def replay_into_state(self, state, audit_ledger=None, investigation=None) -> Dict[str, Any]:
-        """Executes ARIES-style recovery:
-
-        1. Analysis pass: identifies all records up to crash point.
-        2. Redo pass: repeats history, restoring incident timeline, mitigations,
-           and audit hash chain blocks.
-        3. Undo pass: identifies any staged mutations that lack confirmation,
-           cleanly rolling them back.
-        """
+        """Inspect legacy event records; not complete session or mutation recovery."""
         records = self.read_records()
         staged_mutations: Dict[str, Dict[str, Any]] = {}
         confirmed_mutations = set()
@@ -146,13 +127,13 @@ class WriteAheadLogService:
                 if staged_id:
                     confirmed_mutations.add(staged_id)
 
-        # ARIES Undo pass: unconfirmed staged mutations are rolled back (expired)
+        # Identify pending intents only. This function does not execute an undo.
         uncommitted = [m_id for m_id in staged_mutations if m_id not in confirmed_mutations]
 
         return {
             "recovered_records": len(records),
             "recovered_timeline_events": recovered_events,
-            "uncommitted_staged_mutations_rolled_back": uncommitted,
+            "unconfirmed_staged_mutations": uncommitted,
             "last_lsn": self.last_lsn,
         }
 
@@ -169,4 +150,15 @@ class WriteAheadLogService:
                     pass
 
 
-wal_service = WriteAheadLogService()
+def _session_journal():
+    session = current_session.get()
+    if session is None:
+        raise RuntimeError('An operator session is required for event journaling')
+    if settings.wal_storage_dir == ':memory:':
+        return WriteAheadLogService(':memory:')
+    directory = Path(settings.wal_storage_dir) / 'journals' / hashlib.sha256(session.id.encode()).hexdigest()
+    directory.mkdir(parents=True, exist_ok=True, mode=0o700)
+    return WriteAheadLogService(str(directory))
+
+
+wal_service = SessionLocal('wal', _session_journal)
