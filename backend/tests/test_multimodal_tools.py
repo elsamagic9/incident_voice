@@ -186,6 +186,9 @@ async def test_orchestrator_multimodal_intent_routing():
     ("google kubernetes crashloopbackoff", "kubernetes"),
     ("search the web for aws status", "aws"),
     ("search postgres oom error", "postgres"),
+    ("what is the latest news?", "news"),
+    ("give me the latest tech news", "tech"),
+    ("any breaking news on aws?", "aws"),
 ])
 async def test_orchestrator_diverse_web_search_prompts(prompt, expected_keyword):
     """Verify various natural phrasing web search commands route to search_web_or_docs."""

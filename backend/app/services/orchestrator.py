@@ -29,6 +29,7 @@ OPERATIONAL RULES:
 - All infrastructure mutations are staged and require explicit operator confirmation. A staged result means nothing has executed.
 - To request or stage a restart or other remediation, you MUST call execute_remediation. This tool stages the request. Only announce a staged action after the tool returns status=staged. Never invent a pending approval.
 - Distinguish simulation from live infrastructure. If the result reports failure, say so. Unknown telemetry stays unknown.
+- You HAVE real-time live web access via search_web_or_docs. When asked for news, tech developments, cloud outages, external documentation, or current information, ALWAYS call search_web_or_docs with the topic and summarize the web findings. Never say you cannot access real-time news or the web.
 - Use generate_postmortem for a report request. Escalations and tickets are drafts, not sent or created externally."""
 DESTRUCTIVE_ACTIONS = MUTATIONS
 
@@ -333,15 +334,18 @@ class AgentOrchestrator:
         elif any(w in lower for w in [
             'search web', 'web search', 'search the web', 'search online', 'search internet',
             'search docs', 'search documentation', 'look up online', 'look up', 'google',
-            'duckduckgo', 'search stackoverflow', 'search github', 'find online', 'find documentation'
+            'duckduckgo', 'search stackoverflow', 'search github', 'find online', 'find documentation',
+            'news', 'headline', 'headlines', 'breaking news', 'tech news', 'what is happening',
+            'what happened', 'latest updates'
         ]) or lower.startswith('search ') or lower.startswith('search for'):
             query_text = re.sub(
-                r'^(?:(?:web\s+)?search\s+(?:the\s+web\s+|web\s+|online\s+|internet\s+|docs\s+|documentation\s+)?(?:for\s+)?|look\s+up\s+(?:online\s+)?|google\s+|duckduckgo\s+|find\s+(?:online\s+|documentation\s+for\s+)?)\s*',
+                r'^(?:(?:what(?:’s|\s+is)\s+(?:the\s+)?(?:latest\s+)?(?:news|headlines?|updates?)(?:\s+(?:on|about))?)|(?:(?:web\s+)?search\s+(?:the\s+web\s+|web\s+|online\s+|internet\s+|docs\s+|documentation\s+)?(?:for\s+)?|look\s+up\s+(?:online\s+)?|google\s+|duckduckgo\s+|find\s+(?:online\s+|documentation\s+for\s+)?))\s*',
                 '',
                 lower,
                 flags=re.I
-            ).strip()
-            query_text = query_text or (f"{target} troubleshooting" if target != 'payment-service' else 'PostgreSQL connection pool exhaustion')
+            ).strip(' ?!.,')
+            if not query_text or any(k == query_text for k in ['news', 'the news', 'tech news', 'latest news', 'headlines']):
+                query_text = 'latest cloud infrastructure and tech news'
             name, args = 'search_web_or_docs', {'query': query_text}
         elif any(w in lower for w in ['inspect document', 'read document', 'read pdf', 'read docx', 'inspect pdf', 'read file']):
             match_file = re.search(r'(?:document|file|pdf|docx)\s+([^\s]+\.(?:pdf|docx|md|txt))', lower)

@@ -227,13 +227,13 @@ SRE_TOOL_DEFINITIONS = [
         "type": "function",
         "function": {
             "name": "search_web_or_docs",
-            "description": "Search online technical documentation, cloud status pages (AWS, GCP), and SRE knowledge bases for error codes and outage advisories.",
+            "description": "Search the live web, technical documentation, breaking news, articles, and cloud status pages for any topic or query.",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "query": {
                         "type": "string",
-                        "description": "Search terms or error message (e.g. 'Postgres connection pool max connections', 'AWS us-east-1 status')"
+                        "description": "Search terms, topic, or error message (e.g. 'latest tech news', 'Postgres connection pool max connections', 'AWS us-east-1 status')"
                     },
                     "max_results": {
                         "type": "integer",
