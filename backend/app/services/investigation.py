@@ -200,6 +200,11 @@ class InvestigationService:
                        'verified_improvement': verified_improvement
                    },
                    'message': result.get('message') or result.get('error', 'No result supplied.')}
+        try:
+            from app.services.reflection_service import reflection_service
+            reflection_service.engine.evaluate_and_reflect(receipt)
+        except Exception as exc:
+            logger.debug("Reflexion evaluation omitted: %s", exc)
         self.receipts = (self.receipts + [receipt])[-20:]
         return deepcopy(receipt)
 

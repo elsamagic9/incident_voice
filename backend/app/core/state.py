@@ -32,6 +32,9 @@ class ClusterState:
     def __init__(self):
         self.reset_to_default_incident()
 
+    def reset(self):
+        self.reset_to_default_incident()
+
     def reset_to_default_incident(self):
         self.incident = IncidentRecord(
             id="INC-8942",

@@ -312,6 +312,57 @@ SRE_TOOL_DEFINITIONS = [
                 "required": ["file_path"]
             }
         }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "retrieve_incident_memory",
+            "description": "Retrieve relevant past incident post-mortems, runbook outcomes, and architectural heuristics from the Generative Agents episodic memory stream using triad retrieval scoring (Recency x Importance x Relevance).",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "Search query or incident context (e.g. 'order-db connection pool', 'payment service 504')"
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "description": "Maximum number of memories to return (default: 3)"
+                    }
+                },
+                "required": []
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "locate_causal_root_cause",
+            "description": "Execute MicroHECL causal graph root cause localization across the microservice dependency DAG. Disambiguates cascading symptoms from the authentic root cause and returns causal confidence.",
+            "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": []
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "match_historical_incident",
+            "description": "Execute DéjàVu failure symptom signature matching against historical outages using cosine similarity. Recommends historically validated playbooks with proven MTTR reduction.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "threshold": {
+                        "type": "number",
+                        "description": "Cosine similarity threshold (default: 0.70)"
+                    }
+                },
+                "required": []
+            }
+        }
     }
 ]
+
 

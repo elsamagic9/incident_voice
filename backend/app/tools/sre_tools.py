@@ -369,10 +369,68 @@ def transcribe_media_recording(file_path: str, media_type: str = "auto"):
     return MultimediaService.transcribe_recording(file_path, media_type=media_type)
 
 
+def retrieve_incident_memory(query: str = "", limit: int = 3):
+    """
+    Retrieve relevant past incident post-mortems, runbook outcomes, and architectural rules
+    from the Generative Agents episodic memory stream using triad retrieval scoring
+    (Park et al., 2023: Recency x Importance x Relevance).
+    """
+    from app.services.reflection_service import reflection_service
+    memories = reflection_service.engine.memory_stream.retrieve(query=query or "", top_k=limit or 3)
+    critiques = reflection_service.engine.reflection_buffer.get_critiques()
+    return {
+        "status": "success",
+        "query": query,
+        "count": len(memories),
+        "memories": memories,
+        "active_self_critiques": critiques,
+        "message": f"Retrieved {len(memories)} historical memories matching '{query}' via triad scoring."
+    }
+
+
+def locate_causal_root_cause():
+    """
+    Execute MicroHECL causal graph root cause localization (Wu et al., ICSE 2021)
+    across the distributed microservice dependency DAG. Disambiguates cascading collateral
+    symptoms from the authentic root cause and calculates confidence.
+    """
+    from app.services.causal_rca_service import causal_rca_service
+    result = causal_rca_service.causal_engine.locate_root_cause()
+    return {
+        "status": "success",
+        "root_cause_service": result.get("root_cause_service"),
+        "confidence_percent": result.get("confidence_percent"),
+        "propagation_path": result.get("propagation_path"),
+        "blast_radius_services": result.get("blast_radius_services"),
+        "causal_scores": result.get("causal_scores"),
+        "summary": result.get("summary")
+    }
+
+
+def match_historical_incident(threshold: float = 0.70):
+    """
+    Execute DéjàVu failure symptom signature matching (Chen et al., IEEE TSE 2022)
+    using cosine vector similarity against recurring historical outages. Returns proven playbooks.
+    """
+    from app.services.causal_rca_service import causal_rca_service
+    rca = causal_rca_service.causal_engine.locate_root_cause()
+    match = causal_rca_service.dejavu_matcher.match_incident(rca["anomaly_scores"])
+    return {
+        "status": "success",
+        "matched": match.get("matched"),
+        "best_match": match.get("best_match"),
+        "all_matches": match.get("all_matches"),
+        "current_signature_vector": match.get("current_signature_vector"),
+        "summary": match.get("summary")
+    }
+
+
 SRE_TOOL_MAP = {name: globals()[name] for name in ['verify_recovery', 'get_cluster_health', 'inspect_service_logs', 'query_telemetry',
     'execute_remediation', 'query_host_telemetry', 'trigger_pager', 'generate_postmortem', 'list_runbooks',
     'start_runbook', 'advance_runbook', 'abort_runbook', 'get_service_topology', 'k8s_rollout_restart', 'k8s_list_pods',
-    'search_web_or_docs', 'inspect_document', 'export_incident_report', 'transcribe_media_recording']}
+    'search_web_or_docs', 'inspect_document', 'export_incident_report', 'transcribe_media_recording',
+    'retrieve_incident_memory', 'locate_causal_root_cause', 'match_historical_incident']}
 SRE_TOOL_MAP['cordon_node'] = k8s_cordon_node
 SRE_TOOL_MAP['k8s_cordon_node'] = k8s_cordon_node
+
 

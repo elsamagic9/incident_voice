@@ -67,12 +67,17 @@ async def voice_agent_websocket(websocket: WebSocket):
     async def interrupt():
         nonlocal tts_task, speech_epoch
         speech_epoch += 1
+        interrupted_at = time.time()
         if tts_task:
             tts_task.cancel()
             await asyncio.gather(tts_task, return_exceptions=True)
             tts_task = None
         if isinstance(provider, AssemblyAIVoiceAgentSession): provider.ignore_audio = True
-        await send({'type': 'interrupt', 'epoch': speech_epoch})
+        try:
+            cluster_state.add_event('turn_taking', f'Acoustic barge-in detected at epoch {speech_epoch}. Agent yielded conversational floor.')
+        except Exception:
+            pass
+        await send({'type': 'interrupt', 'epoch': speech_epoch, 'timestamp': interrupted_at})
 
     async def speak(text, started=0):
         nonlocal tts_task

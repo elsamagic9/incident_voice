@@ -237,7 +237,7 @@ class AgentOrchestrator:
                 try:
                     spoken, tools = await self._call_dynamic_llm(text)
                     self.last_reasoning = settings.llm_provider
-                    if not tools and any(w in text.lower() for w in ['restart', 'flush', 'rollback', 'roll back', 'scale', 'failover', 'circuit breaker', 'health', 'inspect', 'log', 'runbook', 'vitals', 'search', 'document', 'pdf', 'docx', 'export', 'transcribe', 'recording']):
+                    if not tools and any(w in text.lower() for w in ['restart', 'flush', 'rollback', 'roll back', 'scale', 'failover', 'circuit breaker', 'health', 'inspect', 'log', 'runbook', 'vitals', 'search', 'document', 'pdf', 'docx', 'export', 'transcribe', 'recording', 'causal', 'root cause', 'microhecl', 'dejavu', 'historical', 'memory']):
                         self.last_reasoning = 'hybrid'
                         spoken, tools = await self._deterministic_agent_reasoning(command)
                 except (httpx.HTTPError, ValueError, KeyError, IndexError) as exc:
@@ -333,12 +333,19 @@ class AgentOrchestrator:
             match_media = re.search(r'(?:file|recording|audio|video)\s+([^\s]+\.(?:wav|mp3|m4a|mp4|mov|webm))', lower)
             file_path = match_media.group(1) if match_media else 'data/incident_recording.mp4'
             name, args = 'transcribe_media_recording', {'file_path': file_path}
+        elif any(w in lower for w in ['causal', 'root cause', 'microhecl', 'localize cause', 'what is the root cause']):
+            name, args = 'locate_causal_root_cause', {}
+        elif any(w in lower for w in ['dejavu', 'historical incident', 'match incident', 'recurring incident', 'similar incident']):
+            name, args = 'match_historical_incident', {}
+        elif any(w in lower for w in ['incident memory', 'retrieve memory', 'past incidents', 'episodic memory', 'what do you remember']):
+            query_q = re.sub(r'^(?:retrieve|search|find)?\s*(?:incident)?\s*memory\s*(?:for)?|past\s+incidents?\s*(?:about)?', '', lower).strip()
+            name, args = 'retrieve_incident_memory', {'query': query_q or 'connection pool failure'}
         elif any(w in lower for w in ['cpu', 'memory', 'metric', 'telemetry', 'latency']):
             name, args = 'query_telemetry', {'service_name': target}
         elif 'page ' in lower or 'escalat' in lower:
             name, args = 'trigger_pager', {'team': 'on-call', 'message': text}
         elif not any(w in lower for w in ['health', 'alert', 'status', 'failing', 'overview']):
-            return 'I am actively monitoring the cluster, Sir. You can ask me to inspect cluster health, search the web, read PDF/Word runbooks, check logs, execute runbooks, or transcribe media recordings.', []
+            return 'I am actively monitoring the cluster, Sir. You can ask me to inspect cluster health, search docs, analyze causal root causes, retrieve incident memory, check logs, or execute runbooks.', []
         event = await self.call_tool(name, args)
         return self._summarize_tool(event), [event]
 
@@ -382,6 +389,13 @@ class AgentOrchestrator:
             '{"tool": "<tool_name>", "arguments": {<args>}}\n'
             "2. If the operator asks a conversational question, greeting, or explanation, respond directly with 1 to 2 spoken sentences as J.A.R.V.I.S. Address them respectfully as 'Sir' or 'Boss'. NEVER use markdown asterisks, bullet points, headers, or JSON for conversational replies."
         )
+        try:
+            from app.services.reflection_service import reflection_service
+            critique_ctx = reflection_service.engine.reflection_buffer.format_prompt_context()
+            if critique_ctx:
+                system += f"\n\n{critique_ctx}"
+        except Exception:
+            pass
         history = self.history[-8:]
         messages = [{'role': 'system', 'content': system}] + [
             {'role': 'user' if t['speaker'] == 'user' else 'assistant', 'content': t['transcript']} for t in history
@@ -420,6 +434,13 @@ class AgentOrchestrator:
         is_gemini = settings.llm_provider == 'gemini'
         history = self.history[-12:]
         context = SYSTEM_PROMPT + f'\nInfrastructure mode: {settings.infrastructure_mode}.'
+        try:
+            from app.services.reflection_service import reflection_service
+            critique_ctx = reflection_service.engine.reflection_buffer.format_prompt_context()
+            if critique_ctx:
+                context += f"\n\n{critique_ctx}"
+        except Exception:
+            pass
         if is_gemini:
             messages = [{'role': 'user' if t['speaker'] == 'user' else 'model', 'parts': [{'text': t['transcript']}]} for t in history]
             url = f'https://generativelanguage.googleapis.com/v1beta/models/{settings.gemini_model}:generateContent'
