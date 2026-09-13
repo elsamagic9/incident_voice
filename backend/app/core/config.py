@@ -16,7 +16,7 @@ class Settings(BaseSettings):
     llm_provider: Literal["assemblyai", "gemini", "openai", "poolside", "mock"] = "poolside"
     gemini_model: str = "gemini-3.5-flash"
     openai_model: str = "gpt-4o-mini"
-    poolside_model: str = "poolside/laguna-xs-2.1"
+    poolside_model: str = "poolside/laguna-s-2.1"
     poolside_base_url: str = "https://inference.poolside.ai/v1"
     llm_gateway_model: str = "qwen3.5-4b-32k-fast"
     voice_agent_voice: str = "george"

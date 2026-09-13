@@ -58,7 +58,7 @@ async def test_poolside_function_call_roundtrip(monkeypatch):
     monkeypatch.setattr(settings, 'llm_provider', 'poolside')
     monkeypatch.setattr(settings, 'poolside_api_key', 'test-poolside-key')
     monkeypatch.setattr(settings, 'poolside_base_url', 'https://inference.poolside.ai/v1')
-    monkeypatch.setattr(settings, 'poolside_model', 'poolside/laguna-xs-2.1')
+    monkeypatch.setattr(settings, 'poolside_model', 'poolside/laguna-s-2.1')
     request = httpx.Request('POST', 'https://inference.poolside.ai/v1/chat/completions')
     responses = [
         httpx.Response(200, request=request, json={'choices': [{'message': {'role': 'assistant', 'tool_calls': [{'id': 'call-poolside-1', 'type': 'function', 'function': {'name': 'get_cluster_health', 'arguments': '{}'}}]}}]}),

@@ -523,7 +523,8 @@ export const SettingsView: React.FC<Props> = ({
                   onChange={e => updateSetting('aiProvider', e.target.value)}
                   className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2.5 text-xs text-slate-200 focus:border-cyan-500"
                 >
-                  <option value="poolside-laguna">Poolside Laguna XS 2.1 (Fast Autonomous SRE Coding Agent)</option>
+                  <option value="poolside-laguna-s">Poolside Laguna S 2.1 (Advanced Autonomous SRE Reasoning Agent)</option>
+                  <option value="poolside-laguna-xs">Poolside Laguna XS 2.1 (Fast Autonomous SRE Coding Agent)</option>
                   <option value="gemini-2.0-flash">Google Gemini 2.0 Flash (Recommended · 120ms Tool Calling)</option>
                   <option value="openai-gpt-4o">OpenAI GPT-4o (High-Precision SRE Reasoning)</option>
                   <option value="claude-3-5-sonnet">Anthropic Claude 3.5 Sonnet (Deep Incident Forensics)</option>
