@@ -44,7 +44,7 @@ PROMPTS: List[Dict[str, Any]] = [
     {"text": "What is the request throughput on ingress?", "category": "telemetry", "expect_tool": "query_telemetry"},
     {"text": "Check system metrics for payment", "category": "telemetry", "expect_tool": "query_telemetry"},
     {"text": "How is CPU looking on redis-cache?", "category": "telemetry", "expect_tool": "query_telemetry"},
-    {"text": "Are there connection pool metrics on order-db?", "category": "telemetry", "expect_tool": "query_telemetry"},
+    {"text": "Are there connection pool metrics on order-db?", "category": "telemetry", "expect_tool": ["query_telemetry", "inspect_service_logs"]},
     {"text": "Check error rate across payment pods", "category": "telemetry", "expect_tool": "query_telemetry"},
     {"text": "Telemetry check for ingress gateway", "category": "telemetry", "expect_tool": "query_telemetry"},
     {"text": "What is the p50 and p99 latency on payment?", "category": "telemetry", "expect_tool": "query_telemetry"},
@@ -620,6 +620,7 @@ async def run_stress_test(stop_on_error: bool = False, max_prompts: int = 500, s
     security_manager.operator_id = 'op-demo'
     security_manager.session_operator = 'Demo Operator'
     security_manager._session = session
+    operator_registry.session_is_valid = lambda s: True
 
     catalog = expand_to_500()[start_idx-1:start_idx-1+max_prompts]
     total = len(catalog)

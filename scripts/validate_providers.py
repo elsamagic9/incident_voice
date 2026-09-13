@@ -65,9 +65,21 @@ async def main():
             cluster_state.incident.timeline_events, cluster_state.incident.id)
         print(json.dumps({'report_source': report['source'], 'warning': report.get('generation_warning')}), flush=True)
         assert report['source'] == 'assemblyai_llm_gateway', 'Provider report did not succeed'
+
+        if settings.poolside_api_key:
+            prev_llm = settings.llm_provider
+            settings.llm_provider = 'poolside'
+            spoken, tools, _ = await agent_orchestrator.process_user_turn('check cluster health')
+            poolside_success = bool(tools) and agent_orchestrator.last_reasoning == 'poolside'
+            print(json.dumps({'poolside_validation': poolside_success, 'reasoning': agent_orchestrator.last_reasoning, 'tools_count': len(tools)}), flush=True)
+            assert poolside_success, 'Poolside LLM dynamic function calling failed'
+            settings.llm_provider = prev_llm
     finally:
         await stt.close()
         if managed: await managed.close()
+        with operator_registry._lock, operator_registry._db:
+            operator_registry._db.execute("DELETE FROM operators WHERE operator_id='validator-commander'")
+            operator_registry._db.execute("DELETE FROM revoked_tokens")
         current_session.reset(token)
 
 asyncio.run(main())

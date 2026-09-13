@@ -252,7 +252,8 @@ class AgentOrchestrator:
             configured = (
                 (settings.llm_provider == 'assemblyai' and bool(settings.assemblyai_api_key)) or
                 (settings.llm_provider == 'gemini' and bool(settings.gemini_api_key)) or
-                (settings.llm_provider == 'openai' and bool(settings.openai_api_key))
+                (settings.llm_provider == 'openai' and bool(settings.openai_api_key)) or
+                (settings.llm_provider == 'poolside' and bool(settings.poolside_api_key))
             )
             if configured:
                 try:
@@ -267,6 +268,7 @@ class AgentOrchestrator:
                         'causal', 'root cause', 'microhecl', 'dejavu', 'historical', 'memory', 'mitigation', 'tree of thoughts',
                         'page', 'pager', 'escalat', 'cpu', 'memory', 'metric', 'metrics', 'telemetry', 'latency',
                         'error rate', 'error_rate', 'golden signal', 'golden signals', 'saturation', 'throughput',
+                        'slo', 'slos', 'sla', 'slas', 'budget', 'budgets',
                         'investigate', 'diagnos', 'triage', 'anomal', 'incident', 'fix', 'resolve', 'issue', 'problem', 'what should we do',
                         'source', 'locate', 'fault', 'originate', 'originat', 'cascade', 'cascading',
                         'step', 'advance', 'tot', 'trajectory', 'trajectories', 'remediation sequence', 'remediation plan',
@@ -586,9 +588,12 @@ class AgentOrchestrator:
             return raw, []
 
     async def _call_dynamic_llm(self, user_text):
-        if settings.llm_provider == 'assemblyai' or (not settings.gemini_api_key and not settings.openai_api_key and bool(settings.assemblyai_api_key)):
+        if settings.llm_provider == 'assemblyai' or (
+            not settings.gemini_api_key and not settings.openai_api_key and not settings.poolside_api_key and bool(settings.assemblyai_api_key)
+        ):
             return await self._call_assemblyai_gateway(user_text)
         is_gemini = settings.llm_provider == 'gemini'
+        is_poolside = settings.llm_provider == 'poolside'
         history = self.history[-12:]
         context = SYSTEM_PROMPT + f'\nInfrastructure mode: {settings.infrastructure_mode}.'
         try:
@@ -602,6 +607,10 @@ class AgentOrchestrator:
             messages = [{'role': 'user' if t['speaker'] == 'user' else 'model', 'parts': [{'text': t['transcript']}]} for t in history]
             url = f'https://generativelanguage.googleapis.com/v1beta/models/{settings.gemini_model}:generateContent'
             headers = {'x-goog-api-key': settings.gemini_api_key}
+        elif is_poolside:
+            messages = [{'role': 'system', 'content': context}] + [{'role': 'user' if t['speaker'] == 'user' else 'assistant', 'content': t['transcript']} for t in history]
+            url = f"{settings.poolside_base_url.rstrip('/')}/chat/completions"
+            headers = {'Authorization': f'Bearer {settings.poolside_api_key}', 'Content-Type': 'application/json'}
         else:
             messages = [{'role': 'system', 'content': context}] + [{'role': 'user' if t['speaker'] == 'user' else 'assistant', 'content': t['transcript']} for t in history]
             url = 'https://api.openai.com/v1/chat/completions'
@@ -610,10 +619,29 @@ class AgentOrchestrator:
         llm_ms = 0
         async with httpx.AsyncClient(timeout=25) as client:
             for _ in range(4):
-                payload = {'contents': messages, 'systemInstruction': {'parts': [{'text': context}]},
-                    'tools': [{'functionDeclarations': [t['function'] for t in SRE_TOOL_DEFINITIONS]}],
-                    'generationConfig': {'temperature': 0.2, 'maxOutputTokens': 1024}} if is_gemini else {
-                    'model': settings.openai_model, 'messages': messages, 'tools': SRE_TOOL_DEFINITIONS, 'temperature': 0.2, 'max_tokens': 400}
+                if is_gemini:
+                    payload = {
+                        'contents': messages,
+                        'systemInstruction': {'parts': [{'text': context}]},
+                        'tools': [{'functionDeclarations': [t['function'] for t in SRE_TOOL_DEFINITIONS]}],
+                        'generationConfig': {'temperature': 0.2, 'maxOutputTokens': 1024}
+                    }
+                elif is_poolside:
+                    payload = {
+                        'model': settings.poolside_model,
+                        'messages': messages,
+                        'tools': SRE_TOOL_DEFINITIONS,
+                        'temperature': 0.1,
+                        'max_tokens': 1024
+                    }
+                else:
+                    payload = {
+                        'model': settings.openai_model,
+                        'messages': messages,
+                        'tools': SRE_TOOL_DEFINITIONS,
+                        'temperature': 0.2,
+                        'max_tokens': 400
+                    }
                 started = time.perf_counter()
                 response = await client.post(url, headers=headers, json=payload)
                 llm_ms += (time.perf_counter() - started) * 1000
@@ -627,7 +655,9 @@ class AgentOrchestrator:
                 else:
                     message = response.json()['choices'][0]['message']
                     calls = message.get('tool_calls', [])
-                    if not calls: return message.get('content') or 'No response returned.', events
+                    if not calls:
+                        content = message.get('content') or message.get('reasoning_content') or 'No response returned.'
+                        return content, events
                     messages.append(message)
                 answers = []
                 for call in calls:

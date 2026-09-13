@@ -54,6 +54,28 @@ async def test_openai_function_call_roundtrip(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_poolside_function_call_roundtrip(monkeypatch):
+    monkeypatch.setattr(settings, 'llm_provider', 'poolside')
+    monkeypatch.setattr(settings, 'poolside_api_key', 'test-poolside-key')
+    monkeypatch.setattr(settings, 'poolside_base_url', 'https://inference.poolside.ai/v1')
+    monkeypatch.setattr(settings, 'poolside_model', 'poolside/laguna-xs-2.1')
+    request = httpx.Request('POST', 'https://inference.poolside.ai/v1/chat/completions')
+    responses = [
+        httpx.Response(200, request=request, json={'choices': [{'message': {'role': 'assistant', 'tool_calls': [{'id': 'call-poolside-1', 'type': 'function', 'function': {'name': 'get_cluster_health', 'arguments': '{}'}}]}}]}),
+        httpx.Response(200, request=request, json={'choices': [{'message': {'role': 'assistant', 'content': 'Cluster health verified: payment-service is degraded.'}}]}),
+    ]
+    post = AsyncMock(side_effect=responses)
+    monkeypatch.setattr(httpx.AsyncClient, 'post', post)
+    spoken, tools, _ = await agent_orchestrator.process_user_turn('Check health')
+    assert len(tools) == 1
+    assert spoken == 'Cluster health verified: payment-service is degraded.'
+    assert agent_orchestrator.last_reasoning == 'poolside'
+    assert 'Bearer test-poolside-key' in post.call_args_list[0].kwargs['headers']['Authorization']
+    messages = post.call_args.kwargs['json']['messages']
+    assert any(message.get('tool_call_id') == 'call-poolside-1' for message in messages)
+
+
+@pytest.mark.asyncio
 async def test_lemur_report_preserves_empty_tickets_and_local_measurements(monkeypatch):
     monkeypatch.setattr(lemur_service, 'api_key', 'test-key')
     generated = {'title': 'Evidence review', 'executive_summary': 'Investigating', 'root_cause': 'Unverified', 'preventive_action_items': [], 'action_items_tickets': [], 'mttd_minutes': 1.2}

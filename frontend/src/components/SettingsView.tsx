@@ -25,6 +25,7 @@ export interface SettingsState {
   assemblyAiApiKey: string;
   geminiApiKey: string;
   openAiApiKey: string;
+  poolsideApiKey: string;
 
   // SRE Policy & Safety
   autopilotMode: boolean;
@@ -56,6 +57,7 @@ const DEFAULT_SETTINGS: SettingsState = {
   assemblyAiApiKey: '',
   geminiApiKey: '',
   openAiApiKey: '',
+  poolsideApiKey: '',
 
   autopilotMode: false,
   stagedActionTtl: 30,
@@ -105,10 +107,11 @@ export const SettingsView: React.FC<Props> = ({
   });
 
   const [savedAlert, setSavedAlert] = useState(false);
-  const [showKeys, setShowKeys] = useState<{ assembly: boolean; gemini: boolean; openai: boolean }>({
+  const [showKeys, setShowKeys] = useState<{ assembly: boolean; gemini: boolean; openai: boolean; poolside: boolean }>({
     assembly: false,
     gemini: false,
     openai: false,
+    poolside: false,
   });
   const [testPingState, setTestPingState] = useState<string | null>(null);
 
@@ -520,6 +523,7 @@ export const SettingsView: React.FC<Props> = ({
                   onChange={e => updateSetting('aiProvider', e.target.value)}
                   className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2.5 text-xs text-slate-200 focus:border-cyan-500"
                 >
+                  <option value="poolside-laguna">Poolside Laguna XS 2.1 (Fast Autonomous SRE Coding Agent)</option>
                   <option value="gemini-2.0-flash">Google Gemini 2.0 Flash (Recommended · 120ms Tool Calling)</option>
                   <option value="openai-gpt-4o">OpenAI GPT-4o (High-Precision SRE Reasoning)</option>
                   <option value="claude-3-5-sonnet">Anthropic Claude 3.5 Sonnet (Deep Incident Forensics)</option>
@@ -668,6 +672,29 @@ export const SettingsView: React.FC<Props> = ({
                     className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-200"
                   >
                     {showKeys.openai ? <EyeOff size={15} /> : <Eye size={15} />}
+                  </button>
+                </div>
+              </div>
+
+              {/* Poolside API Key */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">
+                  Poolside API Key
+                </label>
+                <div className="relative">
+                  <input
+                    type={showKeys.poolside ? 'text' : 'password'}
+                    placeholder="sky_..."
+                    value={settings.poolsideApiKey}
+                    onChange={e => updateSetting('poolsideApiKey', e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs font-mono text-slate-200 pr-10 focus:border-cyan-500"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowKeys(prev => ({ ...prev, poolside: !prev.poolside }))}
+                    className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-200"
+                  >
+                    {showKeys.poolside ? <EyeOff size={15} /> : <Eye size={15} />}
                   </button>
                 </div>
               </div>

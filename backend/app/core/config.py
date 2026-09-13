@@ -13,13 +13,16 @@ class Settings(BaseSettings):
     default_engine: str = "voice_agent_api"  # "voice_agent_api" (Path 1) or "custom_stt_v3" (Path 2)
 
     # LLM Settings
-    llm_provider: Literal["assemblyai", "gemini", "openai", "mock"] = "assemblyai"
+    llm_provider: Literal["assemblyai", "gemini", "openai", "poolside", "mock"] = "poolside"
     gemini_model: str = "gemini-3.5-flash"
     openai_model: str = "gpt-4o-mini"
+    poolside_model: str = "poolside/laguna-xs-2.1"
+    poolside_base_url: str = "https://inference.poolside.ai/v1"
     llm_gateway_model: str = "qwen3.5-4b-32k-fast"
     voice_agent_voice: str = "george"
     gemini_api_key: str = ""
     openai_api_key: str = ""
+    poolside_api_key: str = ""
     anthropic_api_key: str = ""
 
     # TTS Settings
@@ -58,7 +61,7 @@ class Settings(BaseSettings):
             return [origin.strip() for origin in v.split(",") if origin.strip()]
         return v
 
-    @field_validator("assemblyai_api_key", "gemini_api_key", "openai_api_key", mode="before")
+    @field_validator("assemblyai_api_key", "gemini_api_key", "openai_api_key", "poolside_api_key", mode="before")
     @classmethod
     def normalize_provider_key(cls, value):
         value = str(value or "").strip()
