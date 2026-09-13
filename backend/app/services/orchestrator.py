@@ -311,9 +311,15 @@ class AgentOrchestrator:
         if any(w in lower for w in ['hello', 'hi ', 'hey', 'good morning', 'good afternoon', 'help', 'wake up']):
             return 'J.A.R.V.I.S. online and at your service, Boss. The cluster is under my watch. Shall we inspect the telemetry, or do you have a specific target in mind?', []
 
+        if any(w in lower for w in ['autopilot', 'auto-approv', 'autonomous', 'autonomously', 'auto mode', 'autonomous mode', 'self-heal', 'self heal']):
+            enable = not any(w in lower for w in ['disable', 'off', 'stop', 'deactivate'])
+            msg = self.set_autopilot(enable)
+            if enable and any(w in lower for w in ['run', 'heal', 'fix', 'resolve', 'incident', 'diagnos']):
+                event = await self.call_tool('investigate_incident', {})
+                return f"{msg} Incident brief: {event['result'].get('summary', 'Cluster under autonomous investigation.')}", [event]
+            return msg, []
+
         name, args = 'get_cluster_health', {}
-        if 'autopilot' in lower or 'auto-approv' in lower:
-            return self.set_autopilot(not any(w in lower for w in ['disable', 'off'])), []
         if 'runbook' in lower or lower in {'next step', 'execute step', 'advance'}:
             if 'list' in lower or 'available' in lower: name = 'list_runbooks'
             elif 'next' in lower or 'execute' in lower or 'advance' in lower: name = 'advance_runbook'
@@ -349,6 +355,18 @@ class AgentOrchestrator:
             elif any(w in lower for w in ['news', 'headline', 'headlines', 'breaking', 'update', 'updates']) and not any(w in query_text.lower() for w in ['news', 'headline', 'update']):
                 query_text = f"{query_text} news"
             name, args = 'search_web_or_docs', {'query': query_text}
+        elif any(w in lower for w in [
+            'list documents', 'list document', 'list docs', 'list files', 'show documents',
+            'show docs', 'what documents', 'what docs', 'document folder', 'documents folder',
+            'docs folder', 'in my document folder', 'in my documents folder', 'in the docs folder',
+            'what is in my document', 'what is in docs', 'list all items in documents',
+            'list all the items'
+        ]):
+            match_dir = re.search(r'(?:in|from)\s+(?:the\s+|my\s+)?([^\s]+)\s+(?:folder|directory)', lower)
+            dir_name = match_dir.group(1) if match_dir else 'docs'
+            if dir_name in ['document', 'documents']:
+                dir_name = 'docs'
+            name, args = 'list_documents', {'directory': dir_name}
         elif any(w in lower for w in ['inspect document', 'read document', 'read pdf', 'read docx', 'inspect pdf', 'read file']):
             match_file = re.search(r'(?:document|file|pdf|docx)\s+([^\s]+\.(?:pdf|docx|md|txt))', lower)
             file_path = match_file.group(1) if match_file else 'docs/ARCHITECTURE.md'
@@ -406,6 +424,15 @@ class AgentOrchestrator:
         if name == 'query_telemetry':
             target = event['arguments'].get('service_name', 'Service')
             return f'{target} is {result["status"]}, with {result["replicas"]} replicas. ' + (f'Error rate is {result["error_rate"]} percent; P99 latency is {result["latency_p99"]} milliseconds.' if result.get('error_rate') is not None else 'Application performance metrics are unavailable.')
+        if name == 'list_documents':
+            if result.get('spoken'):
+                return result['spoken']
+            count = result.get('count', 0)
+            docs = result.get('documents', [])
+            names = [d['name'] for d in docs]
+            if not docs:
+                return f"No documents found in directory '{result.get('directory', 'docs')}'."
+            return f"Found {count} documents in docs: {', '.join(names[:5])}" + (f", and {count-5} more." if count > 5 else ".")
         if name == 'search_web_or_docs':
             items = result.get('results', [])
             query_q = result.get('query', '')
@@ -431,7 +458,7 @@ class AgentOrchestrator:
             f"{SYSTEM_PROMPT}\nInfrastructure mode: {settings.infrastructure_mode}.\n\n"
             f"Available SRE Tools:\n{tool_summaries}\n\n"
             "INSTRUCTIONS:\n"
-            "1. If the operator wants to search the web or docs, query news, check cluster health, inspect logs, run a runbook, query host vitals, or remediate, output ONLY a valid JSON object:\n"
+            "1. If the operator wants to search the web or docs, list documents, query news, check cluster health, inspect logs, run a runbook, query host vitals, or remediate, output ONLY a valid JSON object:\n"
             '{"tool": "<tool_name>", "arguments": {<args>}}\n'
             "2. If the operator asks a conversational question, greeting, or explanation, respond directly with 1 to 2 spoken sentences as J.A.R.V.I.S. Address them respectfully as 'Sir' or 'Boss'. NEVER use markdown asterisks, bullet points, headers, or JSON for conversational replies."
         )

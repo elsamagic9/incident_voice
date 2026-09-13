@@ -19,7 +19,7 @@ class SRERole(str, Enum):
 
 READ_ACTIONS = {'get_cluster_health', 'check_cluster_health', 'inspect_service_logs', 'query_telemetry',
                 'query_metrics', 'query_host_telemetry', 'list_runbooks', 'get_service_topology', 'k8s_list_pods', 'generate_postmortem', 'investigate_incident', 'verify_recovery',
-                'search_web_or_docs', 'inspect_document', 'transcribe_media_recording', 'retrieve_incident_memory',
+                'search_web_or_docs', 'inspect_document', 'list_documents', 'transcribe_media_recording', 'retrieve_incident_memory',
                 'locate_causal_root_cause', 'match_historical_incident', 'plan_mitigation_tree', 'export_incident_report'}
 MUTATIONS = {'restart_pod', 'flush_cache', 'rollback_release', 'scale_replicas', 'enable_circuit_breaker',
              'failover_traffic', 'cordon_node', 'k8s_rollout_restart'}

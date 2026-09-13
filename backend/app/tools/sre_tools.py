@@ -349,6 +349,14 @@ def inspect_document(file_path: str, query: str = "", max_pages: int = 10):
     return DocumentService.inspect_document(file_path=file_path, query=query, max_pages=max_pages)
 
 
+def list_documents(directory: str = "docs"):
+    """
+    List enterprise documents, architecture diagrams, and runbook files in a directory.
+    """
+    from app.services.document_service import DocumentService
+    return DocumentService.list_documents(directory=directory)
+
+
 def export_incident_report(format: str = "pdf", filename: str = ""):
     """
     Generate and export a formal Post-Incident Review document in PDF or Word (.docx) format.
@@ -481,7 +489,7 @@ def plan_mitigation_tree(max_depth: int = 2):
 SRE_TOOL_MAP = {name: globals()[name] for name in ['verify_recovery', 'get_cluster_health', 'inspect_service_logs', 'query_telemetry',
     'execute_remediation', 'query_host_telemetry', 'trigger_pager', 'generate_postmortem', 'list_runbooks',
     'start_runbook', 'advance_runbook', 'abort_runbook', 'get_service_topology', 'k8s_rollout_restart', 'k8s_list_pods',
-    'search_web_or_docs', 'inspect_document', 'export_incident_report', 'transcribe_media_recording',
+    'search_web_or_docs', 'inspect_document', 'list_documents', 'export_incident_report', 'transcribe_media_recording',
     'retrieve_incident_memory', 'locate_causal_root_cause', 'match_historical_incident', 'plan_mitigation_tree']}
 SRE_TOOL_MAP['cordon_node'] = k8s_cordon_node
 SRE_TOOL_MAP['k8s_cordon_node'] = k8s_cordon_node

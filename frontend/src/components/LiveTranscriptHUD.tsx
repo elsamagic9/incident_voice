@@ -30,6 +30,8 @@ const welcomePrompts = [
 ];
 
 const quickChips = [
+  'Run autonomously',
+  'List documents',
   'Search web: Postgres pool exhaustion',
   'Search web: Redis memory spike',
   'Jarvis, check host vitals',

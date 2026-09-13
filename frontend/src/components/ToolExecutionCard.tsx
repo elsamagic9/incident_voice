@@ -6,12 +6,13 @@ export const ToolExecutionCard: React.FC<{ tool: ToolExecution }> = ({ tool }) =
   const [copied, setCopied] = useState(false);
 
   const isSearch = tool.tool_name === 'search_web_or_docs';
+  const isDocs = tool.tool_name === 'list_documents';
   const failed = !!tool.result.error || tool.result.success === false || ['error', 'denied'].includes(tool.result.status);
   const staged = tool.result.status === 'staged';
   const draft = tool.result.status === 'draft';
   const label = failed ? 'Failed' : staged ? 'Needs Approval' : draft ? 'Draft' : 'Executed';
   const Icon = failed ? X : staged ? Clock3 : draft ? FileText : Check;
-  const ToolIcon = isSearch ? Globe : Wrench;
+  const ToolIcon = isSearch ? Globe : isDocs ? FileText : Wrench;
   const summary = tool.result.error || tool.result.message || tool.result.spoken || tool.result.confirmation;
 
   const copyJson = (e: React.MouseEvent) => {
@@ -85,6 +86,27 @@ export const ToolExecutionCard: React.FC<{ tool: ToolExecution }> = ({ tool }) =
                   </p>
                   <span className="text-[10px] font-mono text-slate-500 truncate block mt-1">
                     {item.url}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {isDocs && Array.isArray(tool.result.documents) && tool.result.documents.length > 0 && (
+          <div className="mb-3 space-y-2">
+            <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-cyan-400 flex items-center gap-1.5">
+              <FileText size={12} /> Enterprise Documents ({tool.result.documents.length})
+            </span>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {tool.result.documents.map((doc: any, idx: number) => (
+                <div key={idx} className="p-2.5 rounded-lg bg-slate-900/90 border border-slate-800 hover:border-cyan-500/40 transition-colors flex items-center justify-between">
+                  <div className="min-w-0 flex-1">
+                    <span className="text-xs font-semibold text-slate-200 block truncate">{doc.name}</span>
+                    <span className="text-[10px] font-mono text-slate-500 uppercase block">{doc.format} &bull; {doc.size_display}</span>
+                  </div>
+                  <span className="text-[9px] font-mono uppercase px-1.5 py-0.5 rounded bg-cyan-950/60 text-cyan-400 border border-cyan-800/60 shrink-0 ml-2">
+                    {doc.format}
                   </span>
                 </div>
               ))}

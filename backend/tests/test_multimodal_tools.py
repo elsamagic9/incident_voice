@@ -198,3 +198,37 @@ async def test_orchestrator_diverse_web_search_prompts(prompt, expected_keyword)
     assert expected_keyword in tools[0]["arguments"]["query"].lower()
     assert spoken
 
+
+def test_list_documents_service():
+    """Verify DocumentService.list_documents retrieves files and formats counts."""
+    from app.services.document_service import DocumentService
+    res = DocumentService.list_documents("docs")
+    assert res["status"] == "success"
+    assert res["count"] > 0
+    assert any("ARCHITECTURE.md" in d["name"] for d in res["documents"])
+    assert "spoken" in res
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("prompt", [
+    "what is in my document folder list all the items",
+    "list documents in docs folder",
+    "show documents",
+    "what is in docs",
+])
+async def test_orchestrator_list_documents_prompts(prompt):
+    """Verify various natural phrasing document listing commands execute list_documents."""
+    spoken, tools, _ = await agent_orchestrator.process_user_turn(prompt)
+    assert len(tools) == 1
+    assert tools[0]["tool_name"] == "list_documents"
+    assert "document" in spoken.lower() or "items" in spoken.lower() or "docs" in spoken.lower()
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_autonomous_command():
+    """Verify 'run autonomously' enables autopilot and triggers incident investigation."""
+    spoken, tools, _ = await agent_orchestrator.process_user_turn("Jarvis, run autonomously")
+    assert agent_orchestrator.autopilot_mode is True
+    assert "auto-approval enabled" in spoken.lower() or "incident brief" in spoken.lower()
+
+

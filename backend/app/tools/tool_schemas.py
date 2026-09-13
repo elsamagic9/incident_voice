@@ -272,6 +272,22 @@ SRE_TOOL_DEFINITIONS = [
     {
         "type": "function",
         "function": {
+            "name": "list_documents",
+            "description": "List all enterprise documentation, runbooks, architecture specs, and reports in the docs folder or a specified directory.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "directory": {
+                        "type": "string",
+                        "description": "Directory path to list documents from (default: 'docs')"
+                    }
+                }
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "export_incident_report",
             "description": "Generate and export a formal Post-Incident Review document in PDF or Microsoft Word (.docx) format with Golden Signals receipts.",
             "parameters": {

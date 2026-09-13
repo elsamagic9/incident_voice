@@ -27,11 +27,15 @@ class DocumentService:
         """
         path = Path(file_path)
         if not path.exists():
-            return {
-                "status": "error",
-                "file_path": file_path,
-                "message": f"Document not found at path: {file_path}"
-            }
+            alt = Path("..") / file_path
+            if alt.exists():
+                path = alt
+            else:
+                return {
+                    "status": "error",
+                    "file_path": file_path,
+                    "message": f"Document not found at path: {file_path}"
+                }
 
         suffix = path.suffix.lower()
         if suffix == ".pdf":
@@ -46,6 +50,57 @@ class DocumentService:
                 "file_path": file_path,
                 "message": f"Unsupported document format '{suffix}'. Supported: .pdf, .docx, .md, .txt"
             }
+
+    @staticmethod
+    def list_documents(directory: str = "docs") -> Dict[str, Any]:
+        """List enterprise documents, runbooks, and specifications in a directory."""
+        dir_clean = directory.strip().rstrip("/\\") if directory else "docs"
+        dir_path = Path(dir_clean)
+
+        if not dir_path.exists() or not dir_path.is_dir():
+            alt_path = Path("..") / dir_clean
+            if alt_path.exists() and alt_path.is_dir():
+                dir_path = alt_path
+            elif Path("docs").exists():
+                dir_path = Path("docs")
+            elif (Path("..") / "docs").exists():
+                dir_path = Path("..") / "docs"
+            else:
+                return {
+                    "status": "error",
+                    "directory": directory,
+                    "message": f"Directory not found: {directory}",
+                    "documents": []
+                }
+
+        valid_extensions = {".pdf", ".docx", ".doc", ".md", ".txt", ".json", ".html"}
+        documents = []
+        for file in sorted(dir_path.glob("*")):
+            if file.is_file() and file.suffix.lower() in valid_extensions:
+                stat = file.stat()
+                size_kb = stat.st_size / 1024
+                size_str = f"{size_kb:.1f} KB" if size_kb < 1024 else f"{size_kb / 1024:.1f} MB"
+                documents.append({
+                    "name": file.name,
+                    "path": str(file),
+                    "format": file.suffix.lower().lstrip("."),
+                    "size_bytes": stat.st_size,
+                    "size_display": size_str
+                })
+
+        doc_names = [d["name"] for d in documents]
+        summary = f"Found {len(documents)} documents in '{dir_clean}': {', '.join(doc_names[:5])}" + (f", and {len(doc_names)-5} more" if len(doc_names) > 5 else "")
+        spoken = f"Sir, your document repository contains {len(documents)} items, including {', '.join(doc_names[:4])}" + (f", and {len(doc_names)-4} other files." if len(doc_names) > 4 else ".")
+
+        return {
+            "status": "success",
+            "directory": str(dir_clean),
+            "resolved_path": str(dir_path.resolve()),
+            "count": len(documents),
+            "documents": documents,
+            "summary": summary,
+            "spoken": spoken
+        }
 
     @staticmethod
     def _parse_pdf(path: Path, query: str, max_pages: int) -> Dict[str, Any]:
