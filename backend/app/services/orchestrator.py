@@ -368,14 +368,14 @@ class AgentOrchestrator:
                 dir_name = 'docs'
             name, args = 'list_documents', {'directory': dir_name}
         elif any(w in lower for w in ['inspect document', 'read document', 'read pdf', 'read docx', 'inspect pdf', 'read file']):
-            match_file = re.search(r'(?:document|file|pdf|docx)\s+([^\s]+\.(?:pdf|docx|md|txt))', lower)
+            match_file = re.search(r'(?:document|file|pdf|docx)\s+([^\s]+\.(?:pdf|docx|md|txt))', text, re.IGNORECASE)
             file_path = match_file.group(1) if match_file else 'docs/ARCHITECTURE.md'
             name, args = 'inspect_document', {'file_path': file_path}
         elif any(w in lower for w in ['export report', 'export pdf', 'export docx', 'download pdf', 'export word', 'save pdf', 'save report']):
             fmt = 'docx' if any(w in lower for w in ['docx', 'word']) else 'pdf'
             name, args = 'export_incident_report', {'format': fmt}
         elif any(w in lower for w in ['transcribe audio', 'transcribe video', 'transcribe recording', 'transcribe call', 'transcribe media']):
-            match_media = re.search(r'(?:file|recording|audio|video)\s+([^\s]+\.(?:wav|mp3|m4a|mp4|mov|webm))', lower)
+            match_media = re.search(r'(?:file|recording|audio|video)\s+([^\s]+\.(?:wav|mp3|m4a|mp4|mov|webm))', text, re.IGNORECASE)
             file_path = match_media.group(1) if match_media else 'data/incident_recording.mp4'
             name, args = 'transcribe_media_recording', {'file_path': file_path}
         elif any(w in lower for w in ['causal', 'root cause', 'microhecl', 'localize cause', 'what is the root cause']):

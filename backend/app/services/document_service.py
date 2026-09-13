@@ -31,11 +31,23 @@ class DocumentService:
             if alt.exists():
                 path = alt
             else:
-                return {
-                    "status": "error",
-                    "file_path": file_path,
-                    "message": f"Document not found at path: {file_path}"
-                }
+                # Case-insensitive resolution fallback
+                resolved_path = None
+                for candidate_dir in [path.parent, Path("..") / path.parent, Path("docs"), Path("..") / "docs"]:
+                    if candidate_dir.exists() and candidate_dir.is_dir():
+                        target_name = path.name.lower()
+                        matches = [f for f in candidate_dir.iterdir() if f.is_file() and f.name.lower() == target_name]
+                        if matches:
+                            resolved_path = matches[0]
+                            break
+                if resolved_path:
+                    path = resolved_path
+                else:
+                    return {
+                        "status": "error",
+                        "file_path": file_path,
+                        "message": f"Document not found at path: {file_path}"
+                    }
 
         suffix = path.suffix.lower()
         if suffix == ".pdf":
