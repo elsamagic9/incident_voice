@@ -4,6 +4,10 @@ import {
   Network, X, Mic, RefreshCw
 } from 'lucide-react';
 import type { ActiveRunbookSession } from '../types';
+import { Card } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Progress } from '@/components/ui/progress';
 
 interface Props {
   activeRunbook: ActiveRunbookSession | null;
@@ -52,10 +56,10 @@ export const RunbookWorkflowHUD: React.FC<Props> = ({
 }) => {
   if (!session || session.status !== 'active') {
     return (
-      <div className="runbook-catalog">
+      <div className="runbook-catalog space-y-4">
         {session?.status === 'completed' && (
-          <div className="message-banner bg-emerald-950/40 border-emerald-500/40 text-emerald-200 mb-4">
-            <Check size={18} className="text-emerald-400 shrink-0" />
+          <div className="message-banner p-3 rounded-lg bg-emerald-950/40 border border-emerald-500/40 text-emerald-200 flex items-center gap-2 text-xs">
+            <Check size={16} className="text-emerald-400 shrink-0" />
             <p>
               Runbook successfully completed! All remediation steps executed and verified. Review remaining alerts.
             </p>
@@ -63,51 +67,50 @@ export const RunbookWorkflowHUD: React.FC<Props> = ({
         )}
 
         {session?.status === 'aborted' && (
-          <div className="message-banner bg-slate-900 border-slate-700 text-slate-300 mb-4">
-            <X size={18} className="text-slate-400 shrink-0" />
+          <div className="message-banner p-3 rounded-lg bg-zinc-900 border border-zinc-700 text-zinc-300 flex items-center gap-2 text-xs">
+            <X size={16} className="text-zinc-400 shrink-0" />
             <p>Runbook session aborted by operator. Select another SOP below to begin.</p>
           </div>
         )}
 
-        <div className="py-2">
-          <p className="text-xs text-slate-400 leading-relaxed mb-4">
+        <div className="py-1">
+          <p className="text-xs text-zinc-400 leading-relaxed mb-4">
             Voice-guided Standard Operating Procedures (SOPs). The agent walks you through each diagnostic step,
             verifies telemetry before and after execution, and stages changes for voice authorization.
           </p>
 
           <div className="flex flex-col gap-3">
             {catalog.map(({ id, title, description, time, steps, icon: Icon, badge }) => (
-              <button
-                className="runbook-option group p-4 rounded-xl border border-slate-800/80 bg-slate-900/50 hover:bg-slate-850 hover:border-cyan-500/40 transition-all duration-200"
+              <Card
                 key={id}
-                disabled={disabled}
-                onClick={() => onStartRunbook(id)}
+                className="runbook-option group p-4 border-zinc-800/80 bg-zinc-900/50 hover:bg-zinc-850 hover:border-cyan-500/40 transition-all duration-200 cursor-pointer flex items-start gap-3.5"
+                onClick={() => !disabled && onStartRunbook(id)}
               >
-                <span className="icon-tile group-hover:scale-105 transition-transform shrink-0">
+                <div className="icon-tile w-10 h-10 rounded-xl bg-zinc-800/80 border border-zinc-700/60 flex items-center justify-center text-cyan-400 group-hover:scale-105 transition-transform shrink-0">
                   <Icon size={20} />
-                </span>
+                </div>
 
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
+                  <div className="flex items-center gap-2 flex-wrap mb-1">
                     <strong className="text-slate-100 group-hover:text-cyan-300 transition-colors text-sm font-semibold">
                       {title}
                     </strong>
-                    <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700/60">
+                    <Badge variant="secondary" className="text-[10px] font-mono">
                       {badge}
-                    </span>
+                    </Badge>
                   </div>
-                  <p className="text-xs text-slate-400 mt-1 mb-2.5 leading-relaxed">{description}</p>
-                  <small className="flex items-center gap-3 text-[11px] font-mono text-emerald-400">
+                  <p className="text-xs text-zinc-400 mb-2 leading-relaxed">{description}</p>
+                  <div className="flex items-center gap-3 text-[11px] font-mono text-emerald-400">
                     <span className="flex items-center gap-1">
                       <Clock3 size={12} /> {time}
                     </span>
-                    <span className="text-slate-600">·</span>
+                    <span className="text-zinc-600">·</span>
                     <span>{steps} verified steps</span>
-                  </small>
+                  </div>
                 </div>
 
-                <ArrowRight size={18} className="text-slate-600 group-hover:text-cyan-400 group-hover:translate-x-1 transition-all shrink-0 mt-2" />
-              </button>
+                <ArrowRight size={18} className="text-zinc-600 group-hover:text-cyan-400 group-hover:translate-x-1 transition-all shrink-0 mt-2" />
+              </Card>
             ))}
           </div>
         </div>
@@ -120,40 +123,37 @@ export const RunbookWorkflowHUD: React.FC<Props> = ({
   const progressPct = Math.round((complete / session.total_steps) * 100);
 
   return (
-    <div className="runbook-session">
-      <div className="runbook-session-heading">
-        <span className="status-tag status-info flex items-center gap-1.5 font-mono text-xs">
+    <div className="runbook-session space-y-4">
+      <div className="runbook-session-heading flex items-center justify-between gap-2 flex-wrap">
+        <Badge variant="cyan" className="flex items-center gap-1.5 font-mono text-xs py-1 px-2.5">
           <BookOpen size={13} />
           <span>Active SOP Workflow</span>
-        </span>
-        <button
-          className="text-button text-xs text-rose-400 hover:text-rose-300 flex items-center gap-1"
+        </Badge>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="text-button text-xs text-rose-400 hover:text-rose-300 hover:bg-rose-950/30 flex items-center gap-1 h-7 px-2"
           onClick={onAbortRunbook}
           disabled={disabled}
         >
           <X size={13} />
           <span>Abort runbook</span>
-        </button>
+        </Button>
       </div>
 
-      <h3 className="text-base font-semibold text-slate-100 mt-3">{session.title}</h3>
+      <h3 className="text-base font-semibold text-slate-100">{session.title}</h3>
 
       {/* Progress Bar & Counter */}
-      <div className="mt-3">
-        <div className="flex justify-between text-xs font-mono text-slate-400 mb-1.5">
+      <div className="space-y-1.5">
+        <div className="flex justify-between text-xs font-mono text-zinc-400">
           <span>Progress ({complete} of {session.total_steps} steps complete)</span>
           <span className="text-cyan-400 font-semibold">{progressPct}%</span>
         </div>
-        <div className="w-full h-2 bg-slate-800/80 rounded-full overflow-hidden border border-slate-700/60">
-          <div
-            className="h-full bg-gradient-to-r from-cyan-500 to-emerald-500 rounded-full transition-all duration-300 shadow-[0_0_10px_rgba(6,182,212,0.4)]"
-            style={{ width: `${progressPct}%` }}
-          />
-        </div>
+        <Progress value={progressPct} className="h-2 bg-zinc-800" indicatorClassName="bg-gradient-to-r from-cyan-500 to-emerald-500" />
       </div>
 
       {/* Steps List */}
-      <ol className="runbook-steps mt-4">
+      <ol className="runbook-steps space-y-2.5 mt-4">
         {session.steps.map((item, index) => {
           const isCurrent = index === session.current_step_index;
           const isDone = item.status === 'completed';
@@ -162,15 +162,23 @@ export const RunbookWorkflowHUD: React.FC<Props> = ({
           return (
             <li
               key={item.step_number}
-              className={`${
+              className={`p-3 rounded-lg border text-xs flex items-start gap-3 transition-all ${
                 isCurrent
                   ? 'step-current bg-cyan-950/20 border-cyan-500/40 shadow-[0_0_12px_rgba(6,182,212,0.15)]'
                   : isDone
-                  ? 'step-complete'
-                  : 'opacity-60'
+                  ? 'step-complete bg-zinc-900/40 border-zinc-800/80 text-zinc-400'
+                  : 'bg-zinc-950/40 border-zinc-850 opacity-60 text-zinc-500'
               }`}
             >
-              <span className="step-number">
+              <span className={`step-number w-6 h-6 rounded-full flex items-center justify-center font-mono font-bold text-xs shrink-0 ${
+                isDone
+                  ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40'
+                  : isFailed
+                  ? 'bg-rose-500/20 text-rose-400 border border-rose-500/40'
+                  : isCurrent
+                  ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/40'
+                  : 'bg-zinc-800 text-zinc-400'
+              }`}>
                 {isDone ? (
                   <Check size={14} className="text-emerald-400 font-bold" />
                 ) : isFailed ? (
@@ -183,7 +191,7 @@ export const RunbookWorkflowHUD: React.FC<Props> = ({
               <div className="flex-1 min-w-0">
                 <span className="font-medium text-slate-200 text-xs block">{item.title}</span>
                 {isCurrent && (
-                  <p className="text-slate-300 text-xs mt-1 leading-relaxed">{item.description}</p>
+                  <p className="text-zinc-300 text-xs mt-1 leading-relaxed">{item.description}</p>
                 )}
                 {isFailed && (
                   <p className="text-rose-400 text-xs mt-1 font-mono">{item.verification_result}</p>
@@ -195,9 +203,9 @@ export const RunbookWorkflowHUD: React.FC<Props> = ({
       </ol>
 
       {/* Action Footer */}
-      <div className="runbook-next mt-4 pt-3 border-t border-slate-800">
-        <div className="flex items-center justify-between mb-3 text-xs">
-          <p className="text-slate-400 flex items-center gap-1.5 m-0">
+      <div className="runbook-next pt-3 border-t border-zinc-800 space-y-3">
+        <div className="flex items-center justify-between text-xs">
+          <p className="text-zinc-400 flex items-center gap-1.5 m-0">
             <Mic size={13} className="text-cyan-400" />
             <span>Say “Next step” or click below</span>
           </p>
@@ -206,23 +214,24 @@ export const RunbookWorkflowHUD: React.FC<Props> = ({
           </span>
         </div>
 
-        <button
-          className="button button-primary w-full flex items-center justify-center gap-2 font-semibold"
+        <Button
+          variant="cyan"
+          className="button button-primary w-full flex items-center justify-center gap-2 font-semibold h-10"
           disabled={disabled}
           onClick={onAdvanceRunbook}
         >
           {step?.status === 'failed' ? (
             <>
-              <RefreshCw size={16} />
+              <RefreshCw size={15} />
               <span>Retry Step: {step?.title}</span>
             </>
           ) : (
             <>
               <span>Execute Step: {step?.title}</span>
-              <ArrowRight size={16} />
+              <ArrowRight size={15} />
             </>
           )}
-        </button>
+        </Button>
       </div>
     </div>
   );

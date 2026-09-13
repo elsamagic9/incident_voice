@@ -1,6 +1,9 @@
 import React from 'react';
 import { ArrowUpRight, Check, CircleHelp, Database, Server, AlertTriangle } from 'lucide-react';
 import type { ServiceNode } from '../types';
+import { Card } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 
 interface Props {
   services: Record<string, ServiceNode>;
@@ -19,26 +22,26 @@ export const ServiceHealthMatrix: React.FC<Props> = ({
   const nodes = Object.values(services).sort((a, b) => (order[a.status] ?? 2) - (order[b.status] ?? 2));
 
   return (
-    <div className="service-list">
-      <div className="service-list-caption">
-        <span className="font-mono text-slate-400">
+    <div className="service-list space-y-3">
+      <div className="service-list-caption flex items-center justify-between text-xs px-1">
+        <span className="font-mono text-zinc-400">
           {infrastructureMode === 'simulation'
             ? 'Simulated service health'
             : 'Configured infrastructure health'}
         </span>
-        <span className="text-slate-500 font-mono text-[10px]">Severity first</span>
+        <span className="text-zinc-500 font-mono text-[10px]">Severity first</span>
       </div>
 
       {!nodes.length && (
-        <div className="diagnostic-empty py-12 text-center flex flex-col items-center justify-center">
-          <div className="w-12 h-12 rounded-xl bg-slate-800/80 border border-slate-700 flex items-center justify-center text-slate-400 mb-3">
+        <Card className="diagnostic-empty py-12 text-center flex flex-col items-center justify-center border-dashed border-zinc-800 bg-zinc-950/40">
+          <div className="w-12 h-12 rounded-xl bg-zinc-900 border border-zinc-800 flex items-center justify-center text-zinc-400 mb-3">
             <Server size={24} />
           </div>
           <h3 className="text-slate-200 font-semibold text-sm">Awaiting Cluster Telemetry</h3>
-          <p className="text-slate-400 text-xs mt-1 max-w-sm">
+          <p className="text-zinc-400 text-xs mt-1 max-w-sm">
             Connect to an incident session to stream real-time latency, error rates, and CPU metrics across services.
           </p>
-        </div>
+        </Card>
       )}
 
       {nodes.map(service => {
@@ -47,13 +50,13 @@ export const ServiceHealthMatrix: React.FC<Props> = ({
         const isDegraded = service.status === 'degraded';
         const isHealthy = service.status === 'healthy';
 
-        const statusTagClass = isCritical
-          ? 'status-danger'
+        const badgeVariant = isCritical
+          ? 'destructive'
           : isDegraded
-          ? 'status-warning'
+          ? 'warning'
           : isHealthy
-          ? 'status-good'
-          : 'bg-slate-800 text-slate-400 border-slate-700';
+          ? 'success'
+          : 'secondary';
 
         const iconColor = isCritical
           ? 'text-rose-400 bg-rose-500/15 border-rose-500/30'
@@ -61,80 +64,81 @@ export const ServiceHealthMatrix: React.FC<Props> = ({
           ? 'text-amber-400 bg-amber-500/15 border-amber-500/30'
           : isHealthy
           ? 'text-emerald-400 bg-emerald-500/15 border-emerald-500/30'
-          : 'text-slate-400 bg-slate-800 border-slate-700';
+          : 'text-zinc-400 bg-zinc-800 border-zinc-700';
 
-        const cpuWidth = known ? Math.min(100, Math.max(5, service.cpu_percent)) : 0;
         const cpuColor = service.cpu_percent > 85 ? 'bg-rose-500' : service.cpu_percent > 65 ? 'bg-amber-500' : 'bg-cyan-500';
 
         return (
-          <article key={service.id} className="service-row group">
-            <div className="service-row-heading">
-              <span className={`service-icon ${iconColor} transition-transform group-hover:scale-105`}>
-                {service.id.includes('db') || service.id.includes('redis') ? (
-                  <Database size={18} />
-                ) : (
-                  <Server size={18} />
-                )}
-              </span>
-
-              <div className="service-identity">
-                <div className="flex items-center gap-2">
-                  <h3 className="font-mono text-[13px] text-slate-200 font-semibold group-hover:text-cyan-300 transition-colors">
-                    {service.id}
-                  </h3>
-                  {service.replicas != null && service.replicas > 1 && (
-                    <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-800/90 text-slate-400 border border-slate-700/60">
-                      {service.replicas} pods
-                    </span>
+          <Card key={service.id} className="service-row group p-4 border-zinc-800/80 bg-zinc-900/40 hover:border-zinc-700/80 transition-all space-y-3">
+            <div className="service-row-heading flex items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <span className={`service-icon w-9 h-9 rounded-lg flex items-center justify-center border ${iconColor} transition-transform group-hover:scale-105 shrink-0`}>
+                  {service.id.includes('db') || service.id.includes('redis') ? (
+                    <Database size={18} />
+                  ) : (
+                    <Server size={18} />
                   )}
+                </span>
+
+                <div className="service-identity">
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-mono text-xs text-slate-200 font-semibold group-hover:text-cyan-300 transition-colors">
+                      {service.id}
+                    </h3>
+                    {service.replicas != null && service.replicas > 1 && (
+                      <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400 border border-zinc-700/60">
+                        {service.replicas} pods
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-zinc-400 text-xs">{service.name}</p>
                 </div>
-                <p className="text-slate-400 text-xs">{service.name}</p>
               </div>
 
-              <span className={`status-tag ${statusTagClass}`}>
+              <Badge variant={badgeVariant as any} className="status-tag gap-1 text-[10px] font-mono font-bold tracking-wider uppercase">
                 {service.status === 'unknown' ? (
                   <CircleHelp size={12} aria-label="Health unverified" />
                 ) : isHealthy ? (
                   <Check size={12} className="text-emerald-400" />
                 ) : (
-                  <span className={`status-dot ${isCritical ? 'dot-warning animate-ping' : 'dot-warning'}`} />
+                  <span className={`status-dot w-1.5 h-1.5 rounded-full ${isCritical ? 'bg-rose-400 animate-ping' : 'bg-amber-400'}`} />
                 )}
-                <span className="uppercase text-[10px] font-mono font-bold tracking-wider">
+                <span>
                   {service.status === 'unknown' ? 'Unverified' : service.status}
                 </span>
-              </span>
+              </Badge>
             </div>
 
             {/* Metric Metrics Grid */}
-            <dl className="service-metrics">
+            <dl className="service-metrics grid grid-cols-2 sm:grid-cols-4 gap-2 pt-2 border-t border-zinc-800/60 text-xs">
               <div>
-                <dt>P99 Latency</dt>
-                <dd className={`font-mono ${known && service.latency_p99_ms > 1000 ? 'text-rose-400 font-bold' : known && service.latency_p99_ms > 300 ? 'text-amber-400' : 'text-slate-200'}`}>
+                <dt className="text-zinc-500 text-[11px]">P99 Latency</dt>
+                <dd className={`font-mono font-medium ${known && service.latency_p99_ms > 1000 ? 'text-rose-400 font-bold' : known && service.latency_p99_ms > 300 ? 'text-amber-400' : 'text-slate-200'}`}>
                   {known ? `${service.latency_p99_ms.toFixed(0)} ms` : '—'}
                 </dd>
               </div>
 
               <div>
-                <dt>Error Rate</dt>
-                <dd className={`font-mono ${known && service.error_rate_pct > 5 ? 'text-rose-400 font-bold' : known && service.error_rate_pct > 1 ? 'text-amber-400' : 'text-slate-200'}`}>
+                <dt className="text-zinc-500 text-[11px]">Error Rate</dt>
+                <dd className={`font-mono font-medium ${known && service.error_rate_pct > 5 ? 'text-rose-400 font-bold' : known && service.error_rate_pct > 1 ? 'text-amber-400' : 'text-slate-200'}`}>
                   {known ? `${service.error_rate_pct.toFixed(1)}%` : '—'}
                 </dd>
               </div>
 
               <div>
-                <dt>CPU Load</dt>
-                <dd className="font-mono flex items-center gap-2">
+                <dt className="text-zinc-500 text-[11px]">CPU Load</dt>
+                <dd className="font-mono text-slate-200 flex items-center gap-2">
                   <span>{known ? `${service.cpu_percent.toFixed(0)}%` : '—'}</span>
                   {known && (
-                    <div className="w-12 h-1.5 bg-slate-800 rounded-full overflow-hidden shrink-0">
-                      <div className={`h-full ${cpuColor} rounded-full`} style={{ width: `${cpuWidth}%` }} />
+                    <div className="w-12 h-1.5 bg-zinc-800 rounded-full overflow-hidden shrink-0">
+                      <div className={`h-full ${cpuColor} rounded-full`} style={{ width: `${Math.min(100, Math.max(5, service.cpu_percent))}%` }} />
                     </div>
                   )}
                 </dd>
               </div>
 
               <div>
-                <dt>Memory</dt>
+                <dt className="text-zinc-500 text-[11px]">Memory</dt>
                 <dd className="font-mono text-slate-200">
                   {known ? `${service.memory_percent.toFixed(0)}%` : '—'}
                 </dd>
@@ -143,35 +147,37 @@ export const ServiceHealthMatrix: React.FC<Props> = ({
 
             {/* Service Alert & Quick Actions */}
             {(service.active_alerts.length > 0 || onInspect) && (
-              <div className="service-row-footer">
-                <span className="service-alert flex items-center gap-1.5" title={service.active_alerts.join(', ')}>
+              <div className="service-row-footer flex items-center justify-between gap-2 pt-2 border-t border-zinc-800/60 text-xs">
+                <span className="service-alert flex items-center gap-1.5 min-w-0" title={service.active_alerts.join(', ')}>
                   {service.active_alerts.length > 0 ? (
                     <>
                       <AlertTriangle size={12} className="text-rose-400 shrink-0" />
-                      <span className="text-rose-300 font-mono text-[11px] font-medium">
+                      <span className="text-rose-300 font-mono text-[11px] font-medium truncate">
                         {service.active_alerts[0]}
                         {service.active_alerts.length > 1 && ` (+${service.active_alerts.length - 1} more)`}
                       </span>
                     </>
                   ) : (
-                    <span className="text-slate-500 font-mono text-[11px]">No active anomaly alerts</span>
+                    <span className="text-zinc-500 font-mono text-[11px]">No active anomaly alerts</span>
                   )}
                 </span>
 
                 {onInspect && (
-                  <button
-                    className="text-button text-xs hover:text-cyan-300 flex items-center gap-1 font-medium"
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="text-button h-6 px-2 text-xs hover:text-cyan-300 flex items-center gap-1 font-medium text-zinc-400"
                     onClick={() => onInspect(service.id)}
                     disabled={disabled}
                     aria-label={`Inspect ${service.id} logs`}
                   >
                     <span>Inspect logs</span>
                     <ArrowUpRight size={13} />
-                  </button>
+                  </Button>
                 )}
               </div>
             )}
-          </article>
+          </Card>
         );
       })}
     </div>

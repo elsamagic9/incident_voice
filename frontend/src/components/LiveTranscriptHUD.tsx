@@ -4,6 +4,8 @@ import {
   Square, User, Terminal, ShieldAlert, Globe
 } from 'lucide-react';
 import type { AgentStatus, Turn } from '../types';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 
 interface Props {
   turns: Turn[];
@@ -97,38 +99,44 @@ export const LiveTranscriptHUD: React.FC<Props> = ({
   };
 
   return (
-    <section className="panel conversation-panel" aria-labelledby="conversation-heading">
+    <section
+      className="panel conversation-panel"
+      aria-labelledby="conversation-heading"
+    >
       {/* Header */}
-      <div className="panel-heading">
+      <div className="panel-heading p-4 border-b border-zinc-800/80 flex items-center justify-between gap-3">
         <div className="flex gap-3 items-center min-w-0">
-          <span className="assistant-symbol">
+          <div className="assistant-symbol w-9 h-9 rounded-lg bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-cyan-400 shrink-0">
             <AudioLines size={20} className={speaking || isRecording ? 'animate-pulse text-cyan-400' : ''} />
-          </span>
+          </div>
           <div className="min-w-0">
-            <h2 id="conversation-heading" className="truncate">J.A.R.V.I.S. Voice Commander</h2>
-            <p className="muted truncate">Autonomous AI Assistant & Incident Copilot</p>
+            <h2 id="conversation-heading" className="truncate text-sm font-semibold text-slate-100">J.A.R.V.I.S. Voice Commander</h2>
+            <p className="muted truncate text-xs text-zinc-400">Autonomous AI Assistant & Incident Copilot</p>
           </div>
         </div>
 
-        <span className="conversation-status">
+        <Badge
+          variant={isRecording ? "success" : speaking ? "cyan" : thinking || awaiting ? "warning" : "secondary"}
+          className="gap-1.5 py-1 px-2.5 font-mono text-[11px]"
+        >
           <span
-            className={`status-dot ${
+            className={`status-dot w-1.5 h-1.5 rounded-full ${
               isRecording
                 ? 'bg-emerald-400 shadow-[0_0_8px_#34d399]'
                 : speaking
                 ? 'bg-cyan-400 shadow-[0_0_8px_#38bdf8] animate-ping'
                 : thinking || awaiting
                 ? 'bg-amber-400 shadow-[0_0_8px_#fbbf24] animate-pulse'
-                : 'bg-slate-500'
+                : 'bg-zinc-400'
             }`}
           />
-          <span className="font-mono text-[11px] text-slate-300 font-medium">{label}</span>
-        </span>
+          <span>{label}</span>
+        </Badge>
       </div>
 
       {/* Messages Scroll Area */}
       <div
-        className="conversation-scroll"
+        className="conversation-scroll flex-1 p-4 overflow-y-auto"
         ref={scroll}
         onScroll={() => {
           const element = scroll.current;
@@ -142,55 +150,61 @@ export const LiveTranscriptHUD: React.FC<Props> = ({
         aria-relevant="additions text"
       >
         {!turns.length && !interimTranscript && !agentTranscript ? (
-          <div className="conversation-welcome">
-            <div className="welcome-symbol">
-              <AudioLines size={34} strokeWidth={1.75} />
+          <div className="conversation-welcome flex flex-col items-center text-center py-8 px-4">
+            <div className="welcome-symbol w-14 h-14 rounded-2xl bg-zinc-900 border border-zinc-800 flex items-center justify-center text-cyan-400 mb-3 shadow-inner">
+              <AudioLines size={32} strokeWidth={1.75} />
             </div>
-            <p className="eyebrow">READY FOR TRIAGE</p>
-            <h3>Where should we investigate?</h3>
-            <p className="muted">
+            <p className="eyebrow text-cyan-400 text-xs tracking-widest font-mono mb-1">READY FOR TRIAGE</p>
+            <h3 className="text-base font-semibold text-slate-100 mb-1">Where should we investigate?</h3>
+            <p className="muted text-xs text-zinc-400 max-w-sm mb-6">
               Ask about alerts, inspect a service, or start a runbook.
               Review the evidence before approving a change.
             </p>
 
-            <div className="starter-prompts">
+            <div className="starter-prompts grid gap-2.5 w-full max-w-md text-left">
               {welcomePrompts.map(prompt => (
                 <button
                   key={prompt.icon}
                   disabled={disabled}
                   onClick={() => onSendText(prompt.text)}
-                  className="group"
+                  className="group flex items-center gap-3 p-3 rounded-lg border border-zinc-800 bg-zinc-900/60 hover:bg-zinc-850 hover:border-cyan-500/40 transition-all text-xs text-slate-200"
                 >
-                  <span className="prompt-number">{prompt.icon}</span>
-                  <span>
-                    <strong>{prompt.title}</strong>
-                    <small>“{prompt.text}”</small>
+                  <span className="prompt-number font-mono text-zinc-500 group-hover:text-cyan-400 font-bold">{prompt.icon}</span>
+                  <span className="flex-1 min-w-0">
+                    <strong className="block text-slate-100 font-medium group-hover:text-cyan-300 transition-colors">{prompt.title}</strong>
+                    <small className="text-zinc-400 font-mono text-[11px]">“{prompt.text}”</small>
                   </span>
-                  <ArrowRight size={16} />
+                  <ArrowRight size={14} className="text-zinc-600 group-hover:text-cyan-400 group-hover:translate-x-0.5 transition-all" />
                 </button>
               ))}
             </div>
           </div>
         ) : (
-          <div className="conversation-messages">
+          <div className="conversation-messages space-y-3">
             {turns.map(turn => (
               <article
-                className={`chat-message ${turn.speaker === 'user' ? 'chat-user' : 'chat-agent'}`}
+                className={`chat-message flex gap-3 p-3.5 rounded-xl text-xs ${
+                  turn.speaker === 'user'
+                    ? 'chat-user bg-zinc-900/90 border border-zinc-800/90 text-slate-200'
+                    : 'chat-agent bg-cyan-950/20 border border-cyan-500/25 text-slate-100'
+                }`}
                 key={turn.id}
               >
-                <span className="chat-avatar">
-                  {turn.speaker === 'user' ? <User size={15} /> : <Bot size={15} />}
+                <span className={`chat-avatar w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${
+                  turn.speaker === 'user' ? 'bg-zinc-800 text-zinc-300' : 'bg-cyan-500/20 text-cyan-400'
+                }`}>
+                  {turn.speaker === 'user' ? <User size={14} /> : <Bot size={14} />}
                 </span>
-                <div>
-                  <div className="chat-meta">
-                    <strong>
+                <div className="flex-1 min-w-0">
+                  <div className="chat-meta flex items-center justify-between text-[11px] mb-1 font-mono">
+                    <strong className={turn.speaker === 'user' ? 'text-zinc-400' : 'text-cyan-400 font-semibold'}>
                       {turn.speaker === 'user'
                         ? 'Operator'
                         : turn.speaker === 'system'
                         ? 'System Monitor'
                         : 'IncidentVoice SRE'}
                     </strong>
-                    <time>
+                    <time className="text-zinc-500">
                       {new Date(turn.timestamp * 1000).toLocaleTimeString([], {
                         hour: '2-digit',
                         minute: '2-digit',
@@ -198,27 +212,42 @@ export const LiveTranscriptHUD: React.FC<Props> = ({
                       })}
                     </time>
                   </div>
-                  <p>{turn.transcript}</p>
+                  <p className="leading-relaxed whitespace-pre-wrap">{turn.transcript}</p>
                 </div>
               </article>
             ))}
 
             {interimTranscript && (
-              <div className="interim-message">
-                <Mic size={15} className="animate-pulse text-cyan-400" />
-                <p className="font-mono text-cyan-200">{interimTranscript}</p>
-                <span className="text-[10px] uppercase font-mono tracking-widest text-cyan-500 font-semibold">
+              <div className="interim-message flex items-center gap-2.5 p-3 rounded-xl bg-cyan-950/30 border border-cyan-500/40 text-xs">
+                <Mic size={14} className="animate-pulse text-cyan-400 shrink-0" />
+                <p className="font-mono text-cyan-200 flex-1">{interimTranscript}</p>
+                <Badge variant="cyan" className="text-[9px] uppercase tracking-widest font-semibold">
                   Transcribing...
-                </span>
+                </Badge>
               </div>
             )}
 
-            {agentTranscript && <article className="chat-message chat-agent" aria-label="Live agent caption" aria-live="off"><span className="chat-avatar"><Bot size={16} /></span><div><div className="chat-meta"><strong>J.A.R.V.I.S.</strong><small>Speaking · live caption</small></div><p>{agentTranscript}</p></div></article>}
+            {agentTranscript && (
+              <article className="chat-message chat-agent flex gap-3 p-3.5 rounded-xl bg-cyan-950/25 border border-cyan-500/30 text-xs text-slate-100" aria-label="Live agent caption" aria-live="off">
+                <span className="chat-avatar w-7 h-7 rounded-lg bg-cyan-500/20 text-cyan-400 flex items-center justify-center shrink-0">
+                  <Bot size={15} />
+                </span>
+                <div className="flex-1 min-w-0">
+                  <div className="chat-meta flex items-center justify-between text-[11px] mb-1 font-mono">
+                    <strong className="text-cyan-400 font-semibold">J.A.R.V.I.S.</strong>
+                    <small className="text-cyan-500">Speaking · live caption</small>
+                  </div>
+                  <p className="leading-relaxed">{agentTranscript}</p>
+                </div>
+              </article>
+            )}
 
             {thinking && !agentTranscript && (
-              <div className="thinking-message">
-                <span className="thinking-dots">
-                  <i /><i /><i />
+              <div className="thinking-message flex items-center gap-2 p-3 text-xs text-amber-300 font-mono">
+                <span className="thinking-dots flex gap-1">
+                  <i className="w-1.5 h-1.5 bg-amber-400 rounded-full animate-bounce" />
+                  <i className="w-1.5 h-1.5 bg-amber-400 rounded-full animate-bounce [animation-delay:0.2s]" />
+                  <i className="w-1.5 h-1.5 bg-amber-400 rounded-full animate-bounce [animation-delay:0.4s]" />
                 </span>
                 <span>Evaluating telemetry & reasoning over SRE tools...</span>
               </div>
@@ -228,38 +257,42 @@ export const LiveTranscriptHUD: React.FC<Props> = ({
       </div>
 
       {/* Quick Action Chips */}
-      <div className="px-5 py-2 flex items-center gap-1.5 overflow-x-auto no-scrollbar border-t border-slate-800/60 bg-slate-950/40">
-        <span className="text-[10px] font-mono uppercase text-slate-500 font-semibold mr-1 flex items-center gap-1 shrink-0">
+      <div className="px-4 py-2 flex items-center gap-1.5 overflow-x-auto no-scrollbar border-t border-zinc-800 bg-zinc-950/60">
+        <span className="text-[10px] font-mono uppercase text-zinc-500 font-semibold mr-1 flex items-center gap-1 shrink-0">
           <Terminal size={11} /> Quick
         </span>
         {quickChips.map(chip => (
-          <button
+          <Button
             key={chip}
             type="button"
+            variant="outline"
+            size="sm"
             disabled={disabled}
             onClick={() => onSendText(chip)}
-            className="shrink-0 flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-medium bg-slate-800/80 hover:bg-slate-700/90 text-slate-300 hover:text-cyan-300 border border-slate-700/60 transition-colors"
+            className="shrink-0 h-6 px-2 text-[11px] font-medium border-zinc-800 bg-zinc-900/80 text-zinc-300 hover:text-cyan-300 hover:border-zinc-700"
           >
-            {chip.startsWith('Search') && <Globe size={11} className="text-cyan-400" />}
+            {chip.startsWith('Search') && <Globe size={11} className="text-cyan-400 mr-1" />}
             <span>{chip}</span>
-          </button>
+          </Button>
         ))}
       </div>
 
       {/* Conversation Controls */}
       <div className="conversation-controls">
-        <div className="voice-control-row">
-          <button
-            className={`button voice-button ${isRecording ? 'voice-active' : ''}`}
+        <div className="voice-control-row flex items-center justify-between gap-3">
+          <Button
+            variant={isRecording ? "destructive" : "cyan"}
+            size="sm"
+            className={`button voice-button gap-2 font-semibold ${isRecording ? 'voice-active' : ''}`}
             onClick={onToggleRecording}
             disabled={!isRecording && (disabled || !voiceAvailable || connecting)}
           >
-            {isRecording ? <MicOff size={18} /> : <Mic size={18} />}
+            {isRecording ? <MicOff size={16} /> : <Mic size={16} />}
             <span>{isRecording ? 'Stop microphone' : connecting ? 'Connecting…' : 'Start voice'}</span>
-          </button>
+          </Button>
 
           {/* Equalizer Visualizer */}
-          <div className="voice-level" aria-hidden="true">
+          <div className="voice-level flex items-center gap-0.5 h-6 px-2" aria-hidden="true">
             {Array.from({ length: 18 }, (_, i) => {
               const height = isRecording
                 ? 4 + Math.max(0, Math.min(1, audioLevel)) * (14 + 16 * Math.sin((i + 1) * 1.6) ** 2)
@@ -267,6 +300,7 @@ export const LiveTranscriptHUD: React.FC<Props> = ({
               return (
                 <span
                   key={i}
+                  className="w-1 bg-cyan-500 rounded-full transition-all"
                   style={{ height: `${height}px` }}
                 />
               );
@@ -275,34 +309,36 @@ export const LiveTranscriptHUD: React.FC<Props> = ({
 
           {/* Barge-in Button */}
           {speaking && (
-            <button
-              className="button button-secondary interrupt-button flex items-center gap-1.5 text-rose-300 hover:text-rose-200 border-rose-500/40 hover:border-rose-500/80 bg-rose-950/30"
+            <Button
+              variant="outline"
+              size="sm"
+              className="button button-secondary interrupt-button gap-1.5 text-rose-300 hover:text-rose-200 border-rose-500/40 hover:border-rose-500/80 bg-rose-950/30"
               onClick={onBargeIn}
             >
               <Square size={13} className="fill-current" />
               <span>Stop reply</span>
-            </button>
+            </Button>
           )}
 
-          <span className="voice-hint">
+          <Badge variant={isRecording ? "success" : "secondary"} className="text-[10px] font-mono tracking-wider">
             {isRecording ? '● MIC ACTIVE' : '○ MIC STANDBY'}
-          </span>
+          </Badge>
         </div>
 
         {providerMessage && (
-          <p role="status" className={`voice-provider-note ${providerState === 'error' ? 'text-amber-300' : ''}`}>
+          <p role="status" className={`voice-provider-note text-xs ${providerState === 'error' ? 'text-amber-300' : 'text-zinc-400'}`}>
             {providerMessage}
           </p>
         )}
 
         {!voiceAvailable && !providerMessage && (
-          <p className="voice-provider-note">
+          <p className="voice-provider-note text-xs text-zinc-400">
             Voice requires an AssemblyAI server key. Text input remains active below.
           </p>
         )}
 
         {/* Text Composer */}
-        <form className="command-composer" onSubmit={send}>
+        <form className="command-composer flex items-center gap-2" onSubmit={send}>
           <label className="sr-only" htmlFor="sre-command">SRE command</label>
           <input
             id="sre-command"
@@ -318,21 +354,24 @@ export const LiveTranscriptHUD: React.FC<Props> = ({
             }
             disabled={disabled}
             autoComplete="off"
+            className="flex-1 h-9 px-3 rounded-lg bg-zinc-900 border border-zinc-800 text-xs text-slate-100 placeholder:text-zinc-500 focus:outline-none focus:ring-1 focus:ring-cyan-400"
           />
-          <button
+          <Button
             type="submit"
-            className="send-button"
+            variant="cyan"
+            size="icon"
+            className="send-button h-9 w-9 shrink-0"
             aria-label="Send command"
             disabled={disabled || !input.trim()}
           >
-            <Send size={16} />
-          </button>
+            <Send size={15} />
+          </Button>
         </form>
 
-        <div className="composer-caption">
-          <span><CornerDownLeft size={11} />Enter to send</span>
-          <span className="text-amber-400/90 font-medium">
-            <ShieldAlert size={11} className="inline mr-1" />
+        <div className="composer-caption flex items-center justify-between text-[11px] text-zinc-500">
+          <span className="flex items-center gap-1"><CornerDownLeft size={11} />Enter to send</span>
+          <span className="text-amber-400/90 font-medium flex items-center gap-1">
+            <ShieldAlert size={11} />
             Changes require your approval
           </span>
         </div>

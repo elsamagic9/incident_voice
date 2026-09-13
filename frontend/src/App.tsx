@@ -15,6 +15,7 @@ import { ApprovalCard } from './components/ApprovalCard';
 import { SettingsView } from './components/SettingsView';
 import { UsageAnalyticsView } from './components/UsageAnalyticsView';
 import { ActivePage } from './components/MissionControlHeader';
+import { Button } from '@/components/ui/button';
 
 class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean }> {
   state = { hasError: false };
@@ -102,12 +103,30 @@ function Workspace() {
           <h1>Less typing. Faster triage<span className="accent-text">.</span></h1>
           <p className="muted">Investigate together. Make the next move with confidence.</p>
         </div>
-        <div className="heading-actions"><button className="button button-primary" disabled={disabled || !voice.incident} onClick={() => { setView('brief'); voice.sendTextCommand('Investigate the incident'); }}><Sparkles size={16} />Investigate incident</button>
-        <button className="button button-secondary" disabled={disabled || !voice.incident} onClick={report}>
-          <FileText size={16} />
-          {voice.postMortem ? 'Open incident report' : 'Create incident report'}
-          <ArrowUpRight size={15} />
-        </button></div>
+        <div className="heading-actions flex items-center gap-2.5">
+          <Button
+            variant="cyan"
+            size="sm"
+            className="button button-primary gap-1.5 font-semibold h-9"
+            disabled={disabled || !voice.incident}
+            onClick={() => { setView('brief'); voice.sendTextCommand('Investigate the incident'); }}
+          >
+            <Sparkles size={15} />
+            <span>Investigate incident</span>
+          </Button>
+
+          <Button
+            variant="outline"
+            size="sm"
+            className="button button-secondary gap-1.5 border-zinc-700 bg-zinc-900/80 text-zinc-300 hover:text-white h-9"
+            disabled={disabled || !voice.incident}
+            onClick={report}
+          >
+            <FileText size={15} />
+            <span>{voice.postMortem ? 'Open incident report' : 'Create incident report'}</span>
+            <ArrowUpRight size={14} />
+          </Button>
+        </div>
       </section>
 
       {voice.loginRequired && <section className="login-card" aria-labelledby="login-heading">
@@ -116,7 +135,9 @@ function Workspace() {
         <form onSubmit={async event => { event.preventDefault(); setSigningIn(true); try { await voice.login(accessToken); setAccessToken(''); } finally { setSigningIn(false); } }}>
           <label className="sr-only" htmlFor="operator-token">Operator access token</label>
           <input id="operator-token" type="password" placeholder="Operator access token" autoComplete="current-password" value={accessToken} onChange={event => setAccessToken(event.target.value)} required />
-          <button className="button button-primary" disabled={signingIn} type="submit">{signingIn ? 'Signing in…' : 'Sign in'}</button>
+          <Button variant="cyan" size="sm" className="button button-primary h-9 font-semibold" disabled={signingIn} type="submit">
+            {signingIn ? 'Signing in…' : 'Sign in'}
+          </Button>
         </form>
       </section>}
 
