@@ -3,23 +3,53 @@ import edge_tts
 from app.core.config import settings
 
 def clean_speech_text(text: str) -> str:
-    # Remove code blocks
+    # Remove code blocks and inline code
     text = re.sub(r'```.*?```', '', text, flags=re.DOTALL)
-    # Remove inline code
     text = re.sub(r'`([^`]+)`', r'\1', text)
-    # Remove markdown headers
+
+    # Remove markdown tables completely (rows with multiple | or divider rows)
+    lines = []
+    for line in text.splitlines():
+        trimmed = line.strip()
+        if trimmed.startswith('|') or re.match(r'^\|?[-:\s|]+\|?$', trimmed) or (trimmed.count('|') >= 2):
+            continue
+        lines.append(line)
+    text = '\n'.join(lines)
+
+    # Convert flow arrows and diagrams to spoken English
+    text = re.sub(r'[→←↔⇒➔➜]', ' to ', text)
+    text = re.sub(r'-->|->|==>|=>', ' to ', text)
+
+    # Remove emojis and miscellaneous non-verbal symbols
+    text = re.sub(r'[\U00010000-\U0010ffff]', '', text)
+    text = re.sub(r'[\u2000-\u3300]', ' ', text)
+
+    # Remove markdown headers and bullet points
     text = re.sub(r'^#+\s*', '', text, flags=re.MULTILINE)
-    # Remove bullet points
     text = re.sub(r'^\s*[-*+]\s+', '', text, flags=re.MULTILINE)
+
     # Remove markdown links [label](url) -> label
     text = re.sub(r'\[([^\]]+)\]\([^\)]+\)', r'\1', text)
-    # Remove markdown bold/italic (handles hyphens, dots, punctuation inside or adjacent)
+
+    # Remove markdown bold/italic
     text = re.sub(r'\*{1,3}(.+?)\*{1,3}', r'\1', text)
     text = re.sub(r'_{1,3}(.+?)_{1,3}', r'\1', text)
-    # Remove stray markdown symbols
-    text = text.replace('*', '').replace('#', '')
+
+    # Remove stray markdown symbols and pipes
+    text = text.replace('*', '').replace('#', '').replace('|', ' ')
+
     # Normalize whitespace
     text = re.sub(r'\s+', ' ', text).strip()
+
+    # Distill long technical responses so speech stays punchy and conversational
+    sentences = [s.strip() for s in re.split(r'(?<=[.!?])\s+', text) if s.strip()]
+    if len(sentences) > 4:
+        speech = ' '.join(sentences[:3])
+        last = sentences[-1]
+        if '?' in last or any(w in last.lower() for w in ['shall i', 'would you like', 'recommend', 'proceed', 'investigate']):
+            speech += ' ' + last
+        text = speech
+
     return text
 
 class TTSService:

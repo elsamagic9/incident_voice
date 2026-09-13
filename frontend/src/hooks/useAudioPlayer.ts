@@ -79,7 +79,8 @@ export function useAudioPlayer(onError?: (message: string) => void) {
         source.disconnect();
         if (!sources.current.size && generation.current === epoch) setIsPlaying(false);
       };
-      const start = Math.max(ctx.currentTime + 0.015, playhead.current);
+      const now = ctx.currentTime;
+      const start = playhead.current > now ? playhead.current : now + 0.005;
       playhead.current = start + buffer.duration;
       source.start(start);
       setIsPlaying(true);

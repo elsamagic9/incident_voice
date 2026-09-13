@@ -31,7 +31,12 @@ class PcmProcessor extends AudioWorkletProcessor {
 
     while (this.sourceIndex < len) {
       const idx = Math.floor(this.sourceIndex);
-      const sample = Math.max(-1, Math.min(1, channelData[idx]));
+      const nextIdx = Math.min(idx + 1, len - 1);
+      const frac = this.sourceIndex - idx;
+      const s0 = channelData[idx];
+      const s1 = channelData[nextIdx];
+      const interpolated = s0 + frac * (s1 - s0);
+      const sample = Math.max(-1, Math.min(1, interpolated));
       const int16 = sample < 0 ? sample * 0x8000 : sample * 0x7FFF;
 
       this.buffer[this.bufferIndex++] = int16;
