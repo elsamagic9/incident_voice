@@ -339,10 +339,7 @@ class DocumentService:
 
         # Root Cause Analysis Section
         story.append(Paragraph("<b>1. Executive Summary & Root Cause Analysis</b>", heading_style))
-        summary_text = incident_data.get(
-            "summary",
-            "Cascading latency degradation triggered by connection pool exhaustion on order-db, causing backpressure queueing on payment-service."
-        )
+        summary_text = incident_data.get("summary") or "Cascading latency degradation triggered by connection pool exhaustion on order-db, causing backpressure queueing on payment-service."
         story.append(Paragraph(summary_text, body_style))
         story.append(Spacer(1, 10))
 
@@ -422,10 +419,7 @@ class DocumentService:
 
         # Summary
         doc.add_heading("2. Root Cause Analysis", level=1)
-        doc.add_paragraph(incident_data.get(
-            "summary",
-            "Cascading latency degradation triggered by connection pool exhaustion on order-db, causing backpressure queueing on payment-service."
-        ))
+        doc.add_paragraph(incident_data.get("summary") or "Cascading latency degradation triggered by connection pool exhaustion on order-db, causing backpressure queueing on payment-service.")
 
         # Remediation Verification Receipts
         doc.add_heading("3. Remediation Verification Receipts", level=1)

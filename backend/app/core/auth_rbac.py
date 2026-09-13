@@ -218,13 +218,15 @@ class EnterpriseSecurityManager:
         self.challenge_ttl_seconds = 30.0
 
     def is_action_permitted(self, action, role=None):
-        if not operator_registry.session_is_valid(self._session):
+        session = current_session.get() or self._session
+        if not operator_registry.session_is_valid(session):
             return False
         allowed = ROLE_PERMISSIONS.get(self.current_role, [])
         return action in allowed and (role is None or action in ROLE_PERMISSIONS.get(role, []))
 
     def get_current_permissions(self):
-        if not operator_registry.session_is_valid(self._session):
+        session = current_session.get() or self._session
+        if not operator_registry.session_is_valid(session):
             return []
         return ROLE_PERMISSIONS.get(self.current_role, [])
 
@@ -234,7 +236,8 @@ class EnterpriseSecurityManager:
         return self.active_challenge
 
     def verify_vocal_authorization(self, text):
-        if not operator_registry.session_is_valid(self._session):
+        session = current_session.get() or self._session
+        if not operator_registry.session_is_valid(session):
             self.clear_challenge()
             return False, 'Operator credentials have been revoked.'
         if not self.active_challenge or time.time() - self.challenge_created_at > self.challenge_ttl_seconds:

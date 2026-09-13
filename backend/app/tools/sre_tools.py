@@ -383,7 +383,10 @@ def export_incident_report(format: str = "pdf", filename: str = ""):
         "severity": getattr(cluster_state.incident, "severity", "SEV-1") if cluster_state.incident else "SEV-1",
         "status": "RESOLVED" if getattr(cluster_state.incident, "resolved", True) else "ACTIVE",
         "commander": "Sarah Chen (SRE_COMMANDER)",
-        "summary": investigation_service.brief.get("executive_summary") if (investigation_service.brief and isinstance(investigation_service.brief, dict)) else "Database connection pool exhaustion caused cascading latency spike on payment-service.",
+        "summary": (
+            (investigation_service.brief.get("executive_summary") if (investigation_service.brief and isinstance(investigation_service.brief, dict)) else None)
+            or "Database connection pool exhaustion caused cascading latency spike on payment-service."
+        ),
         "receipts": [
             ["Action", "Target", "Δ Latency (p99)", "Δ Error Rate", "SLO Status"],
             ["restart_pod", "payment-service", "-1,240 ms", "-8.4%", "COMPLIANT"],
