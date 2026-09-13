@@ -22,26 +22,26 @@ export const ServiceHealthMatrix: React.FC<Props> = ({
   const nodes = Object.values(services).sort((a, b) => (order[a.status] ?? 2) - (order[b.status] ?? 2));
 
   return (
-    <div className="service-list space-y-3">
-      <div className="service-list-caption flex items-center justify-between text-xs px-1">
-        <span className="font-mono text-zinc-400">
+    <div className="space-y-3">
+      <div className="flex items-center justify-between text-xs px-1 text-muted-foreground font-mono">
+        <span>
           {infrastructureMode === 'simulation'
             ? 'Simulated service health'
             : 'Configured infrastructure health'}
         </span>
-        <span className="text-zinc-500 font-mono text-[10px]">Severity first</span>
+        <span className="text-[10px]">Severity first</span>
       </div>
 
       {!nodes.length && (
-        <Card className="diagnostic-empty py-12 text-center flex flex-col items-center justify-center border-dashed border-zinc-800 bg-zinc-950/40">
-          <div className="w-12 h-12 rounded-xl bg-zinc-900 border border-zinc-800 flex items-center justify-center text-zinc-400 mb-3">
-            <Server size={24} />
+        <div className="py-12 text-center flex flex-col items-center justify-center border border-dashed border-border rounded-xl bg-card/40">
+          <div className="w-10 h-10 rounded-lg bg-muted flex items-center justify-center text-muted-foreground mb-3">
+            <Server size={20} />
           </div>
-          <h3 className="text-slate-200 font-semibold text-sm">Awaiting Cluster Telemetry</h3>
-          <p className="text-zinc-400 text-xs mt-1 max-w-sm">
+          <h3 className="font-semibold text-sm text-foreground">Awaiting Cluster Telemetry</h3>
+          <p className="text-muted-foreground text-xs mt-1 max-w-sm">
             Connect to an incident session to stream real-time latency, error rates, and CPU metrics across services.
           </p>
-        </Card>
+        </div>
       )}
 
       {nodes.map(service => {
@@ -58,125 +58,118 @@ export const ServiceHealthMatrix: React.FC<Props> = ({
           ? 'success'
           : 'secondary';
 
-        const iconColor = isCritical
-          ? 'text-rose-400 bg-rose-500/15 border-rose-500/30'
-          : isDegraded
-          ? 'text-amber-400 bg-amber-500/15 border-amber-500/30'
-          : isHealthy
-          ? 'text-emerald-400 bg-emerald-500/15 border-emerald-500/30'
-          : 'text-zinc-400 bg-zinc-800 border-zinc-700';
-
-        const cpuColor = service.cpu_percent > 85 ? 'bg-rose-500' : service.cpu_percent > 65 ? 'bg-amber-500' : 'bg-cyan-500';
-
         return (
-          <Card key={service.id} className="service-row group p-4 border-zinc-800/80 bg-zinc-900/40 hover:border-zinc-700/80 transition-all space-y-3">
-            <div className="service-row-heading flex items-center justify-between gap-3">
-              <div className="flex items-center gap-3">
-                <span className={`service-icon w-9 h-9 rounded-lg flex items-center justify-center border ${iconColor} transition-transform group-hover:scale-105 shrink-0`}>
+          <Card key={service.id} className="border-border bg-card shadow-sm hover:border-border/80 transition-all p-4 space-y-3">
+            {/* Header: Identity & Status Badge */}
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-8 h-8 rounded-lg bg-secondary text-secondary-foreground flex items-center justify-center shrink-0">
                   {service.id.includes('db') || service.id.includes('redis') ? (
-                    <Database size={18} />
+                    <Database size={15} />
                   ) : (
-                    <Server size={18} />
+                    <Server size={15} />
                   )}
-                </span>
+                </div>
 
-                <div className="service-identity">
+                <div className="min-w-0">
                   <div className="flex items-center gap-2">
-                    <h3 className="font-mono text-xs text-slate-200 font-semibold group-hover:text-cyan-300 transition-colors">
+                    <h3 className="font-mono text-xs font-semibold text-foreground truncate">
                       {service.id}
                     </h3>
                     {service.replicas != null && service.replicas > 1 && (
-                      <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400 border border-zinc-700/60">
+                      <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-muted text-muted-foreground border border-border">
                         {service.replicas} pods
                       </span>
                     )}
                   </div>
-                  <p className="text-zinc-400 text-xs">{service.name}</p>
+                  <p className="text-muted-foreground text-xs truncate">{service.name}</p>
                 </div>
               </div>
 
-              <Badge variant={badgeVariant as any} className="status-tag gap-1 text-[10px] font-mono font-bold tracking-wider uppercase">
+              <Badge variant={badgeVariant as any} className="gap-1 text-[10px] font-mono uppercase">
                 {service.status === 'unknown' ? (
-                  <CircleHelp size={12} aria-label="Health unverified" />
+                  <CircleHelp size={11} aria-label="Health unverified" />
+                ) : isCritical ? (
+                  <AlertTriangle size={11} />
                 ) : isHealthy ? (
-                  <Check size={12} className="text-emerald-400" />
-                ) : (
-                  <span className={`status-dot w-1.5 h-1.5 rounded-full ${isCritical ? 'bg-rose-400 animate-ping' : 'bg-amber-400'}`} />
-                )}
-                <span>
-                  {service.status === 'unknown' ? 'Unverified' : service.status}
-                </span>
+                  <Check size={11} />
+                ) : null}
+                <span>{service.status}</span>
               </Badge>
             </div>
 
-            {/* Metric Metrics Grid */}
-            <dl className="service-metrics grid grid-cols-2 sm:grid-cols-4 gap-2 pt-2 border-t border-zinc-800/60 text-xs">
+            {/* Metrics Row */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-1 border-t border-border/60 text-xs">
               <div>
-                <dt className="text-zinc-500 text-[11px]">P99 Latency</dt>
-                <dd className={`font-mono font-medium ${known && service.latency_p99_ms > 1000 ? 'text-rose-400 font-bold' : known && service.latency_p99_ms > 300 ? 'text-amber-400' : 'text-slate-200'}`}>
+                <span className="text-[10px] font-mono uppercase text-muted-foreground block">P99 Latency</span>
+                <span className={`font-mono font-semibold ${isCritical ? 'text-destructive' : 'text-foreground'}`}>
                   {known ? `${service.latency_p99_ms.toFixed(0)} ms` : '—'}
-                </dd>
+                </span>
               </div>
 
               <div>
-                <dt className="text-zinc-500 text-[11px]">Error Rate</dt>
-                <dd className={`font-mono font-medium ${known && service.error_rate_pct > 5 ? 'text-rose-400 font-bold' : known && service.error_rate_pct > 1 ? 'text-amber-400' : 'text-slate-200'}`}>
+                <span className="text-[10px] font-mono uppercase text-muted-foreground block">Error Rate</span>
+                <span className={`font-mono font-semibold ${isCritical || isDegraded ? 'text-destructive' : 'text-foreground'}`}>
                   {known ? `${service.error_rate_pct.toFixed(1)}%` : '—'}
-                </dd>
+                </span>
               </div>
 
               <div>
-                <dt className="text-zinc-500 text-[11px]">CPU Load</dt>
-                <dd className="font-mono text-slate-200 flex items-center gap-2">
-                  <span>{known ? `${service.cpu_percent.toFixed(0)}%` : '—'}</span>
+                <span className="text-[10px] font-mono uppercase text-muted-foreground block">CPU Load</span>
+                <div className="flex items-center gap-2 mt-0.5">
+                  <span className="font-mono font-semibold text-foreground">
+                    {known ? `${service.cpu_percent.toFixed(0)}%` : '—'}
+                  </span>
                   {known && (
-                    <div className="w-12 h-1.5 bg-zinc-800 rounded-full overflow-hidden shrink-0">
-                      <div className={`h-full ${cpuColor} rounded-full`} style={{ width: `${Math.min(100, Math.max(5, service.cpu_percent))}%` }} />
+                    <div className="w-12 h-1.5 bg-muted rounded-full overflow-hidden">
+                      <div
+                        className={`h-full ${service.cpu_percent > 85 ? 'bg-destructive' : service.cpu_percent > 65 ? 'bg-amber-500' : 'bg-primary'}`}
+                        style={{ width: `${Math.min(100, service.cpu_percent)}%` }}
+                      />
                     </div>
                   )}
-                </dd>
+                </div>
               </div>
 
               <div>
-                <dt className="text-zinc-500 text-[11px]">Memory</dt>
-                <dd className="font-mono text-slate-200">
+                <span className="text-[10px] font-mono uppercase text-muted-foreground block">Memory</span>
+                <span className="font-mono font-semibold text-foreground">
                   {known ? `${service.memory_percent.toFixed(0)}%` : '—'}
-                </dd>
-              </div>
-            </dl>
-
-            {/* Service Alert & Quick Actions */}
-            {(service.active_alerts.length > 0 || onInspect) && (
-              <div className="service-row-footer flex items-center justify-between gap-2 pt-2 border-t border-zinc-800/60 text-xs">
-                <span className="service-alert flex items-center gap-1.5 min-w-0" title={service.active_alerts.join(', ')}>
-                  {service.active_alerts.length > 0 ? (
-                    <>
-                      <AlertTriangle size={12} className="text-rose-400 shrink-0" />
-                      <span className="text-rose-300 font-mono text-[11px] font-medium truncate">
-                        {service.active_alerts[0]}
-                        {service.active_alerts.length > 1 && ` (+${service.active_alerts.length - 1} more)`}
-                      </span>
-                    </>
-                  ) : (
-                    <span className="text-zinc-500 font-mono text-[11px]">No active anomaly alerts</span>
-                  )}
                 </span>
+              </div>
+            </div>
 
-                {onInspect && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="text-button h-6 px-2 text-xs hover:text-cyan-300 flex items-center gap-1 font-medium text-zinc-400"
-                    onClick={() => onInspect(service.id)}
-                    disabled={disabled}
-                    aria-label={`Inspect ${service.id} logs`}
-                  >
-                    <span>Inspect logs</span>
-                    <ArrowUpRight size={13} />
-                  </Button>
+            {/* Active Alerts & Inspect Logs Button */}
+            <div className="flex items-center justify-between gap-2 pt-1">
+              <div className="flex items-center gap-1.5 min-w-0">
+                {service.active_alerts?.length ? (
+                  <span className="text-[11px] font-mono text-destructive flex items-center gap-1 truncate">
+                    <AlertTriangle size={12} className="shrink-0" />
+                    <span>{service.active_alerts[0]}</span>
+                    {service.active_alerts.length > 1 && (
+                      <span className="text-muted-foreground">+{service.active_alerts.length - 1} more</span>
+                    )}
+                  </span>
+                ) : (
+                  <span className="text-[11px] text-muted-foreground flex items-center gap-1">
+                    <Check size={12} className="text-emerald-500" /> All probes nominal
+                  </span>
                 )}
               </div>
-            )}
+
+              {onInspect && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  disabled={disabled}
+                  onClick={() => onInspect(service.id)}
+                  className="h-7 px-2.5 text-xs text-muted-foreground hover:text-foreground font-mono shrink-0"
+                >
+                  <span>Inspect {service.id} logs</span>
+                  <ArrowUpRight size={12} className="ml-1" />
+                </Button>
+              )}
+            </div>
           </Card>
         );
       })}
