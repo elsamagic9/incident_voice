@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import React from 'react';
 import {
-  AudioLines, ChevronDown, Settings2, RefreshCw, Zap, Sliders,
-  ShieldCheck, Activity, Radio, Cpu, BarChart3, LayoutDashboard
+  AudioLines, Zap, Sliders,
+  Activity, Radio, Cpu, BarChart3, LayoutDashboard
 } from 'lucide-react';
 import { AgentStatus, IncidentRecord, VoiceEngine } from '../types';
 import { LatencyStats } from '../hooks/useVoiceStream';
@@ -16,13 +16,10 @@ interface Props {
   activeEngine: VoiceEngine;
   providerState?: string;
   providerErrorCode?: string | null;
-  infrastructureMode?: string;
-  rbacRole?: string;
   busy?: boolean;
   autopilotEnabled?: boolean;
   onToggleAutopilot?: () => void;
   onSelectEngine: (engine: VoiceEngine) => void;
-  onReset: () => void;
   activePage?: ActivePage;
   onNavigate?: (page: ActivePage) => void;
 }
@@ -33,18 +30,14 @@ export const MissionControlHeader: React.FC<Props> = ({
   activeEngine,
   providerState = 'idle',
   providerErrorCode,
-  infrastructureMode,
-  rbacRole,
   busy,
   autopilotEnabled,
   onToggleAutopilot,
   onSelectEngine,
-  onReset,
   agentStatus,
   activePage = 'mission_control',
   onNavigate,
 }) => {
-  const [settingsOpen, setSettingsOpen] = useState(false);
   const disabled = !isConnected || busy;
 
   // Engine connection badge
@@ -238,123 +231,8 @@ export const MissionControlHeader: React.FC<Props> = ({
             </button>
           )}
 
-          {/* Settings / Deep Config Dropdown Toggle */}
-          <button
-            className={`button button-quiet ${settingsOpen ? 'is-active' : ''}`}
-            aria-expanded={settingsOpen}
-            aria-label="Settings"
-            aria-controls="workspace-settings"
-            onClick={() => setSettingsOpen(!settingsOpen)}
-          >
-            <Settings2 size={16} />
-            <span className="hidden sm:inline">Settings</span>
-            <ChevronDown size={14} className={`transition-transform duration-200 ${settingsOpen ? 'rotate-180' : ''}`} />
-          </button>
         </div>
       </div>
-
-      {/* Expanded Settings & Diagnostics Panel */}
-      {settingsOpen && (
-        <section id="workspace-settings" className="settings-panel" aria-label="Workspace settings">
-          <div>
-            <label htmlFor="voice-engine" className="field-label flex items-center gap-2">
-              <Sliders size={14} className="text-cyan-400" />
-              Voice Orchestration Engine
-            </label>
-            <select
-              id="voice-engine"
-              disabled={disabled}
-              value={activeEngine}
-              onChange={event => onSelectEngine(event.target.value as VoiceEngine)}
-              className="mt-2 w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-xs text-slate-200 focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500"
-            >
-              <option value="voice_agent_api">Path 1 · AssemblyAI Voice Agent API (Managed WebRTC/WS)</option>
-              <option value="custom_stt_v3">Path 2 · Streaming v3 STT + Custom Tool Calling + LLM Gateway</option>
-            </select>
-            <p className="field-help mt-2">
-              Switching engines cleanly migrates session state and re-initializes audio streaming without losing incident context.
-            </p>
-          </div>
-
-          <div>
-            <p className="field-label flex items-center gap-2">
-              <ShieldCheck size={14} className="text-emerald-400" />
-              SRE Security & Autopilot
-            </p>
-            <div className="flex items-center gap-2 mt-2">
-              <span className="px-2.5 py-1 rounded bg-slate-800 border border-slate-700 font-mono text-xs text-cyan-300">
-                {rbacRole ? rbacRole.toUpperCase() : 'ANONYMOUS'}
-              </span>
-              <span className="text-xs text-slate-400">
-                {infrastructureMode === 'docker' ? 'Docker Host Bridge' : infrastructureMode === 'kubernetes' ? 'K8s Multi-Cluster' : 'Demo Simulator'}
-              </span>
-            </div>
-            {onToggleAutopilot && (
-              <label className="switch-label mt-3 flex items-center gap-2 text-xs text-slate-300 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={!!autopilotEnabled}
-                  disabled={disabled}
-                  onChange={onToggleAutopilot}
-                  className="rounded border-slate-700 text-cyan-500 focus:ring-cyan-500"
-                />
-                Auto-approve safe diagnostic and remediation actions
-              </label>
-            )}
-            <div className="mt-3 pt-2 border-t border-slate-800">
-              <button className="text-button text-xs text-rose-400 hover:text-rose-300 flex items-center gap-1.5" onClick={onReset} disabled={disabled}>
-                <RefreshCw size={13} />
-                Emergency Incident Reset
-              </button>
-            </div>
-          </div>
-
-          <div>
-            <p className="field-label flex items-center gap-2">
-              <Activity size={14} className="text-cyan-400" />
-              Sub-Second Acoustic Latency Profile
-            </p>
-            <dl className="latency-grid mt-2">
-              {([
-                ['Speech Recognition (STT)', latency.stt_ms],
-                ['LLM Reasoning & Tools', latency.tool_ms],
-                ['TTS Synthesis', latency.tts_ms],
-                ['Round-Trip End-to-End', latency.total_ms]
-              ] as const).map(([label, value]) => (
-                <div key={label} className="flex justify-between py-1 border-b border-slate-800/60 text-xs">
-                  <dt className="text-slate-400">{label}</dt>
-                  <dd className="font-mono text-cyan-300 font-medium">
-                    {value == null ? '—' : `${value.toFixed(0)} ms`}
-                  </dd>
-                </div>
-              ))}
-            </dl>
-            <p className="field-help mt-2">AssemblyAI Universal-3 Pro yields sub-300ms transcription turn-around.</p>
-          </div>
-
-          <div className="col-span-full pt-3 mt-1 border-t border-slate-800/80 flex flex-wrap items-center justify-between gap-3">
-            <span className="text-xs text-slate-400">Deep tuning, API credentials, and incident forensics:</span>
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                className="button button-secondary text-xs flex items-center gap-1.5"
-                onClick={() => { setSettingsOpen(false); onNavigate?.('usage'); }}
-              >
-                <BarChart3 size={13} className="text-cyan-400" />
-                <span>Open Usage Graph</span>
-              </button>
-              <button
-                type="button"
-                className="button button-primary text-xs flex items-center gap-1.5"
-                onClick={() => { setSettingsOpen(false); onNavigate?.('settings'); }}
-              >
-                <Sliders size={13} />
-                <span>Open System Settings</span>
-              </button>
-            </div>
-          </div>
-        </section>
-      )}
     </header>
   );
 };

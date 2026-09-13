@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import {
-  Network, Server, ShieldAlert, Zap
+  Network, Server, ShieldAlert
 } from 'lucide-react';
 import { ServiceTopology, TopologyNode, TopologyEdge } from '../types';
 
@@ -19,114 +19,8 @@ export const ServiceDependencyGraph: React.FC<Props> = ({ topology, onSendAction
   );
   const selectedNode = topology.nodes.find(node => node.id === selectedNodeId);
 
-  // Fallback default topology if not yet received via WebSocket
-  const nodes: TopologyNode[] = topology?.nodes || [
-    {
-      id: 'client-traffic',
-      name: 'External Client Traffic',
-      type: 'client',
-      status: 'healthy',
-      rps: 8400,
-      latency_p99_ms: 12,
-      cpu_percent: 10,
-      memory_percent: 15,
-      error_rate_pct: 0,
-      is_blast_radius: false,
-      is_bottleneck: false,
-      active_alerts: [],
-      x: 60,
-      y: 160
-    },
-    {
-      id: 'ingress-gateway',
-      name: 'Envoy Ingress Gateway',
-      type: 'gateway',
-      status: 'degraded',
-      rps: 8400,
-      latency_p99_ms: 480,
-      cpu_percent: 68.2,
-      memory_percent: 55,
-      error_rate_pct: 14.8,
-      is_blast_radius: true,
-      is_bottleneck: false,
-      active_alerts: ['HighDownstream5xxRate'],
-      x: 270,
-      y: 160
-    },
-    {
-      id: 'auth-service',
-      name: 'Auth Broker (OAuth2)',
-      type: 'service',
-      status: 'healthy',
-      rps: 2100,
-      latency_p99_ms: 18,
-      cpu_percent: 18,
-      memory_percent: 32,
-      error_rate_pct: 0.01,
-      is_blast_radius: false,
-      is_bottleneck: false,
-      active_alerts: [],
-      x: 500,
-      y: 60
-    },
-    {
-      id: 'payment-service',
-      name: 'Payment Processing Core',
-      type: 'service',
-      status: 'critical',
-      rps: 6300,
-      latency_p99_ms: 2850,
-      cpu_percent: 94.5,
-      memory_percent: 89.2,
-      error_rate_pct: 42.6,
-      is_blast_radius: true,
-      is_bottleneck: true,
-      active_alerts: ['PodCrashLoopBackoff', 'PostgresPoolExhausted'],
-      x: 500,
-      y: 260
-    },
-    {
-      id: 'order-db',
-      name: 'PostgreSQL Primary Pool',
-      type: 'database',
-      status: 'critical',
-      rps: 4200,
-      latency_p99_ms: 1450,
-      cpu_percent: 88.4,
-      memory_percent: 91,
-      error_rate_pct: 12,
-      is_blast_radius: true,
-      is_bottleneck: true,
-      active_alerts: ['ConnectionCountMaxed'],
-      x: 740,
-      y: 180
-    },
-    {
-      id: 'redis-cache',
-      name: 'Redis Cluster (Locks & Cache)',
-      type: 'cache',
-      status: 'degraded',
-      rps: 5100,
-      latency_p99_ms: 180,
-      cpu_percent: 72,
-      memory_percent: 81,
-      error_rate_pct: 6.5,
-      is_blast_radius: true,
-      is_bottleneck: false,
-      active_alerts: ['MemoryUsageAbove80Pct'],
-      x: 740,
-      y: 330
-    }
-  ];
-
-  const edges: TopologyEdge[] = topology?.edges || [
-    { id: 'e1', source: 'client-traffic', target: 'ingress-gateway', rps: 8400, latency_ms: 14, status: 'healthy', error_rate_pct: 0, protocol: 'HTTPS' },
-    { id: 'e2', source: 'ingress-gateway', target: 'auth-service', rps: 2100, latency_ms: 18, status: 'healthy', error_rate_pct: 0.01, protocol: 'gRPC' },
-    { id: 'e3', source: 'ingress-gateway', target: 'payment-service', rps: 6300, latency_ms: 2850, status: 'critical', error_rate_pct: 42.6, protocol: 'gRPC' },
-    { id: 'e4', source: 'payment-service', target: 'order-db', rps: 4200, latency_ms: 1450, status: 'critical', error_rate_pct: 12, protocol: 'TCP / Pool' },
-    { id: 'e5', source: 'payment-service', target: 'redis-cache', rps: 5100, latency_ms: 180, status: 'congested', error_rate_pct: 6.5, protocol: 'RESP' }
-  ];
-
+  const nodes: TopologyNode[] = topology.nodes;
+  const edges: TopologyEdge[] = topology.edges;
   const blastRadius = topology.blast_radius_service_ids || [];
   const hasCascading = topology.cascading_failure_active ?? false;
 
@@ -159,11 +53,8 @@ export const ServiceDependencyGraph: React.FC<Props> = ({ topology, onSendAction
           <div>
             <div className="flex items-center gap-2">
               <h3 className="text-xs font-bold uppercase tracking-wider text-slate-100 font-sans">
-                Simulated Service Dependency Graph & Blast Radius
+                Service Dependency Graph & Blast Radius
               </h3>
-              <span className="text-[10px] px-2.5 py-0.5 rounded-full bg-cyan-500/10 text-cyan-300 border border-cyan-500/30 font-mono flex items-center gap-1 font-semibold">
-                <Zap className="w-3 h-3 text-cyan-400" /> Demo Traffic Flow
-              </span>
             </div>
             <p className="text-[11px] text-slate-400 mt-0.5">
               Interactive topology map tracing request bottlenecks and cascading failure propagation.

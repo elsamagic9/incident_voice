@@ -2,14 +2,20 @@
 Comprehensive Real-Engineer System Validation Harness for IncidentVoice.
 Validates live WebSockets, AssemblyAI Voice Engines, SRE tool dispatch,
 two-phase safety gates, chaos simulation, runbook workflows, and adversarial bounds.
+
+Live-only: run with --live against a running backend (default http://localhost:8000).
 """
 import asyncio
 import os
+import sys
 import json
 import secrets
 import time
 import httpx
 import websockets
+
+if '--live' not in sys.argv and os.environ.get('RUN_LIVE_TESTS') != '1':
+    raise SystemExit('This harness is live-only. Start the backend, then rerun passing --live.')
 
 BACKEND_HTTP = "http://localhost:8000"
 BACKEND_WS = "ws://localhost:8000/ws/agent"

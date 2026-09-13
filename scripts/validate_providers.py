@@ -1,4 +1,9 @@
-"""Live API checks with isolated simulated data. Uses provider quota; never changes infrastructure."""
+"""Live API checks with isolated simulated data. Uses provider quota; never changes infrastructure.
+
+Run live checks explicitly:  python scripts/validate_providers.py --live
+The script refuses to run without --live (or RUN_LIVE_TESTS=1) to prevent accidental
+quota use and external calls.
+"""
 import asyncio, json, secrets, sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'backend'))
@@ -11,6 +16,10 @@ from app.services.assemblyai_voice_agent import AssemblyAIVoiceAgentSession
 from app.services.lemur_service import lemur_service
 from app.services.investigation import investigation_service
 from app.services.orchestrator import agent_orchestrator
+
+import os
+if '--live' not in sys.argv and os.environ.get('RUN_LIVE_TESTS') != '1':
+    raise SystemExit('Provider checks are live-only. Rerun with:  python scripts/validate_providers.py --live')
 
 async def main():
     if not settings.assemblyai_api_key:

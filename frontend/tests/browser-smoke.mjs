@@ -80,26 +80,26 @@ try {
 
   // Test Top-Level Navigation to System Settings
   await page.getByRole('button', { name: 'System Settings' }).click();
-  await page.getByRole('heading', { name: 'Workspace Settings & SRE Policies' }).waitFor();
+  await page.getByRole('heading', { name: 'Settings & Preferences' }).waitFor();
   assert(await page.getByText('AssemblyAI Orchestration Mode').isVisible());
-  await page.getByRole('button', { name: 'AI Gateway' }).click();
-  assert(await page.getByText('Reasoning Model & Synthesis Architecture').isVisible());
   await page.screenshot({ path: '/tmp/opencode/incident-voice-settings.png', fullPage: true });
 
   // Navigate back to Mission Control
   await page.getByLabel('Back to Mission Control').click();
   await page.getByRole('heading', { name: /Less typing/ }).waitFor();
 
-  for (const viewport of [{ width: 375, height: 812 }, { width: 812, height: 375 }, { width: 768, height: 1024 }]) {
+  // Activate a runbook so its banner (status tag + Abort action) is part of the responsive check.
+  await page.getByLabel('SRE command').fill('Start the Postgres runbook');
+  await page.getByRole('button', { name: 'Send command', exact: true }).click();
+  await page.getByText('Active SOP Workflow').waitFor();
+
+  for (const viewport of [{ width: 320, height: 568 }, { width: 375, height: 812 }, { width: 812, height: 375 }, { width: 768, height: 1024 }]) {
     await page.setViewportSize(viewport);
     if (viewport.width === 375) await page.screenshot({ path: '/tmp/opencode/incident-voice-mobile.png', fullPage: true });
     assert(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1), `Page overflows at ${viewport.width}px`);
     await page.getByRole('button', { name: 'Demo lab', exact: true }).click();
     await page.getByRole('button', { name: /Ingress Traffic Surge/ }).click();
     await page.getByRole('button', { name: 'Services', exact: true }).click();
-    await page.getByRole('button', { name: 'Settings', exact: true }).click();
-    assert(await page.locator('#voice-engine').isVisible());
-    await page.getByRole('button', { name: 'Settings', exact: true }).click();
     if (viewport.width === 375) {
       await page.getByRole('heading', { name: /Less typing/ }).scrollIntoViewIfNeeded();
       await page.screenshot({ path: '/tmp/opencode/incident-voice-mobile.png', fullPage: true });

@@ -43,50 +43,23 @@ const mockVoiceState = () => ({
 });
 
 describe('SettingsView Component', () => {
-  it('renders all settings tabs and switches between them', () => {
+  it('renders real settings tabs and switches between them', () => {
     const onNavigateBack = vi.fn();
     render(<SettingsView onNavigateBack={onNavigateBack} />);
 
-    expect(screen.getByText('Workspace Settings & SRE Policies')).toBeTruthy();
+    expect(screen.getByText('Settings & Preferences')).toBeTruthy();
 
-    // Tab 1: Voice & Audio is active by default
+    // Tab 1: Voice Engine is active by default
     expect(screen.getByText('AssemblyAI Orchestration Mode')).toBeTruthy();
     expect(screen.getByText('Path 1: Voice Agent API')).toBeTruthy();
 
-    // Switch to AI Gateway Tab
-    fireEvent.click(screen.getByRole('button', { name: /AI Gateway/ }));
-    expect(screen.getByText('Reasoning Model & Synthesis Architecture')).toBeTruthy();
-    expect(screen.getByText(/Primary Reasoning Gateway/)).toBeTruthy();
-
-    // Switch to SRE Policy Tab
-    fireEvent.click(screen.getByRole('button', { name: /SRE Policy/ }));
-    expect(screen.getByText('Two-Phase Safety Guardrails & Autopilot')).toBeTruthy();
-    expect(screen.getByText(/Two-Phase Guarded/)).toBeTruthy();
-
-    // Switch to Cluster & Infra Tab
-    fireEvent.click(screen.getByRole('button', { name: /Cluster & Infra/ }));
-    expect(screen.getByText('Cluster Interconnect & Host Bridge')).toBeTruthy();
-
     // Switch to Storage & Reset Tab
-    fireEvent.click(screen.getByRole('button', { name: /Storage & Reset/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Incident Reset/ }));
     expect(screen.getByText('Emergency Incident State Reset')).toBeTruthy();
 
     // Navigate back
     fireEvent.click(screen.getByLabelText('Back to Mission Control'));
     expect(onNavigateBack).toHaveBeenCalledOnce();
-  });
-
-  it('updates VAD sensitivity and persists to localStorage', () => {
-    localStorage.clear();
-    render(<SettingsView onNavigateBack={vi.fn()} />);
-
-    const slider = screen.getAllByRole('slider')[0];
-    fireEvent.change(slider, { target: { value: '0.75' } });
-
-    expect(screen.getByText('75%')).toBeTruthy();
-    const saved = localStorage.getItem('jarvis_sre_settings_v1');
-    expect(saved).not.toBeNull();
-    expect(JSON.parse(saved!).vadSensitivity).toBe(0.75);
   });
 });
 
@@ -145,7 +118,7 @@ describe('App Top-Level Page Navigation', () => {
     // Click System Settings in top navigation
     const nav = screen.getByRole('navigation', { name: 'Page navigation' });
     fireEvent.click(within(nav).getByRole('button', { name: /System Settings/ }));
-    expect(screen.getByText('Workspace Settings & SRE Policies')).toBeTruthy();
+    expect(screen.getByText('Settings & Preferences')).toBeTruthy();
 
     // Click Back to Mission Control via back button
     fireEvent.click(screen.getByLabelText('Back to Mission Control'));

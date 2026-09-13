@@ -173,10 +173,10 @@ All credentials are encrypted/hashed in a private, transactional SQLite database
 All backend and frontend test suites are fully automated, reproducible, and passing:
 
 ```bash
-# Run all 224 backend pytest tests (WAL, RBAC, telemetry, tools, multimodal, fidelity, Path 1)
+# Run all 240 backend pytest tests (WAL, RBAC, telemetry, tools, multimodal, fidelity, Path 1)
 cd backend && .venv/bin/pytest tests/
 
-# Run all 37 frontend vitest tests across 7 test suites
+# Run all 36 frontend vitest tests across 7 test suites
 cd frontend && npm test -- --run
 
 # Run full 61-turn benchmark evaluation harness

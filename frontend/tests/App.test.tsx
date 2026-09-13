@@ -30,8 +30,6 @@ describe('Mission control regression coverage', () => {
   it('renders unknown latency without crashing or claiming live Docker', () => {
     render(<App />);
     expect(screen.queryByText('Something went wrong')).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
-    expect(within(screen.getByRole('region', { name: 'Workspace settings' })).getAllByText('—')).toHaveLength(4);
     expect(screen.getByText('Demo simulation · no live changes')).toBeTruthy();
     expect(screen.queryByText('Docker Live (Host)')).toBeNull();
     expect(screen.getByRole('region', { name: 'Investigation tools' })).toBeTruthy();
@@ -70,9 +68,7 @@ describe('Mission control regression coverage', () => {
   it('hides simulation controls in live infrastructure mode', () => {
     voice.operator.infrastructure_mode = 'docker';
     render(<App />);
-    fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
     expect(screen.queryByRole('button', { name: 'Demo lab' })).toBeNull();
-    expect(screen.queryByLabelText('Auto-approve demo actions')).toBeNull();
   });
 
   it('submits typed commands and keeps voice disabled without credentials', () => {

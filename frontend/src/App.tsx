@@ -67,9 +67,9 @@ function Workspace() {
     <MissionControlHeader incident={voice.incident} agentStatus={voice.isPlaying ? 'speaking' : voice.agentStatus}
       isConnected={voice.isConnected} latency={voice.latency} activeEngine={voice.activeEngine}
       providerState={voice.providerState} providerErrorCode={voice.providerErrorCode}
-      infrastructureMode={voice.operator?.infrastructure_mode} rbacRole={voice.operator?.role} busy={voice.busy}
+      busy={voice.busy}
       autopilotEnabled={voice.autopilotEnabled} onToggleAutopilot={simulation ? voice.toggleAutopilot : undefined}
-      onSelectEngine={voice.selectEngine} onReset={voice.resetIncident}
+      onSelectEngine={voice.selectEngine}
       activePage={activePage} onNavigate={setActivePage} />
 
     <main id="workspace" className="workspace-main">

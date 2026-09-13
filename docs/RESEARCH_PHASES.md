@@ -42,7 +42,7 @@ This inventory preserves the scope; implementation plans are written below only 
 - Gateway contract validation: malformed arguments (empty list, non-JSON, missing/extra fields, wrong types) never become an executable default and never mask the provider error; tool failure returns a visible failed event and is not swallowed or replayed.
 - Outcome integrity: health summaries preserve `unknown`/`degraded` states (no all-healthy claim from a degraded/unknown fleet); host vitals require authentication and never invent unmeasured metrics.
 - `test_winning_features.py`: voice confirm/cancel preserves arguments (`count=8`), provider failure falls back with a visible recorded reason, OpenAI function-call roundtrip threads `tool_call_id`, AssemblyAI LLM gateway executes tools and answers conversational turns without hallucinating tools, managed voice shares the approval boundary.
-- Full backend suite → 224 passed, 1 opt-in live test skipped; frontend → 37 passed.
+- Full backend suite → 240 passed, 1 opt-in live test skipped; frontend → 36 passed.
 
 Completion gates: regression cases pass; approval and session invariants remain intact; provider-backed tool sequence is observed; no unsupported success claims in tested cases. Earlier test record; completion not established (128 backend tests, 32 frontend tests passing).
 
@@ -68,7 +68,7 @@ Status: offline verification completed; remaining live gates are the real Assemb
 - `clean_speech_text` (tts_service.py) strips markdown/code fences/URLs while preserving technical identifiers (`payment-service`, `p99 > 1200ms`, `kubectl get pods -n production`, `J.A.R.V.I.S.`); empty/whitespace/code-only text normalizes to empty (fidelity tests 1–2).
 - Managed voice (assemblyai_voice_agent.py) accumulates `transcript.agent.delta` per `reply_id`, ignores stale deltas from other reply ids, and emits exactly one final turn (fidelity test 3).
 - Blackbox recorder validates PCM parity and sample rate (24 kHz PCM16 only), records per-speaker tracks and markers, exports a valid single-channel 16-bit 24 kHz WAV of correct duration, and rejects odd-byte or unsupported-rate input (fidelity tests 4–5).
-- `pytest tests/test_voice_fidelity.py` → 5 passed; full backend suite → 224 passed, 1 opt-in live test skipped; frontend → 37 passed.
+- `pytest tests/test_voice_fidelity.py` → 5 passed; full backend suite → 240 passed, 1 opt-in live test skipped; frontend → 36 passed.
 
 Status: offline/synthetic fidelity completed and verified against the papers above; remaining live gates are physical microphone/speaker rehearsal, reviewed recordings, and timed first-audio/interruption evidence (see audit R2, R6).
 
@@ -91,7 +91,7 @@ Status: offline/synthetic fidelity completed and verified against the papers abo
 - The paper-based ARIES analysis in the completion audit stands as the governing design: transactional per-session checkpoints (log-then-data, fail-closed on corruption) supersede the earlier global-startup-replay note; the WAL service is retained as a corrupt-stopping event journal (`wal_service.py` documents that authoritative recovery uses `session_store` checkpoints). Verified independently: ARIES append-only log + redo/undo mapping, ALCE immutable addressed observations, SQLite WAL (§2–3) transaction recovery.
 - `test_wal_persistence.py` (3 cases): monotonic LSN + prev-LSN chain + SHA-256 checksums, replay reconstructs incident status/timeline/audit chain with unconfirmed staged mutations surfaced as unconfirmed, and a tampered/forged record stops the sequence instead of being skipped.
 - `test_session_recovery.py` (8 cases): two isolated sessions restore exact evidence, WAV audio, audit chain and expired pending approvals; logout and the 8-hour TTL delete saved recordings; a failed checkpoint stops infrastructure execution and retains the last commit; an interrupted approved action is reported "outcome is unknown" and is never replayed; snapshot/audio corruption fails closed on checksum; confirmed service change and receipts survive restart; audio insert failure rolls back the snapshot transaction; a real subprocess process-exit test recovers two isolated browser cookies across a genuine restart.
-- `pytest tests/test_session_recovery.py tests/test_wal_persistence.py` → 11 passed; full backend suite → 224 passed, 1 opt-in live test skipped; frontend → 37 passed.
+- `pytest tests/test_session_recovery.py tests/test_wal_persistence.py` → 11 passed; full backend suite → 240 passed, 1 opt-in live test skipped; frontend → 36 passed.
 
 Completion gates: incident state, audit chain, and investigation baselines survive server restarts; unconfirmed staged actions cleanly expire on recovery; all existing 133 backend tests and new WAL recovery tests pass. Earlier test record; completion not established (136 tests passing).
 
@@ -120,7 +120,7 @@ Status: offline restart/isolation/durability verification completed; remaining g
 - `test_operator_credentials.py` (11 cases): published sample credentials are not installed; token rotation invalidates the old cookie and cached permissions; revocation persists and is visible to a fresh registry; a shared token cannot reassign identity; configured-secret rotation/removal; role change invalidates cached commander access; unknown identity denied; authenticated refresh preserves session and incident; live-mode individual identity works without a shared secret; configuring the first operator invalidates the anonymous session; revocation closes an existing WebSocket.
 - `test_multi_operator_rbac.py` (6 cases): registry authentication, session endpoint individual identities, RBAC permission boundaries through the orchestrator (each role's tool/approve rights), revocation immediacy, non-commanders cannot revoke credentials, audit ledger operator attribution + chain integrity.
 - `test_audit_regressions.py` (14 cases): placeholder credentials unconfigured, live incidents start without simulated evidence, Kubernetes readiness requires real running containers, voice abort stops runbook + pending action, topology quick-prompt routing, managed-approval message role, interrupted managed reply discards queued tools, tool-reply wait does not lock operator controls, replica count never parsed from incident id/signs, docker stderr retention, unique recording markers after history limit, typed managed command explicitness.
-- `pytest tests/test_multi_operator_rbac.py tests/test_operator_credentials.py tests/test_audit_regressions.py` → 36 passed; full backend suite → 224 passed, 1 opt-in live test skipped; frontend → 37 passed.
+- `pytest tests/test_multi_operator_rbac.py tests/test_operator_credentials.py tests/test_audit_regressions.py` → 36 passed; full backend suite → 240 passed, 1 opt-in live test skipped; frontend → 36 passed.
 
 Completion gates: individual operator tokens authenticate distinct identities and roles; `READ_ONLY_OBSERVER` and `INCIDENT_RESPONDER` cannot execute unpermitted mutations; revoking an operator token immediately invalidates their session and staged actions; audit ledger attributes events to specific operator IDs; all unit tests pass. Earlier test record; completion not established (142 tests passing).
 
@@ -148,7 +148,7 @@ Status: offline RBAC verification completed; remaining gates are the deployed-ru
 - `investigation.record_receipt` (lines ~177–196) computes quantitative Δlatency, Δerror and Δsaturation between pre-mutation baseline and post-observation snapshot, with `verified_improvement` only when deltas are non-positive and comparable; unmeasurable deltas are `None`, not zero.
 - `test_infra_bridge.py` (6 cases): authenticated host telemetry, simulation never contacts Docker, docker restart executes the configured target exactly once, live Docker failure never heals simulation state, live unknown metrics are never reported as measurements, Kubernetes restart failure is returned.
 - `test_live_telemetry_receipts.py` (5 cases): golden signals in telemetry query, golden signals in service snapshot, deep host telemetry (network/disk/process), remediation receipt quantitative deltas, recovery verification gated on golden-signal SLOs.
-- `pytest tests/test_infra_bridge.py tests/test_live_telemetry_receipts.py` → 11 passed; full backend suite → 224 passed, 1 opt-in live test skipped; frontend → 37 passed.
+- `pytest tests/test_infra_bridge.py tests/test_live_telemetry_receipts.py` → 11 passed; full backend suite → 240 passed, 1 opt-in live test skipped; frontend → 36 passed.
 
 Completion gates: all services report golden signals with timestamps; remediation receipts calculate verified metric deltas; recovery verification gates on SLO thresholds; host diagnostics expose real network/disk I/O; all unit tests pass. Earlier test record; completion not established (147 tests passing).
 
@@ -199,8 +199,8 @@ Phase 6 completion this pass: harness extended from 46 to **61 turns** across al
 - `render.yaml` (secrets `sync: false` for AssemblyAI/Gemini/OpenAI/operator token) and `fly.toml` (HTTPS forced, HTTP/WS service on 8000) present and consistent with the Dockerfile.
 - `./scripts/dev.sh` is executable and `bash -n` clean.
 - Production frontend build verified: `npm run build` succeeds (index 1.15 kB, JS bundle ~320 kB / 90 kB gzip).
-- `npm test` → 7 files / 37 tests passed.
-- `docs/SUBMISSION_CHECKLIST.md` refreshed to current counts (224 backend, 37 frontend, 61-turn benchmark) and live gates; `docs/DEPLOYMENT_GUIDE.md` documents the empty operator directory, `operators_cli register/list/revoke`, and the honest distinction between container health and verified recovery.
+- `npm test` → 7 files / 36 tests passed.
+- `docs/SUBMISSION_CHECKLIST.md` refreshed to current counts (240 backend, 36 frontend, 61-turn benchmark) and live gates; `docs/DEPLOYMENT_GUIDE.md` documents the empty operator directory, `operators_cli register/list/revoke`, and the honest distinction between container health and verified recovery.
 
 Completion gates: `Dockerfile` builds cleanly; all deployment configurations are verified; `README.md` and submission checklist reflect all implemented features and research citations; all unit and integration tests pass. Earlier test record; completion not established (148 backend tests, 32 frontend tests passing).
 
@@ -228,7 +228,7 @@ Status: offline container/deploy artifact verification completed; remaining gate
 - All four tools registered and dispatched: `search_web_or_docs` (sre_tools.py:224, DuckDuckGo-style query with curated SRE documentation fallback, results carry title/snippet/URL), `inspect_document` (sre_tools.py:303, pdf/docx/md/txt with page/section citations), `export_incident_report` (sre_tools.py:312, valid PDF and DOCX), `transcribe_media_recording` (sre_tools.py:366, via `MultimediaService` with supported-media checks and a labeled simulation fallback).
 - Tool schemas registered and permission-gated for all roles (Phase 12 `READ_ACTIONS` additions include `search_web_or_docs`, `inspect_document`, `transcribe_media_recording`, `export_incident_report`).
 - `test_multimodal_tools.py` (6 cases): web-search knowledge + fallback (source URLs attributed), PDF inspection with per-page citations, DOCX inspection with citations, production of both PDF and DOCX export documents (binary validity), media-recording transcription (integration request + simulation fallback), and orchestrator intent routing to the correct multimodal tool.
-- `pytest tests/test_multimodal_tools.py` → 6 passed; full backend suite → 224 passed, 1 opt-in live test skipped; frontend → 37 passed.
+- `pytest tests/test_multimodal_tools.py` → 6 passed; full backend suite → 240 passed, 1 opt-in live test skipped; frontend → 36 passed.
 
 Completion gates: web search returns verified results and source URLs; PDF and DOCX files are parsed with page citations; PDF and DOCX export produces valid binary documents; audio/video transcription integrates with AssemblyAI; all new and existing tests pass. Earlier test record; completion not established (154 backend tests, 32 frontend tests passing).
 
@@ -268,7 +268,7 @@ Status: offline multimodal verification completed; remaining gates are a live As
 - `ReflexionEngine.evaluate_and_reflect` is invoked from `investigation.record_receipt` so failed/regressed remediations auto-generate critiques; `orchestrator.py` (lines ~407, ~452) prepends buffer context to reasoning — critique conditioning only, never a mutation path.
 - `retrieve_incident_memory` tool (sre_tools.py:375) surfaces ranked memories via triad scoring and is role-gated (`READ_ACTIONS` per Phase 12).
 - `test_reflection_and_causal_rca.py` (17 cases): critique generation from failing receipts, triad-score ranking and retrieval, knowledge-stream windowing, threshold synthesis, and causal RCA scoring; all pass.
-- `pytest tests/test_reflection_and_causal_rca.py` → 17 passed; full backend suite → 224 passed, 1 opt-in live test skipped; frontend → 37 passed.
+- `pytest tests/test_reflection_and_causal_rca.py` → 17 passed; full backend suite → 240 passed, 1 opt-in live test skipped; frontend → 36 passed.
 
 Completion gates: failed actions trigger automated self-critiques; episodic buffer retains rolling window of $\le 3$ critiques; memory stream returns ranked memories via triad score; all tests pass.
 
@@ -305,7 +305,7 @@ Status: offline verification completed; remaining gates are a sustained multi-in
 - Tools `locate_causal_root_cause` (sre_tools.py:394) and `match_historical_incident` (sre_tools.py:413) are registered, role-gated read-only (Phase 12 `READ_ACTIONS`), and routed by the orchestrator.
 - Acoustic turn-taking: the managed voice session enables `interrupt_response` with `interrupted` status handling; the WebSocket emits per-epoch barge-in interrupts, truncating in-flight agent speech and logging an `Acoustic barge-in detected` timeline event with epoch/timestamp.
 - `test_reflection_and_causal_rca.py` covers MicroHECL causal root-cause localization, DéjàVu signature matching, Phase 9/10 tool invocation, orchestrator routing, MTTR computed from the timeline (never hardcoded catalog values; None when no start/recovery or recovery precedes detection), and a guard that reflection never auto-dispatches destructive actions.
-- `pytest tests/test_reflection_and_causal_rca.py` → 17 passed; full backend suite → 224 passed, 1 opt-in live test skipped; frontend → 37 passed.
+- `pytest tests/test_reflection_and_causal_rca.py` → 17 passed; full backend suite → 240 passed, 1 opt-in live test skipped; frontend → 36 passed.
 
 Completion gates: `locate_causal_root_cause` accurately identifies downstream database/cache root causes over upstream symptoms; `match_historical_incident` returns matched playbooks for known symptom vectors; barge-in interruption events are emitted with timestamps; all tests pass. Earlier test record; completion not established (162 backend tests, 32 frontend tests passing).
 
@@ -335,7 +335,7 @@ Status: offline verification completed; remaining gates are historical matching 
 - `plan_mitigation_tree` tool (sre_tools.py:431) is registered, role-gated read-only (Phase 12 `READ_ACTIONS`), and routed by the orchestrator.
 - Safety guard verified: the ToT safety filter removes destructive steps that lack approval, passes approved destructive steps, and marks every destructive action as `needs_approval` in the world model.
 - `test_tot_and_speculative_execution.py` covers ToT world-model simulation, planner optimal trajectory selection and pruning, tool invocation, orchestrator routing, and the safety filter (17 Phase 11/12 cases; 18 total including the speculative prefetch case).
-- `pytest tests/test_tot_and_speculative_execution.py` → 18 passed; full backend suite → 224 passed, 1 opt-in live test skipped; frontend → 37 passed.
+- `pytest tests/test_tot_and_speculative_execution.py` → 18 passed; full backend suite → 240 passed, 1 opt-in live test skipped; frontend → 36 passed.
 
 Completion gates: `plan_mitigation_tree` evaluates ≥ 3 candidate branches; prunes high-risk branches; outputs Pareto-optimal multi-step sequence with predicted metric gains; all tests pass. Earlier test record; completion not established.
 
@@ -360,7 +360,7 @@ Status: plan written after paper review; RBAC remediation completed and regressi
 
 Completion gates: partial transcripts trigger asynchronous cache pre-warming with receipt evidence; a cache hit is labeled in the tool event; stale and expired entries are dropped; safety tests confirm RBAC validation is still enforced on hit and miss; measured `cache_hit_latency_ms` is reported and bounded; no claim of sub-2 ms end-to-end latency without a real timed measurement.
 
-Phase 12 remediation completed this pass: `auth_rbac.py` `READ_ACTIONS` now authorizes the read-only Phases 8–12 tools (`locate_causal_root_cause`, `match_historical_incident`, `plan_mitigation_tree`, `retrieve_incident_memory`, `search_web_or_docs`, `inspect_document`, `export_incident_report`, `transcribe_media_recording`) for every role; `speculative_engine.py` gates prefetch on the read-only allowlist and on `is_action_permitted`; `orchestrator.call_tool` only serves a speculative cache hit when the action is still permitted. Regression tests added in `backend/tests/test_tot_and_speculative_execution.py` (Phase 8–12 tool authorization, denied-operator prefetch isolation, out-of-set prefetch skip, permission gate on cache hit). Ground truth after this pass: **224 backend tests passed, 1 opt-in live test skipped; 37 frontend tests passed** (replaces the historical "168 backend / 32 frontend" figure, which was superseded by the completion audit).
+Phase 12 remediation completed this pass: `auth_rbac.py` `READ_ACTIONS` now authorizes the read-only Phases 8–12 tools (`locate_causal_root_cause`, `match_historical_incident`, `plan_mitigation_tree`, `retrieve_incident_memory`, `search_web_or_docs`, `inspect_document`, `export_incident_report`, `transcribe_media_recording`) for every role; `speculative_engine.py` gates prefetch on the read-only allowlist and on `is_action_permitted`; `orchestrator.call_tool` only serves a speculative cache hit when the action is still permitted. Regression tests added in `backend/tests/test_tot_and_speculative_execution.py` (Phase 8–12 tool authorization, denied-operator prefetch isolation, out-of-set prefetch skip, permission gate on cache hit). Ground truth after this pass: **240 backend tests passed, 1 opt-in live test skipped; 36 frontend tests passed** (replaces the historical "168 backend / 32 frontend" figure, which was superseded by the completion audit).
 
 ## Earlier September 12 progress record (claims under audit)
 

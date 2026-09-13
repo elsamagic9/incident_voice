@@ -645,7 +645,11 @@ async def run_stress_test(stop_on_error: bool = False, max_prompts: int = 500, s
 
         t0 = time.perf_counter()
         try:
-            spoken, tools, postmortem = await agent_orchestrator.process_user_turn(prompt)
+            # Wait for maximum 30 seconds per prompt
+            spoken, tools, postmortem = await asyncio.wait_for(
+                agent_orchestrator.process_user_turn(prompt),
+                timeout=30.0
+            )
             duration_ms = (time.perf_counter() - t0) * 1000
 
             tool_names = [t.get("tool_name") for t in (tools or [])]
@@ -680,9 +684,8 @@ async def run_stress_test(stop_on_error: bool = False, max_prompts: int = 500, s
             else:
                 passed += 1
                 tool_summary = f"[{', '.join(tool_names)}]" if tool_names else "[conversational]"
-                # Print every 25 prompts or key milestones
-                if idx % 25 == 0 or idx in [1, 50, 100, 200, 300, 400, 500]:
-                    print(f"✅ [Prompt {idx:03d}/{total}] PASS: '{prompt[:45]}' -> {tool_summary} ({duration_ms:.1f}ms)")
+                # Print every prompt
+                print(f"✅ [Prompt {idx:03d}/{total}] PASS: '{prompt[:45]}' -> {tool_summary} ({duration_ms:.1f}ms)")
 
         except Exception as exc:
             failed += 1

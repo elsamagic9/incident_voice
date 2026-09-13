@@ -6,8 +6,8 @@ This is a project checklist, not an official hackathon rubric. The [event page](
 
 ## Verified locally
 
-- [x] Frontend production build (Vite/TS) and 37 regression tests passing (7 Vitest files).
-- [x] Backend suite passing: 224 tests, 1 opt-in live test skipped — isolated sessions, transactional per-session recovery, WAL event journal, RBAC enforcement, Phase 8–12 tools.
+- [x] Frontend production build (Vite/TS) and 36 regression tests passing (7 Vitest files).
+- [x] Backend suite passing: 240 tests, 1 opt-in live test skipped — isolated sessions, transactional per-session recovery, WAL event journal, RBAC enforcement, Phase 8–12 tools.
 - [x] Phase 1: ReAct and τ-bench tool contract verification and wake-name routing (16 cases).
 - [x] Phase 2: Dual-stream speech sanitization, agent caption delta streaming per reply ID, and 24 kHz PCM blackbox WAV recording fidelity (5 cases).
 - [x] Phase 3: Transactional per-session checkpoints restore isolated incident, evidence, audio, audit chain and receipts across a genuine process exit; WAL event journal stops on corruption; interrupted live actions are "outcome unknown", never replayed (11 cases).

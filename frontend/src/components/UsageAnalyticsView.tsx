@@ -43,18 +43,8 @@ export const UsageAnalyticsView: React.FC<Props> = ({
 
   // Generate deterministic token and cost telemetry from actual turns and tools
   const chartData: DataPoint[] = useMemo(() => {
-    // If turns are few, seed realistic SRE incident turns to demonstrate real-time graphs
-    const baseTurns: Turn[] = turns.length > 0 ? turns : [
-      { id: '1', speaker: 'user' as const, transcript: 'Incident report: What is the status of the cluster?', end_of_turn: true, timestamp: Date.now() / 1000 - 180 },
-      { id: '2', speaker: 'agent' as const, transcript: 'Sev-1 incident detected. Payment service is degraded with 450ms P99 latency.', end_of_turn: true, timestamp: Date.now() / 1000 - 165 },
-      { id: '3', speaker: 'user' as const, transcript: 'Inspect recent logs and database connection pool.', end_of_turn: true, timestamp: Date.now() / 1000 - 120 },
-      { id: '4', speaker: 'agent' as const, transcript: 'Identified 120 connection timeout exceptions. Staging connection pool resize.', end_of_turn: true, timestamp: Date.now() / 1000 - 95 },
-      { id: '5', speaker: 'user' as const, transcript: 'Confirm remediation.', end_of_turn: true, timestamp: Date.now() / 1000 - 60 },
-      { id: '6', speaker: 'agent' as const, transcript: 'Remediation executed. Pool capacity raised to 100 connections. Payment service healthy.', end_of_turn: true, timestamp: Date.now() / 1000 - 30 },
-    ];
-
     let runningCost = 0;
-    return baseTurns.map((turn, index) => {
+    return turns.map((turn, index) => {
       // Estimate token count based on words (avg 1.3 tokens/word + system prompt baseline)
       const wordCount = (turn.transcript || '').trim().split(/\s+/).length;
       const promptTokens = turn.speaker === 'user' ? 240 + wordCount * 2 : 120 + wordCount;
@@ -67,7 +57,7 @@ export const UsageAnalyticsView: React.FC<Props> = ({
 
       const toolMatch = executedTools[index % Math.max(1, executedTools.length)];
 
-      const date = new Date(turn.timestamp ? turn.timestamp * 1000 : Date.now() - (baseTurns.length - index) * 20000);
+      const date = new Date(turn.timestamp ? turn.timestamp * 1000 : Date.now() - (turns.length - index) * 20000);
       const timestamp = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
       return {
@@ -79,7 +69,7 @@ export const UsageAnalyticsView: React.FC<Props> = ({
         costUsd: turnCost,
         cumulativeCostUsd: runningCost,
         latencyMs: Math.floor(250 + (index * 45) % 320),
-        toolName: toolMatch?.tool_name || (index % 2 === 1 ? 'fetch_service_telemetry' : undefined),
+        toolName: toolMatch?.tool_name,
         timestamp,
       };
     });
@@ -89,25 +79,18 @@ export const UsageAnalyticsView: React.FC<Props> = ({
   const totalPromptTokens = chartData.reduce((acc, d) => acc + d.promptTokens, 0);
   const totalCompletionTokens = chartData.reduce((acc, d) => acc + d.completionTokens, 0);
   const totalTokens = totalPromptTokens + totalCompletionTokens;
-  const totalCostUsd = chartData[chartData.length - 1]?.cumulativeCostUsd || 0.0042;
+  const totalCostUsd = chartData.length > 0 ? chartData[chartData.length - 1]?.cumulativeCostUsd : 0;
 
   // Latencies
-  const sttMs = latency.stt_ms ?? 192;
-  const toolMs = latency.tool_ms ?? 98;
-  const llmMs = latency.llm_ms ?? 284;
-  const ttsMs = latency.tts_ms ?? 115;
-  const totalRoundTripMs = latency.total_ms ?? (sttMs + toolMs + llmMs + ttsMs);
+  const sttMs = latency.stt_ms ?? 0;
+  const toolMs = latency.tool_ms ?? 0;
+  const llmMs = latency.llm_ms ?? 0;
+  const ttsMs = latency.tts_ms ?? 0;
+  const totalRoundTripMs = latency.total_ms ?? 0;
 
   // Tool Invocation Breakdown
   const toolFrequency = useMemo(() => {
-    const counts: Record<string, { count: number; success: number; error: number }> = {
-      query_service_logs: { count: 6, success: 6, error: 0 },
-      fetch_service_telemetry: { count: 8, success: 8, error: 0 },
-      get_service_topology: { count: 4, success: 4, error: 0 },
-      execute_remediation: { count: 3, success: 3, error: 0 },
-      run_causal_rca: { count: 2, success: 2, error: 0 },
-      tot_planner: { count: 5, success: 5, error: 0 },
-    };
+    const counts: Record<string, { count: number; success: number; error: number }> = {};
 
     executedTools.forEach(t => {
       const name = t.tool_name || 'unknown_tool';
