@@ -59,7 +59,7 @@ export const ServiceHealthMatrix: React.FC<Props> = ({
           : 'secondary';
 
         return (
-          <Card key={service.id} className="border-border bg-card shadow-sm hover:border-border/80 transition-all p-4 space-y-3">
+          <Card key={service.id} className="border-border bg-card shadow-sm hover:border-border hover:bg-white/[0.02] transition-all p-4 space-y-3">
             {/* Header: Identity & Status Badge */}
             <div className="flex items-center justify-between gap-3">
               <div className="flex items-center gap-3 min-w-0">
@@ -99,7 +99,7 @@ export const ServiceHealthMatrix: React.FC<Props> = ({
             </div>
 
             {/* Metrics Row */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-1 border-t border-border/60 text-xs">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-3 border-t border-white/5 text-xs">
               <div>
                 <span className="text-[10px] font-mono uppercase text-muted-foreground block">P99 Latency</span>
                 <span className={`font-mono font-semibold ${isCritical ? 'text-destructive' : 'text-foreground'}`}>

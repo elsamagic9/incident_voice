@@ -13,6 +13,7 @@ from app.tools.sre_tools import SRE_TOOL_MAP, execute_remediation
 from app.tools.tool_schemas import SRE_TOOL_DEFINITIONS
 from app.tools.tool_contract import validate_tool_request
 from app.services.lemur_service import lemur_service
+from app.services.llm_gateway import LLMGatewayError, llm_gateway
 
 SYSTEM_PROMPT = """You are J.A.R.V.I.S., an advanced, highly intelligent voice AI assistant and SRE Incident Commander. You were designed to act as a hyper-competent, witty, and loyal system manager.
 COMMUNICATION STYLE:
@@ -280,7 +281,7 @@ class AgentOrchestrator:
                     ]):
                         self.last_reasoning = 'hybrid'
                         spoken, tools = await self._deterministic_agent_reasoning(command)
-                except (httpx.HTTPError, ValueError, KeyError, IndexError) as exc:
+                except (httpx.HTTPError, LLMGatewayError, ValueError, KeyError, IndexError) as exc:
                     self.last_provider_error = f'{settings.llm_provider} fallback ({type(exc).__name__}).'
                     self.last_reasoning = 'scripted'
                     spoken, tools = await self._deterministic_agent_reasoning(command)
@@ -561,8 +562,6 @@ class AgentOrchestrator:
         messages = [{'role': 'system', 'content': system}] + [
             {'role': 'user' if t['speaker'] == 'user' else 'assistant', 'content': t['transcript']} for t in history
         ]
-        url = 'https://llm-gateway.assemblyai.com/v1/chat/completions'
-        headers = {'Authorization': settings.assemblyai_api_key}
         payload = {
             'model': settings.llm_gateway_model,
             'messages': messages,
@@ -570,24 +569,21 @@ class AgentOrchestrator:
             'max_tokens': 300
         }
         started = time.perf_counter()
-        async with httpx.AsyncClient(timeout=15) as client:
-            response = await client.post(url, headers=headers, json=payload)
-            self.last_llm_ms = round((time.perf_counter() - started) * 1000, 1)
-            response.raise_for_status()
-            raw = response.json()['choices'][0]['message']['content'].strip()
-            # Parse and validate before dispatch. Never substitute empty/default
-            # arguments or hide failures after a tool has changed state.
-            if raw.startswith('```'):
-                raw = re.sub(r'^```(?:json)?\s*|\s*```$', '', raw).strip()
-            if raw.startswith(('{', '[')):
-                tool_call = json.loads(raw)
-                if not isinstance(tool_call, dict): raise ValueError('Expected a tool request object.')
-                name = tool_call.get('tool') or tool_call.get('name')
-                args = tool_call.get('arguments', tool_call.get('args', {}))
-                name, args = validate_tool_request(name, args)
-                event = await self.call_tool(name, args)
-                return self._summarize_tool(event), [event]
-            return raw, []
+        raw = (await llm_gateway.chat_text(payload, max_wait_seconds=12)).strip()
+        self.last_llm_ms = round((time.perf_counter() - started) * 1000, 1)
+        # Parse and validate before dispatch. Never substitute empty/default
+        # arguments or hide failures after a tool has changed state.
+        if raw.startswith('```'):
+            raw = re.sub(r'^```(?:json)?\s*|\s*```$', '', raw).strip()
+        if raw.startswith(('{', '[')):
+            tool_call = json.loads(raw)
+            if not isinstance(tool_call, dict): raise ValueError('Expected a tool request object.')
+            name = tool_call.get('tool') or tool_call.get('name')
+            args = tool_call.get('arguments', tool_call.get('args', {}))
+            name, args = validate_tool_request(name, args)
+            event = await self.call_tool(name, args)
+            return self._summarize_tool(event), [event]
+        return raw, []
 
     async def _call_dynamic_llm(self, user_text):
         if settings.llm_provider == 'assemblyai' or (

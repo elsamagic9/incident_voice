@@ -76,7 +76,7 @@ export const MissionControlHeader: React.FC<Props> = ({
     : 'bg-muted-foreground';
 
   return (
-    <header className="sticky top-0 z-50 w-full border-b border-border/80 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+    <header className="sticky top-0 z-50 w-full border-b border-border/40 bg-background/80 backdrop-blur-2xl supports-[backdrop-filter]:bg-background/40">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-14 flex items-center justify-between gap-4">
         {/* Brand & AssemblyAI Badge */}
         <div className="flex items-center gap-3 md:gap-4 shrink-0">

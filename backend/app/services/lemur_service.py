@@ -6,6 +6,7 @@ import httpx
 from pydantic import BaseModel, Field
 from app.core.config import settings
 from app.core.state import cluster_state
+from app.services.llm_gateway import LLMGatewayClient, LLMGatewayError
 
 class GeneratedReport(BaseModel):
     title: str
@@ -31,25 +32,20 @@ class LeMURService:
                   f'Infrastructure mode: {settings.infrastructure_mode}.')
         evidence = json.dumps({'transcript': transcript_history, 'events': timeline_events}, ensure_ascii=False)
         try:
-            async with httpx.AsyncClient(timeout=35) as client:
-                response = await client.post('https://llm-gateway.assemblyai.com/v1/chat/completions',
-                    headers={'Authorization': self.api_key.strip()},
-                    json={'model': settings.llm_gateway_model, 'messages': [
-                        {'role': 'system', 'content': prompt}, {'role': 'user', 'content': evidence}],
-                        'max_tokens': 2500})
-                response.raise_for_status()
-                raw = response.json()['choices'][0]['message']['content']
-                if not isinstance(raw, str): raise ValueError('No report text returned')
-                clean = re.search(r'\{.*\}', raw, re.S)
-                if not clean: raise ValueError('No JSON report returned')
-                generated = GeneratedReport.model_validate(json.loads(clean.group()))
-                report.update(generated.model_dump())
-                report['source'] = 'assemblyai_llm_gateway'
-                report['generation_warning'] = None
-        except httpx.HTTPStatusError as exc:
-            status = exc.response.status_code
-            report['generation_warning'] = (f'AssemblyAI LLM Gateway returned HTTP {status}. '
-                'Check your key, model access, and LLM_GATEWAY_MODEL setting. Showing a local event summary.')
+            raw = await LLMGatewayClient(self.api_key, timeout=35).chat_text(
+                {'model': settings.llm_gateway_model, 'messages': [
+                    {'role': 'system', 'content': prompt}, {'role': 'user', 'content': evidence}],
+                    'max_tokens': 2500},
+                max_wait_seconds=25)
+            if not isinstance(raw, str): raise ValueError('No report text returned')
+            clean = re.search(r'\{.*\}', raw, re.S)
+            if not clean: raise ValueError('No JSON report returned')
+            generated = GeneratedReport.model_validate(json.loads(clean.group()))
+            report.update(generated.model_dump())
+            report['source'] = 'assemblyai_llm_gateway'
+            report['generation_warning'] = None
+        except LLMGatewayError as exc:
+            report['generation_warning'] = exc.describe() + ' Showing a local event summary.'
         except (httpx.HTTPError, ValueError, KeyError, IndexError, TypeError):
             report['generation_warning'] = 'AssemblyAI report generation failed. Showing a local summary of recorded events.'
         self._render_artifacts(report)

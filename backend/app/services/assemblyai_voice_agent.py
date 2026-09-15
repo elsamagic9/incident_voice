@@ -8,6 +8,21 @@ from app.core.config import settings
 from app.services.orchestrator import agent_orchestrator, SYSTEM_PROMPT
 from app.tools.tool_schemas import SRE_TOOL_DEFINITIONS
 
+# Transcription bias for war-room vocabulary. Voice Agent `input.keyterms` accepts up
+# to 100 terms and `input.transcription_prompt` up to 1750 characters; both are
+# applied to the speech-to-text leg, so incident nouns stop arriving as homophones
+# (for example "payment service" instead of "payment surfaces").
+SRE_KEYTERMS = [
+    'payment-service', 'order-db', 'redis-cache', 'ingress-gateway', 'auth-service',
+    'P99 latency', 'error rate', 'failover', 'runbook', 'postmortem', 'kubectl',
+    'replica', 'autoscaling', 'circuit breaker', 'connection pool', 'saturation',
+    'throughput', 'SLO', 'SEV-1', 'rollback', 'redis', 'postgres', 'kubernetes',
+    'pod', 'telemetry', 'root cause', 'hypothesis', 'remediation',
+]
+TRANSCRIPTION_PROMPT = ('Site reliability engineering incident bridge. Expect service IDs, '
+                        'metric names, and remediation commands such as payment-service, order-db, '
+                        'P99 latency, error rate, failover, runbook, and circuit breaker.')
+
 class AssemblyAIVoiceAgentSession:
     def __init__(self, api_key, on_user_turn=None, on_agent_turn=None, on_audio_chunk=None,
                  on_tool_executed=None, on_agent_state=None, on_error=None,
@@ -75,8 +90,20 @@ class AssemblyAIVoiceAgentSession:
         await self.ws.send(json.dumps({'type': 'session.update', 'session': {
             'system_prompt': SYSTEM_PROMPT + f'\nInfrastructure: {settings.infrastructure_mode}.',
             'greeting': 'IncidentVoice is ready. What would you like to investigate?', 'tools': tools,
-            'input': {'format': {'encoding': 'audio/pcm'}, 'turn_detection': {'interrupt_response': True}},
-            'output': {'voice': settings.voice_agent_voice, 'format': {'encoding': 'audio/pcm'}}}}))
+            'input': {
+                'format': {'encoding': 'audio/pcm'},
+                'keyterms': SRE_KEYTERMS,
+                'transcription_prompt': TRANSCRIPTION_PROMPT,
+                'turn_detection': {
+                    'type': 'server_vad',
+                    'interrupt_response': True,
+                    'interruption_delay_ms': 100,
+                    'min_silence_duration_ms': 500,
+                    'max_speech_duration_ms': 30000,
+                },
+            },
+            'output': {'voice': settings.voice_agent_voice, 'volume': 0.9,
+                       'format': {'encoding': 'audio/pcm'}}}}))
 
     async def _receive_loop(self):
         try:

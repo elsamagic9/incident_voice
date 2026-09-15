@@ -6,9 +6,11 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "lint": "tsc -b --noEmit",
     "preview": "vite preview",
     "test": "vitest run",
-    "test:browser": "node tests/browser-smoke.mjs"
+    "test:browser": "node tests/browser-smoke.mjs",
+    "test:mobile": "node tests/isolate.mjs"
   },
   "dependencies": {
     "@radix-ui/react-alert-dialog": "^1.1.23",
