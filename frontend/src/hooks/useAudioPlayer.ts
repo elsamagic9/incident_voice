@@ -65,7 +65,7 @@ export function useAudioPlayer(onError?: (message: string) => void) {
       } else if (chunk.encoding === 'pcm_s16le') {
         if (bytes.length % 2 || !chunk.sample_rate) throw new Error('Invalid PCM frame');
         buffer = ctx.createBuffer(1, bytes.length / 2, chunk.sample_rate);
-        const view = new DataView(bytes.buffer);
+        const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
         const channel = buffer.getChannelData(0);
         for (let i = 0; i < channel.length; i++) channel[i] = view.getInt16(i * 2, true) / 32768;
       } else throw new Error('Unsupported audio format');
@@ -80,7 +80,10 @@ export function useAudioPlayer(onError?: (message: string) => void) {
         if (!sources.current.size && generation.current === epoch) setIsPlaying(false);
       };
       const now = ctx.currentTime;
-      const start = playhead.current > now ? playhead.current : now + 0.005;
+      // Smooth continuous playback: use 100ms jitter buffer lead when starting from idle
+      // so streaming 20-50ms packets never suffer from micro-gap underrun clicks.
+      const JITTER_BUFFER_LEAD = 0.1;
+      const start = playhead.current > now ? playhead.current : now + JITTER_BUFFER_LEAD;
       playhead.current = start + buffer.duration;
       source.start(start);
       setIsPlaying(true);
