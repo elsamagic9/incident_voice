@@ -7,7 +7,7 @@ This is a project checklist, not an official hackathon rubric. The [event page](
 ## Verified locally
 
 - [x] Frontend production build (Vite/TS) and 36 regression tests passing (7 Vitest files).
-- [x] Backend suite passing: 245 tests, 1 opt-in live test skipped — isolated sessions, transactional per-session recovery, WAL event journal, RBAC enforcement, Phase 8–12 tools.
+- [x] Backend suite passing: 246 tests, 1 opt-in live test skipped — isolated sessions, transactional per-session recovery, WAL event journal, RBAC enforcement, Phase 8–12 tools.
 - [x] Phase 1: ReAct and τ-bench tool contract verification and wake-name routing (16 cases).
 - [x] Phase 2: Dual-stream speech sanitization, agent caption delta streaming per reply ID, and 24 kHz PCM blackbox WAV recording fidelity (5 cases).
 - [x] Phase 3: Transactional per-session checkpoints restore isolated incident, evidence, audio, audit chain and receipts across a genuine process exit; WAL event journal stops on corruption; interrupted live actions are "outcome unknown", never replayed (11 cases).
@@ -29,8 +29,8 @@ This is a project checklist, not an official hackathon rubric. The [event page](
 - [x] Generate a real LLM Gateway report and confirm `source=assemblyai_llm_gateway`.
 - [ ] Deploy the latest build to a reachable HTTPS URL; test in a clean browser session.
 - [x] Public repository URL exists: [elsamagic9/incident_voice](https://github.com/elsamagic9/incident_voice).
-- [ ] Push the reviewed local changes and confirm the public repository shows the current README, deck, and app commit.
-- [ ] Refresh the public GitHub repository description, which still mentions retired LeMUR and older model claims.
+- [x] Push the reviewed local changes and confirm the public repository shows the current README, deck, and app commit (`e9bd744`).
+- [x] Refresh the public GitHub repository description to match the current AssemblyAI integration.
 - [ ] Supply the actual deployment and video URLs in the submission form. Earlier example URLs are not verified deployments.
 - [ ] Record a concise demo based on the flow below; validate duration/file requirements with the current form.
 - [x] Revise pitch/video scripts and export an eight-slide [presentation PDF](IncidentVoice-Presentation.pdf).
@@ -40,7 +40,7 @@ This is a project checklist, not an official hackathon rubric. The [event page](
 
 ## Deadline order
 
-1. Restore GitHub authentication, review and push the intended changes, then deploy the same commit from `render.yaml` or an equivalent HTTPS host. The checked-in Render plan is paid; inspect its charge before creating the service.
+1. Deploy the published commit from `render.yaml` on Render Standard. The plan is paid; inspect its charge before creating the service. Enter the AssemblyAI key and operator token in Render's private secret fields.
 2. In the deployed app, complete one real AssemblyAI microphone conversation, including a cited investigation, staged action, approval/cancellation, and recovery check. Record what actually happened.
 3. Capture screenshots from that deployed build, replace the earlier-prototype deck images, export the PDF again, and record a concise video against that exact build.
 4. Check the logged-in lablab form for the exact September 30 cutoff and fields; submit the repository, live URL, video, and PDF with time to fix upload or access problems.

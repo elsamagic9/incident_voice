@@ -89,7 +89,7 @@ Examples from this repo's history are the style authority.
 2. `npm test` (36 vitest, 7 suites)
 3. `npm run test:mobile` (no horizontal overflow ≤ 321px)
 4. `npm run test:browser` (desktop smoke: buttons present, no page errors)
-5. `.venv/bin/python -m pytest tests/ -q` (245 backend tests; 1 opt-in live skip)
+5. `.venv/bin/python -m pytest tests/ -q` (246 backend tests; 1 opt-in live skip)
 6. `.venv/bin/python ../scripts/benchmark_eval.py` (full 61-turn offline eval)
 
 **CI mirrors steps 1–5** (`.github/workflows/test.yml`).

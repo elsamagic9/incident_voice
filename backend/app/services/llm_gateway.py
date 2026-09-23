@@ -50,12 +50,16 @@ class LLMGatewayError(Exception):
 
 class LLMGatewayClient:
     def __init__(self, api_key=None, timeout=30.0):
-        self.api_key = settings.assemblyai_api_key if api_key is None else api_key
+        self.api_key = api_key
         self.timeout = timeout
 
     @property
+    def resolved_api_key(self):
+        return settings.assemblyai_api_key if self.api_key is None else self.api_key
+
+    @property
     def configured(self):
-        return bool(self.api_key)
+        return bool(self.resolved_api_key)
 
     @staticmethod
     def reset_seconds(response):
@@ -87,7 +91,7 @@ class LLMGatewayClient:
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             for attempt in (0, 1):
                 response = await client.post(GATEWAY_CHAT_URL,
-                    headers={'Authorization': self.api_key.strip()}, json=payload)
+                    headers={'Authorization': self.resolved_api_key.strip()}, json=payload)
                 if response.status_code != 429:
                     try:
                         response.raise_for_status()

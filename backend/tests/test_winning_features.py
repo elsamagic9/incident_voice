@@ -199,6 +199,16 @@ def _rate_limited_response(headers):
     return httpx.Response(429, request=httpx.Request('POST', 'https://llm-gateway.assemblyai.com/v1/chat/completions'), headers=headers)
 
 
+def test_gateway_uses_current_settings_key_unless_explicitly_overridden(monkeypatch):
+    client = LLMGatewayClient()
+    monkeypatch.setattr(settings, 'assemblyai_api_key', '')
+    assert not client.configured
+    monkeypatch.setattr(settings, 'assemblyai_api_key', 'test-key')
+    assert client.configured
+    assert client.resolved_api_key == 'test-key'
+    assert LLMGatewayClient(api_key='explicit-key').resolved_api_key == 'explicit-key'
+
+
 def test_rate_limit_reset_seconds_numeric_and_http_date():
     assert LLMGatewayClient.reset_seconds(_rate_limited_response({'Retry-After': '8'})) == 8.0
     assert LLMGatewayClient.reset_seconds(_rate_limited_response({'Retry-After': 'not-a-number-or-date'})) is None
