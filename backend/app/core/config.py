@@ -13,7 +13,7 @@ class Settings(BaseSettings):
     default_engine: str = "voice_agent_api"  # "voice_agent_api" (Path 1) or "custom_stt_v3" (Path 2)
 
     # LLM Settings
-    llm_provider: Literal["assemblyai", "gemini", "openai", "poolside", "mock"] = "poolside"
+    llm_provider: Literal["assemblyai", "gemini", "openai", "poolside", "mock"] = "assemblyai"
     gemini_model: str = "gemini-3.5-flash"
     openai_model: str = "gpt-4o-mini"
     poolside_model: str = "poolside/laguna-s-2.1"

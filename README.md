@@ -1,205 +1,74 @@
 # IncidentVoice
 
-**An autonomous voice incident copilot that shows its work.**
+**A restart is not a recovery.** IncidentVoice is a voice incident copilot built during the September 2026 [AssemblyAI Voice Agent Hackathon](https://lablab.ai/ai-hackathons/assemblyai-voice-agent-hackathon) for on-call engineers investigating service outages.
 
-Investigate service outages by voice, inspect the grounded evidence behind agent hypotheses, authorize staged remediations under two-phase safety guardrails, and verify quantitative recovery across the Four Golden Signals.
+During an incident, an engineer can ask IncidentVoice to investigate, inspect the observations behind its hypotheses, request a remediation, and check whether the service actually recovered. A requested infrastructure change is staged for 30 seconds and requires operator confirmation. The demo labels simulated actions and never presents a successful command as proof that the whole incident is resolved.
 
-Built for the [AssemblyAI Voice Agent Hackathon](https://lablab.ai/ai-hackathons/assemblyai-voice-agent-hackathon).
+## Try the core workflow
 
-![IncidentVoice evidence workspace](docs/assets/incident-brief.png)
+1. Start the app in simulation mode using the setup below. To use real voice, configure `ASSEMBLYAI_API_KEY` privately in `.env` and allow microphone access in the browser. Typed commands also exercise the workflow without a provider key.
+2. Choose **Path 1: Voice Agent API**, start voice, and say “Investigate the incident.” Open a cited observation in the brief. The brief distinguishes captured evidence from unverified hypotheses. AssemblyAI LLM Gateway analysis may fall back to a clearly labeled local summary if unavailable.
+3. Say “Restart payment-service.” Inspect the staged target and expiry. Cancel it, or request it again and approve it. No remediation is dispatched before confirmation.
+4. Say “Verify recovery.” Compare the approved target's before/after measurements and check the remaining services. Export the evidence handoff or generate a draft incident review.
 
-## The Core Interactive Workflow
+The simulation is designed to demonstrate control and verification safely. Docker mode supports restarts of configured sandbox containers; it does not implement every simulated mutation. See the [deployment guide](docs/DEPLOYMENT_GUIDE.md) for the exact live adapter scope.
 
-1. **Voice Engagement:** Connect via browser microphone. Toggle between AssemblyAI's managed **Voice Agent API** (24 kHz PCM, sub-second turn taking) or **Streaming v3 STT** (16 kHz PCM with custom LLM function-calling).
-2. **Investigation & Grounded Hypotheses:** Say *"Investigate the incident"* or *"What is wrong with payment-service?"*. IncidentVoice captures live cluster telemetry, ranks causal hypotheses, and links each assertion to immutable observation IDs (e.g. `OBS-1`, `OBS-2`).
-3. **Voice-Guided SOP Runbooks:** Ask *"Run the database failover runbook"*. The agent executes step-by-step Standard Operating Procedures, verifying preconditions and requiring voice approval before each stage.
-4. **Two-Phase Safety Guardrails:** Request a mutation like *"Restart payment-service"*. Destructive actions are staged with a 30-second TTL and NATO phonetic authorization code. Voice commands like *"Do not confirm"* or *"Abort"* cancel immediately.
-5. **Quantitative Closed-Loop Verification:** Review the before/after recovery receipt measuring exact telemetry deltas ($\Delta \text{latency}$, $\Delta \text{errors}$, $\Delta \text{saturation}$). Say *"Verify recovery"* to test SLO compliance across the cluster.
-6. **Multi-Artifact LeMUR Post-Mortem:** Request post-incident synthesis to generate three distinct artifacts:
-   - Formal Markdown Post-Incident Review (PIR) with cited timeline evidence
-   - Prioritized Jira / Linear Action Item Tickets (JSON)
-   - Slack Sev-1 Outage Resolution 3-bullet executive briefing
-7. **Multimodal Knowledge & Media Intelligence:** Say *"Search web for Postgres connection pool"* for live documentation, *"Inspect document database_runbook.pdf"* to extract cited sections from PDF/Word specs, *"Export report as PDF"* to generate publication-ready Post-Incident Reviews, or *"Transcribe recording incident_bridge.wav"* to transcribe audio/video war rooms via AssemblyAI.
+## How AssemblyAI is used
 
----
-
-## Research Foundations & Design Principles
-
-Every component of IncidentVoice is grounded in empirical systems and AI research:
-
-| Phase / Requirement | Primary Literature | Applied System Architecture |
+| Path | AssemblyAI service | Role in IncidentVoice |
 |---|---|---|
-| **Phase 1: Conversational Integrity** | Yao et al., *ReAct* (ICLR 2023)<br>Yao et al., *$\tau$-bench* (2024) | Interleaved thought-action-observation cycles; strict JSON schema tool validation (`tool_contract.py`); zero silent parameter hallucination. |
-| **Phase 2: Observable Voice Fidelity** | Défossez et al., *Moshi* (2024)<br>Amershi et al., *Human-AI Guidelines* (CHI 2019) | Dual-stream full-duplex audio; sub-second turn-taking; live caption delta streaming (`agent_partial`); instant speech sanitization (`clean_speech_text`). |
-| **Phase 3: Durable Evidence & Persistence** | Mohan et al., *ARIES* (ACM TODS 1992)<br>Gao et al., *ALCE* (ACL 2023) | Append-only Write-Ahead Logging (`wal_service.py`) with monotonic LSNs and CRC32 checksums; ARIES Redo replay on restart; automatic Undo rollback of uncommitted staged mutations. |
-| **Phase 4: Multi-Operator RBAC** | Saltzer & Schroeder (Proc. IEEE 1975)<br>Sandhu et al., *RBAC96* (IEEE Computer 1996) | Formal RBAC separation (`SRE_COMMANDER`, `INCIDENT_RESPONDER`, `READ_ONLY_OBSERVER`); complete mediation; dynamic token revocation blocklist; tamper-evident SHA-256 operator attribution. |
-| **Phase 5: Deep Telemetry & Closed-Loop SLOs** | Sigelman et al., *Dapper* (Google 2010)<br>Beyer et al., *Google SRE Book* (2016) | Modeling of the Four Golden Signals (Latency p99, Traffic RPS, Error Rate %, Saturation %); quantitative delta receipts ($\Delta \text{latency}, \Delta \text{errors}, \Delta \text{saturation}$); closed-loop SLO verification gates. |
-| **Phase 6: Reproducible Evaluation Harness** | Zheng et al., *MT-Bench* (NeurIPS 2023)<br>Basiri et al., *Chaos Engineering* (IEEE 2016) | Automated multi-turn benchmark harness (`scripts/benchmark_eval.py`) evaluating 46 turns across 6 scenarios (**97.8% pass rate**, **100% safety gate adherence**); comprehensive pilot protocol (`docs/PILOT_EVALUATION_PROTOCOL.md`). |
-| **Phase 7: Production Readiness** | Wiggins, *Twelve-Factor App* (2017)<br>Beyer et al., *PRRs* (Google SRE Book, Ch. 34) | Multi-stage containerization (`Dockerfile`, `docker-compose.prod.yml`); persistent WAL volumes; environment-driven configuration; graceful shutdown lifecycle. |
-| **Phase 8: Multimodal Intelligence** | Shuster et al., *EMNLP* (2022)<br>Huang et al., *LayoutLMv3* (2022)<br>Latif et al., *IEEE* (2023) | Live DuckDuckGo web search & SRE knowledge index; PDF/Word parsing with page citations (`pypdf`, `python-docx`); PDF/DOCX report export (`reportlab`); audio/video transcription via AssemblyAI. |
+| Managed voice | [Voice Agent API](https://www.assemblyai.com/docs/voice-agents) | Spoken conversation, turn detection, audio replies, and tool calls routed through the same approval policy as typed commands. |
+| Custom voice | [Streaming Speech-to-Text](https://www.assemblyai.com/docs/streaming) | Live transcription feeding the custom SRE orchestrator; speech output is handled separately. |
+| Incident analysis | [LLM Gateway](https://www.assemblyai.com/docs/llm-gateway/quickstart) | Evidence-grounded hypotheses and incident review drafts when the provider is available. Provider failures are disclosed in the UI. |
 
+The backend joins the voice paths to service telemetry, numbered observations, role checks, a staged-action guardrail, recovery receipts, and a session evidence handoff. Sessions and audit evidence use local transactional storage; deployment is limited to one app worker/replica. See [architecture](docs/ARCHITECTURE.md) for details.
 
----
+## Run locally
 
-## AssemblyAI Dual-Engine Architecture
+Requirements: Python 3.11+, Node.js 20+, npm; Docker is optional.
 
-IncidentVoice uniquely supports both hackathon tracks through a unified frontend toggle:
-
-```
-                          ┌─────────────────────────────┐
-                          │   React 19 + TypeScript     │
-                          │   Mission Control HUD       │
-                          └──────────────┬──────────────┘
-                                         │ WebSocket
-                                         ▼
-                          ┌─────────────────────────────┐
-                          │    FastAPI WebSocket Hub    │
-                          └──────┬───────────────┬──────┘
-                                 │               │
-     Engine: "voice_agent_api"   │               │   Engine: "custom_stt_v3"
-                                 ▼               ▼
-                   ┌───────────────────┐   ┌───────────────────┐
-                   │  AssemblyAI Voice │   │  AssemblyAI Real- │
-                   │     Agent API     │   │   Time STT (v3)   │
-                   │ (Universal-3 Pro) │   │ (Universal-3 Pro) │
-                   └─────────┬─────────┘   └─────────┬─────────┘
-                             │                       │
-                             │ Tool Calling          ▼
-                             │ Loop        ┌───────────────────┐
-                             │             │ Custom Orchestrator│
-                             │             │ (Gemini/OpenAI/   │
-                             │             │  Deterministic)   │
-                             │             └─────────┬─────────┘
-                             │                       │ Spoken Audio
-                             │                       ▼
-                             │             ┌───────────────────┐
-                             │             │  Edge-TTS Stream  │
-                             │             └─────────┬─────────┘
-                             ▼                       ▼
-                   ┌───────────────────────────────────────────┐
-                   │        Unified SRE Tool Execution         │
-                   │  • Docker & Kubernetes Live Adapters      │
-                   │  • Four Golden Signals Host Telemetry     │
-                   │  • Two-Phase Authorization Guardrails     │
-                   │  • ARIES Write-Ahead Log (wal_service.py) │
-                   │  • Multi-Operator RBAC (auth_rbac.py)     │
-                   │  • AssemblyAI LeMUR Post-Mortem Synthesis │
-                   └───────────────────────────────────────────┘
-```
-
-- **Path 1: Managed Voice Agent API (`voice_agent_api`)**: Direct WebSocket session with AssemblyAI's end-to-end voice pipeline (`wss://agents.assemblyai.com/v1/ws`). Universal-3 Pro handles VAD, sub-second turn taking, natural interruptions, and bidirectional JSON-Schema tool calling.
-- **Path 2: Custom Streaming v3 + Orchestrator (`custom_stt_v3`)**: AssemblyAI Streaming v3 WebSocket (`wss://streaming.assemblyai.com/v3/ws?sample_rate=16000&speech_model=universal-3-5-pro`) paired with dynamic LLM function calling, Edge-TTS streaming audio, and post-incident LeMUR synthesis (`/lemur/v3/generate/task`).
-
----
-
-## Benchmark Evaluation Results
-
-IncidentVoice includes a reproducible multi-turn evaluation harness (`scripts/benchmark_eval.py`) grounded in MT-Bench and Chaos Engineering methodologies. The evaluation was executed across 6 rigorous operational scenarios:
-
-```bash
-python scripts/benchmark_eval.py
-```
-
-### Verified Benchmark Metrics (`backend/data/benchmark_results.json`)
-
-| Scenario | Focus Area | Dialogue Turns | Pass Rate | Safety Gate Adherence |
-|---|---|:---:|:---:|:---:|
-| **SCN-01** | Incident Triage & Telemetry Querying | 12 | 100.0% | 100.0% |
-| **SCN-02** | Voice-Guided SOP Runbook Execution | 11 | 100.0% | 100.0% |
-| **SCN-03** | Two-Phase Destructive Mutation Gating | 13 | 100.0% | 100.0% |
-| **SCN-04** | Role-Based Access Control (RBAC) Enforcement | 12 | 100.0% | 100.0% |
-| **SCN-05** | Negative Voice Confirmation & Cancellation | 12 | 100.0% | 100.0% |
-| **SCN-06** | AssemblyAI LeMUR Post-Mortem Generation | 1 | 100.0% | 100.0% |
-| **OVERALL** | **Full Multi-Turn Dialogue Suite** | **61** | **100.0%** | **100.0%** |
-
-- **Mean Processing Latency:** 165.74 ms / turn (p50: 64.56 ms, p95: 257.66 ms)
-- **Safety Gate Adherence:** 100.0% (zero unauthorized destructive executions)
-- **Cryptographic Audit Ledger Integrity:** Verified SHA-256 hash chain
-
----
-
-## Quickstart & Local Setup
-
-### Prerequisites
-- Python 3.11+
-- Node.js 20+ & npm
-- Docker (optional, for live container restarts and cluster sandboxes)
-
-### 1. Configure Environment
 ```bash
 cp .env.example .env
-# Add your ASSEMBLYAI_API_KEY in .env
-```
-
-### 2. Launch Development Stack
-```bash
+# Add ASSEMBLYAI_API_KEY to .env for a real voice demonstration.
 ./scripts/dev.sh
 ```
-Open [http://localhost:5173](http://localhost:5173) to enter Mission Control.
 
-### 3. Production Docker Launch (Single Command)
-```bash
-docker compose -f docker-compose.prod.yml up --build
-```
-This boots IncidentVoice along with an instrumented sandbox cluster (`incident-payment`, `incident-redis`, `incident-order-db`) and mounts a persistent volume for the ARIES Write-Ahead Log. Open [http://localhost:8000](http://localhost:8000).
+Open [http://localhost:5173](http://localhost:5173). The API runs at [http://localhost:8000](http://localhost:8000). Do not commit `.env` or operator tokens.
 
----
+For the instrumented local payment, database, and Redis sandbox, follow the [Docker setup](docs/DEPLOYMENT_GUIDE.md#live-docker-sandbox). A remotely hosted microphone demo needs HTTPS. There is no verified public deployment URL in this repository yet.
 
-## Multi-Operator RBAC & Identity
+Simulation starts with a demo operator only when no private operator directory or access token is configured. Set `OPERATOR_ACCESS_TOKEN` to require sign-in, or provision individual `SRE_COMMANDER`, `INCIDENT_RESPONDER`, and `READ_ONLY_OBSERVER` identities with `backend/.venv/bin/python -m app.core.operators_cli`. Credentials are stored as hashes in private local storage; no sample accounts are installed.
 
-The operator directory starts empty with **zero hardcoded public credentials** (per Saltzer-Schroeder and RBAC96 principles).
+## Verification
 
-- **Demo Simulation Mode (Default):** When booted in simulation mode with an unconfigured directory, IncidentVoice automatically opens a demo session (`op-demo`) with full `SRE_COMMANDER` capabilities for hassle-free evaluation.
-- **Single-Commander Token:** Set `OPERATOR_ACCESS_TOKEN=<your-secret-token>` in `.env` to require authentication for all access.
-- **Multi-Operator Provisioning:** To provision distinct identities with role boundaries (`SRE_COMMANDER`, `INCIDENT_RESPONDER`, `READ_ONLY_OBSERVER`), use the CLI:
+The repository's automated checks cover the approval boundary, role enforcement, evidence capture, recovery reporting, and browser workflow. The 61-turn benchmark is an **offline, scripted simulation with a mock reasoning provider**; it is not a human pilot or a live speech accuracy/latency measurement.
 
 ```bash
-# Register an operator (prompts privately for token or pass --token)
-.venv/bin/python -m app.core.operators_cli register --id oncall-sarah --name "Sarah Chen" --role SRE_COMMANDER
-.venv/bin/python -m app.core.operators_cli register --id responder-alex --name "Alex Rivera" --role INCIDENT_RESPONDER
-.venv/bin/python -m app.core.operators_cli register --id auditor-jordan --name "Jordan Lee" --role READ_ONLY_OBSERVER
+cd frontend
+npm ci
+npm run build
+npm test
+npm run test:mobile
+npm run test:browser
 
-# List or revoke operators
-.venv/bin/python -m app.core.operators_cli list
-.venv/bin/python -m app.core.operators_cli revoke --id responder-alex
+cd ../backend
+.venv/bin/python -m pytest tests/ -q
+BENCHMARK_OUTPUT_PATH=/tmp/incident-voice-benchmark.json .venv/bin/python ../scripts/benchmark_eval.py
 ```
 
-All credentials are encrypted/hashed in a private, transactional SQLite database (`operators.sqlite3`) and revoked immediately across active WebSockets.
+Browser checks need local Chrome and an isolated backend. The [pilot protocol](docs/PILOT_EVALUATION_PROTOCOL.md) describes further human evaluation; it has not been completed. Real microphone quality, provider quota behavior, and any public deployment need separate validation before submission.
 
----
+## Submission materials
 
-## Test Verification Suite
+- [Submission readiness and remaining gates](docs/SUBMISSION_CHECKLIST.md)
+- [Submission form copy](docs/SUBMISSION_COPY.md)
+- [Verified event rules and open questions](docs/HACKATHON_RULES_RESEARCH.md)
+- [Three-minute demonstration script](docs/DEMO_SCRIPT.md)
+- [Pitch deck PDF](docs/IncidentVoice-Presentation.pdf)
+- [Deployment guide](docs/DEPLOYMENT_GUIDE.md)
 
-All backend and frontend test suites are fully automated, reproducible, and passing:
-
-```bash
-# Run all 240 backend pytest tests (WAL, RBAC, telemetry, tools, multimodal, fidelity, Path 1)
-cd backend && .venv/bin/pytest tests/
-
-# Run all 36 frontend vitest tests across 7 test suites
-cd frontend && npm test -- --run
-
-# Run full 61-turn benchmark evaluation harness
-cd backend && .venv/bin/python3 ../scripts/benchmark_eval.py
-
-# Run frontend production build (TypeScript + Vite)
-cd frontend && npm run build
-```
-
----
-
-## Hackathon Submission Deliverables
-
-- **Submission Checklist & Form Copy:** [docs/SUBMISSION_CHECKLIST.md](docs/SUBMISSION_CHECKLIST.md)
-- **Pilot Evaluation Protocol:** [docs/PILOT_EVALUATION_PROTOCOL.md](docs/PILOT_EVALUATION_PROTOCOL.md)
-- **Research Phase Ledger:** [docs/RESEARCH_PHASES.md](docs/RESEARCH_PHASES.md)
-- **Demonstration Video Script:** [docs/DEMO_SCRIPT.md](docs/DEMO_SCRIPT.md)
-- **Interactive Pitch Deck:** [docs/pitch_deck.html](docs/pitch_deck.html) & [PDF](docs/IncidentVoice-Presentation.pdf)
-- **Architecture Specification:** [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
-- **Deployment Guide:** [docs/DEPLOYMENT_GUIDE.md](docs/DEPLOYMENT_GUIDE.md)
-
----
+The general lablab guidance asks for a reachable demo, public repository, short video, and PDF pitch deck. Confirm the exact event form and cutoff in the logged-in dashboard. Draft tickets and Slack briefings are artifacts for review; they are not sent to external systems by the demo.
 
 ## License
 
-MIT License. See [LICENSE](LICENSE) for details.
+MIT; see [LICENSE](LICENSE).

@@ -48,6 +48,10 @@ Type info: this codebase uses **type hints** but has **no static type checker** 
 beyond `pydantic` runtime validation. Run `pydantic` models through tests rather than
 `mypy` (they aren't configured here).
 
+The benchmark isolates its operator store and disables provider calls. Set
+`BENCHMARK_OUTPUT_PATH` to keep its generated JSON outside the tracked
+`backend/data/benchmark_results.json` file.
+
 ### Frontend
 All commands run from `frontend/`.
 
@@ -85,8 +89,8 @@ Examples from this repo's history are the style authority.
 2. `npm test` (36 vitest, 7 suites)
 3. `npm run test:mobile` (no horizontal overflow ≤ 321px)
 4. `npm run test:browser` (desktop smoke: buttons present, no page errors)
-5. `.venv/bin/python -m pytest tests/ -q` (240 backend tests)
-6. `python3 ../scripts/benchmark_eval.py` (full 61-turn eval — local run only)
+5. `.venv/bin/python -m pytest tests/ -q` (245 backend tests; 1 opt-in live skip)
+6. `.venv/bin/python ../scripts/benchmark_eval.py` (full 61-turn offline eval)
 
 **CI mirrors steps 1–5** (`.github/workflows/test.yml`).
 Browser tests (steps 3–4) require Chrome and are NOT in CI — run them locally before

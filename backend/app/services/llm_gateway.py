@@ -11,6 +11,9 @@ merely rate limited, so this client surfaces the provider's reset window instead
 of hiding it. A retry is attempted only when the provider states a short reset.
 """
 import asyncio
+import math
+from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
 import httpx
 from app.core.config import settings
 
@@ -32,9 +35,13 @@ class LLMGatewayError(Exception):
     def describe(self):
         """Operator-facing explanation distinguishing throttling from a real fault."""
         if self.status == 429:
-            if self.retry_after_seconds:
+            try:
+                delay = float(self.retry_after_seconds)
+            except (TypeError, ValueError, OverflowError):
+                delay = None
+            if delay is not None and math.isfinite(delay) and delay > 0:
                 return (f'AssemblyAI rate limit reached; the model allows a few requests per minute. '
-                        f'Retry in about {int(self.retry_after_seconds)}s.')
+                        f'Retry in about {int(delay)}s.')
             return 'AssemblyAI rate limit reached. Retry after the provider limit resets.'
         if self.status:
             return f'AssemblyAI LLM Gateway returned HTTP {self.status}.'
@@ -60,8 +67,16 @@ class LLMGatewayClient:
             try:
                 delay = float(raw)
             except (TypeError, ValueError):
-                continue
-            if delay > 0:
+                if header != 'Retry-After':
+                    continue
+                try:
+                    reset_at = parsedate_to_datetime(raw)
+                    if reset_at.tzinfo is None:
+                        reset_at = reset_at.replace(tzinfo=timezone.utc)
+                    return max(0.0, (reset_at - datetime.now(timezone.utc)).total_seconds())
+                except (TypeError, ValueError, OverflowError):
+                    continue
+            if math.isfinite(delay) and delay > 0:
                 return delay
         return None
 

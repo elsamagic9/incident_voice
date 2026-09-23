@@ -25,7 +25,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="IncidentVoice API",
-    description="Autonomous Voice SRE & Incident Commander powered by AssemblyAI Real-Time Voice AI and LeMUR",
+    description="Evidence-grounded voice incident copilot powered by AssemblyAI Voice Agent API, Streaming STT, and LLM Gateway",
     version="1.0.0",
     lifespan=lifespan
 )

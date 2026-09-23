@@ -1,10 +1,10 @@
 # IncidentVoice — presentation
 
-Updated September 11, 2026. Present only results observed in the final demo.
+Updated September 23, 2026. Present only results observed in the final demo. The product screenshots show an earlier prototype layout; replace them with captures from the deployed build before submitting.
 
-## IncidentVoice — An incident copilot that shows its work.
+## IncidentVoice — A restart is not a recovery.
 
-Connect voice-led investigation to cited observations, explicit approvals, and recovery verification.
+Connect voice-led investigation to cited observations, explicit approvals, and measured recovery checks.
 
 - Built for the AssemblyAI Voice Agent Hackathon
 - Voice triage, explicit approvals, evidence-based incident reviews
@@ -48,7 +48,7 @@ A model request stages a mutation. A second tool call does not authorize it.
 
 Captured facts. Inspectable hypotheses.
 
-![Actual evidence workspace](assets/incident-brief.png)
+![Earlier prototype evidence workspace](assets/incident-brief.png)
 
 - 17 observations from five simulated services in this demonstration.
 - AssemblyAI analysis linked to exact evidence IDs.
@@ -58,18 +58,18 @@ Captured facts. Inspectable hypotheses.
 
 Success needs context.
 
-![Actual recovery workspace](assets/recovery-check.png)
+![Earlier prototype recovery workspace](assets/recovery-check.png)
 
 - Approve the exact service restart.
 - Compare observed before/after target health.
 - Check the whole cluster: three services still need attention here.
 - Export the evidence and outcomes for the next engineer.
 
-## 07 / NEXT STEPS — A focused prototype with a clear path.
+## 07 / ADOPTION — Sell the workflow, measure the outcome.
 
-The next milestone is a repeatable, measured pilot with an on-call team.
+Start with small platform teams that own on-call incidents.
 
-- Current limits: in-memory single-process sessions and limited live infrastructure actions.
-- Validate microphone quality, interruptions, and response latency on the deployment target.
-- Add persistent evidence storage, individual identities, and deeper telemetry integrations.
-- Supply the final repository, HTTPS app, and demo video links in the submission form.
+- Buyer: platform engineering or SRE lead; daily user: on-call responder.
+- Pilot: compare time to first cited diagnosis, approval correctness, and verified recovery against the team's existing workflow.
+- Business hypothesis: per-team software subscription with voice usage charged separately; pricing and demand are unvalidated.
+- Next: deploy a single-instance HTTPS demo, test a real microphone session, and recruit pilot operators. Live infrastructure actions remain limited.

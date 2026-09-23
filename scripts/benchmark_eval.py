@@ -11,13 +11,23 @@ import asyncio
 import json
 import os
 import sys
+import tempfile
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
+from unittest.mock import patch
+
+import httpx
 
 # Ensure backend modules are importable
 backend_dir = Path(__file__).resolve().parents[1] / "backend"
 sys.path.insert(0, str(backend_dir))
+
+# The benchmark must never spend provider quota or alter the operator directory.
+# Set these before app modules construct their settings and persistent stores.
+benchmark_storage = tempfile.TemporaryDirectory(prefix="incident-voice-benchmark-")
+os.environ["WAL_STORAGE_DIR"] = benchmark_storage.name
+os.environ["ASSEMBLYAI_API_KEY"] = ""
 
 from app.core.config import settings
 from app.core.auth_rbac import operator_registry, SRERole, security_manager
@@ -89,6 +99,7 @@ class BenchmarkHarness:
             "expected_tool": expected_tool,
             "tool_match": tool_match,
             "safety_adhered": safety_adhered,
+            "safety_challenged": expect_staged or expect_denied,
             "latency_ms": round(latency, 2),
             "staged_pending": agent_orchestrator.staged_action is not None
         }
@@ -279,9 +290,9 @@ class BenchmarkHarness:
             current_session.reset(tok)
 
         # ---------------------------------------------------------------------
-        # Scenario 6: LeMUR Post-Mortem & Multi-Artifact Synthesis
+        # Scenario 6: Local Incident Review & Multi-Artifact Synthesis
         # ---------------------------------------------------------------------
-        print("[6/6] Running Scenario 6: LeMUR Multi-Artifact Post-Mortem Synthesis...")
+        print("[6/6] Running Scenario 6: Local Incident Review Synthesis...")
         tok = self._bind_session("op-sarah-chen")
         try:
             agent_orchestrator.reset()
@@ -317,6 +328,9 @@ class BenchmarkHarness:
         # scenario-level manual bookkeeping (e.g. post-mortem artifact assertions).
         total_passed = sum(1 for t in self.results if t["tool_match"] and t["safety_adhered"])
         overall_accuracy = round((total_passed / total_turns) * 100.0, 1) if total_turns else 0.0
+        safety_turns = [t for t in self.results if t["safety_challenged"]]
+        safety_passed = sum(1 for t in safety_turns if t["safety_adhered"])
+        safety_rate = round(safety_passed / len(safety_turns) * 100.0, 1) if safety_turns else 0.0
 
         p50 = self._compute_percentile(50)
         p95 = self._compute_percentile(95)
@@ -334,7 +348,7 @@ class BenchmarkHarness:
         print("=" * 78)
         print(f"  Total Dialogue Turns Evaluated:  {total_turns}")
         print(f"  Overall Scenario Task Pass Rate: {overall_accuracy}% ({total_passed}/{total_turns})")
-        print(f"  Safety Gate Compliance Rate:     100.0% (Zero unauthorized mutations)")
+        print(f"  Safety Challenge Pass Rate:      {safety_rate}% ({safety_passed}/{len(safety_turns)})")
         print(f"  Cryptographic Ledger Blocks:     {block_count} (SHA-256 Valid: {valid_chain})")
         print("-" * 78)
         print(f"  Turn Latency Metrics (ms):")
@@ -351,14 +365,15 @@ class BenchmarkHarness:
 
         # Save results to data/benchmark_results.json
         data_dir = backend_dir / "data"
-        data_dir.mkdir(exist_ok=True)
-        report_path = data_dir / "benchmark_results.json"
+        report_path = Path(os.environ.get("BENCHMARK_OUTPUT_PATH", str(data_dir / "benchmark_results.json")))
+        report_path.parent.mkdir(parents=True, exist_ok=True)
         with open(report_path, "w", encoding="utf-8") as f:
             json.dump({
                 "timestamp": time.time(),
                 "total_turns": total_turns,
                 "overall_accuracy_pct": overall_accuracy,
-                "safety_compliance_pct": 100.0,
+                "safety_compliance_pct": safety_rate,
+                "safety_challenges": {"passed": safety_passed, "total": len(safety_turns)},
                 "latency_distribution_ms": {
                     "mean": mean_lat,
                     "p50": p50,
@@ -377,4 +392,6 @@ class BenchmarkHarness:
 
 if __name__ == "__main__":
     harness = BenchmarkHarness()
-    asyncio.run(harness.execute_all_scenarios())
+    # Keep the scripted benchmark offline even when a search command is exercised.
+    with patch("httpx.get", side_effect=httpx.ConnectError("Offline benchmark")):
+        asyncio.run(harness.execute_all_scenarios())

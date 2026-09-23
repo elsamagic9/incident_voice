@@ -1,11 +1,13 @@
 import asyncio
 import json
-from unittest.mock import AsyncMock
+from datetime import datetime, timedelta, timezone
+from unittest.mock import AsyncMock, Mock
 import httpx
 import pytest
 from app.core.config import settings
 from app.services.orchestrator import agent_orchestrator
 from app.services.lemur_service import lemur_service
+from app.services.llm_gateway import LLMGatewayClient, LLMGatewayError
 from app.services.assemblyai_voice_agent import AssemblyAIVoiceAgentSession
 from app.services.assemblyai_stream import AssemblyAIStreamSession
 
@@ -191,3 +193,51 @@ async def test_sre_conversational_intelligence():
     spoken, tools = await agent_orchestrator._deterministic_agent_reasoning('What is the safety barrier?')
     assert 'safety barrier' in spoken.lower() or '30-second' in spoken.lower()
     assert len(tools) == 0
+
+
+def _rate_limited_response(headers):
+    return httpx.Response(429, request=httpx.Request('POST', 'https://llm-gateway.assemblyai.com/v1/chat/completions'), headers=headers)
+
+
+def test_rate_limit_reset_seconds_numeric_and_http_date():
+    assert LLMGatewayClient.reset_seconds(_rate_limited_response({'Retry-After': '8'})) == 8.0
+    assert LLMGatewayClient.reset_seconds(_rate_limited_response({'Retry-After': 'not-a-number-or-date'})) is None
+    future = (datetime.now(timezone.utc) + timedelta(seconds=9)).strftime('%a, %d %b %Y %H:%M:%S GMT')
+    delay = LLMGatewayClient.reset_seconds(_rate_limited_response({'Retry-After': future}))
+    assert 8.0 <= delay <= 9.0
+    past = 'Wed, 21 Oct 2015 07:28:00 GMT'
+    assert LLMGatewayClient.reset_seconds(_rate_limited_response({'Retry-After': past})) == 0.0
+
+
+def test_rate_limit_reset_seconds_rejects_nonfinite_and_keeps_x_ratelimit_semantics():
+    assert LLMGatewayClient.reset_seconds(_rate_limited_response({'Retry-After': 'inf'})) is None
+    assert LLMGatewayClient.reset_seconds(_rate_limited_response({'Retry-After': 'nan'})) is None
+    assert LLMGatewayClient.reset_seconds(_rate_limited_response({'X-RateLimit-Reset': 'nan'})) is None
+    assert LLMGatewayClient.reset_seconds(_rate_limited_response({'X-RateLimit-Reset': 'inf'})) is None
+    assert LLMGatewayClient.reset_seconds(_rate_limited_response({'X-RateLimit-Reset': '15'})) == 15.0
+
+
+@pytest.mark.asyncio
+async def test_gateway_chat_no_retry_when_reset_exceeds_budget(monkeypatch):
+    monkeypatch.setattr(LLMGatewayClient, 'configured', property(lambda self: True))
+    request = httpx.Request('POST', 'https://llm-gateway.assemblyai.com/v1/chat/completions')
+    post = AsyncMock(return_value=httpx.Response(429, request=request, headers={'Retry-After': '60'}))
+    monkeypatch.setattr(httpx.AsyncClient, 'post', post)
+    client = LLMGatewayClient(api_key='test-key')
+    with pytest.raises(LLMGatewayError) as exc_info:
+        await client.chat({'messages': []})
+    assert exc_info.value.status == 429
+    assert exc_info.value.retry_after_seconds == 60.0
+    post.assert_awaited_once()
+
+
+def test_gateway_describe_never_crashes_on_nonfinite_guidance():
+    for guidance in (float('inf'), float('-inf'), float('nan'), 'inf', 'nan', object()):
+        described = LLMGatewayError('Rate limited', status=429, retry_after_seconds=guidance).describe()
+        assert 'Retry in about' not in described
+        assert 'rate limit reached' in described.lower()
+
+
+def test_gateway_describe_with_valid_finite_delay():
+    error = LLMGatewayError('Rate limited', status=429, retry_after_seconds=8.0)
+    assert 'Retry in about 8s.' in error.describe()

@@ -1,15 +1,19 @@
 # IncidentVoice deployment
 
-The Docker image serves the React dashboard and FastAPI/WebSocket backend together on port **8000**. Deploy a single worker/replica because operator sessions are held in process memory. Use HTTPS for a remotely accessible microphone demo.
+The Docker image serves the React dashboard and FastAPI/WebSocket backend together on port **8000**. Deploy one worker/replica: active voice sessions and locks are process-local, even though incident checkpoints can be restored from disk. Use HTTPS for a remotely accessible microphone demo.
 
-## Cloud demo (Render or Fly)
+## Public demo on Render
 
-1. Build from the root `Dockerfile`, using `render.yaml` or `fly.toml` as appropriate.
-2. Set `INFRASTRUCTURE_MODE=simulation`.
-3. Set `ASSEMBLYAI_API_KEY` through the hosting provider's secret/environment UI.
-4. For custom reasoning, configure `LLM_PROVIDER=gemini` and `GEMINI_API_KEY`, or `LLM_PROVIDER=openai` and `OPENAI_API_KEY`.
-5. Set `OPERATOR_ACCESS_TOKEN` to restrict access and enter it in the dashboard's login form. Provide judges a way to obtain it separately from the public repository.
-6. Verify `/api/health`, open the dashboard, sign in, and test a live microphone turn. A healthy HTTP server alone does not prove that the voice provider connected.
+The checked-in `render.yaml` builds the root `Dockerfile` as one web service, checks `/api/health`, enables secure session cookies, and uses AssemblyAI for both the managed voice path and custom-path reasoning. It selects Render's **standard** plan; review the charge shown in your Render account before creating the service. No hosted service or public URL is created by this file alone.
+
+1. Push the reviewed commit to your public GitHub repository, then in Render create a Blueprint from that repository using `render.yaml`. Render prompts for `ASSEMBLYAI_API_KEY` and `OPERATOR_ACCESS_TOKEN` because both are marked `sync: false`. Enter real values in Render's secret UI, never in Git or the video. The optional Gemini/OpenAI keys can remain blank.
+2. Wait for the deploy and HTTP health check to pass. Open the assigned `https://…onrender.com` URL and sign in with the private operator token. Supply judges a way to obtain that token in the submission or direct instructions; an inaccessible demo weakens the entry.
+3. In a clean Chrome/Edge profile, grant microphone access, select **Path 1: Voice Agent API**, and confirm a real spoken command appears in the transcript and receives audible speech. Run the staged approval and recovery flow from the [demo script](DEMO_SCRIPT.md). Check that the provider source is shown correctly and that a failed/rate-limited provider is visible rather than presented as a successful AI result.
+4. Reload the app, repeat one voice turn, and test the same URL from a different device/network. Record the final video against this deployed build. Confirm the deployment URL, GitHub URL, video link, and PDF deck in the submission form before the event cutoff.
+
+Render supplies an HTTPS `onrender.com` domain for web services. Its filesystem is ephemeral unless a paid persistent disk is attached; checkpoints in `/app/backend/data` will be lost on a restart or redeploy without one. For persistence, attach a disk at `/app/backend/data` in Render and keep one instance. Do not claim durable hosted recovery until a restart test on that service passes. A healthy HTTP server alone does not prove that AssemblyAI connected.
+
+Fly is an alternative using `fly.toml`; configure the same private key, token, HTTPS, single instance, and persistent storage there, then perform the same rehearsal.
 
 Do not configure Docker mode on a cloud host without an accessible Docker daemon. Kubernetes mode needs a configured `kubectl` installation and credentials; the included image does not bundle them.
 
@@ -61,7 +65,7 @@ Application CPU/latency/error-rate metrics are unavailable in Docker mode unless
 - Stage and approve one action; verify the result matches the selected infrastructure mode.
 - Generate a report and check its source. A local fallback is labeled and has no invented tickets.
 - Replay captured audio only when the recording exists; text-only sessions have none.
-- Export artifacts before restarting the server, which clears in-memory sessions.
+- Export artifacts before a hosted restart unless a persistent disk is configured and recovery has been tested there.
 
 Check the hackathon's current submission form for required links and media rather than relying on older pitch/checklist files in this repository.
 
