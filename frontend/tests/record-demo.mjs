@@ -64,11 +64,27 @@ try {
     window.speechSynthesis.cancel = () => {};
   });
   const page = await context.newPage();
+  // This box is often under heavy load from other work. Slow is recoverable;
+  // a 30s default is not, so every step gets real headroom.
+  page.setDefaultTimeout(120_000);
   const shot = async name => { await page.screenshot({ path: `${outDir}${name}.png` }); console.log(`  shot ${name}`); };
   const say = async text => {
     const box = page.getByLabel('SRE command');
     await box.fill(text);
     await page.getByRole('button', { name: 'Send command', exact: true }).click();
+  };
+  // Clicking through a React app on a saturated machine occasionally times out
+  // mid-dispatch. Retrying the same click is safe: these buttons are idempotent
+  // or guarded, and a duplicate investigate only re-reads telemetry.
+  const click = async (locator, what) => {
+    for (let attempt = 1; ; attempt++) {
+      try { await locator.click({ timeout: 60_000 }); return; }
+      catch (err) {
+        if (attempt >= 3) throw new Error(`click failed after ${attempt} attempts: ${what}`);
+        console.log(`  retry ${attempt} on ${what}`);
+        await wait(2000);
+      }
+    }
   };
 
   console.log(`Recording ${base}`);

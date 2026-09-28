@@ -6,7 +6,8 @@
 **/__pycache__
 **/.pytest_cache
 **/*.tsbuildinfo
-frontend/dist
+# frontend/dist is excluded for Dockerfile (which builds it in a Node stage) but
+# required by Dockerfile.render, so the blanket exclude is removed here.
 **/*.sqlite3
 **/*.sqlite3-*
 **/*.jsonl
