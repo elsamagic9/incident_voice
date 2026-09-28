@@ -59,8 +59,8 @@ export function ApprovalCard({ action, disabled, onApprove, onCancel }: Props) {
 
         <p className="text-zinc-400 text-xs mt-0.5">
           {action.simulated
-            ? 'This changes demo data only. Say “confirm” or approve below.'
-            : 'This will change the configured infrastructure. Say “confirm” or approve below.'}
+            ? 'This changes demo data only. Speak the approval code below, or approve directly.'
+            : 'This will change the configured infrastructure. Speak the approval code below, or approve directly.'}
         </p>
 
         {action.challenge_code && (

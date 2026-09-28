@@ -2,7 +2,7 @@
 
 **A restart is not a recovery.** IncidentVoice is a voice incident copilot built during the September 2026 [AssemblyAI Voice Agent Hackathon](https://lablab.ai/ai-hackathons/assemblyai-voice-agent-hackathon) for on-call engineers investigating service outages.
 
-During an incident, an engineer can ask IncidentVoice to investigate, inspect the observations behind its hypotheses, request a remediation, and check whether the service actually recovered. A requested infrastructure change is staged for 30 seconds and requires operator confirmation. The demo labels simulated actions and never presents a successful command as proof that the whole incident is resolved.
+During an incident, an engineer can ask IncidentVoice to investigate, inspect the observations behind its hypotheses, request a remediation, and check whether the service actually recovered. A requested infrastructure change is staged for 30 seconds and must be authorized by a human. That authorization is deliberately **not** a bare "yes": the backend issues a one-time code per staged action, shows it only on the approval card, and requires the operator to speak it. The code is never sent back to the model that requested the change, so the agent cannot satisfy its own confirmation prompt — the failure mode behind the highest-engagement practitioner objection to AI ops agents. The demo labels simulated actions and never presents a successful command as proof that the whole incident is resolved.
 
 ## Try the core workflow
 
