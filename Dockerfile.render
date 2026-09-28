@@ -1,0 +1,38 @@
+# Low-memory production image for hosts with a 0.1 CPU / 512 MB free plan.
+#
+# The main Dockerfile builds the React bundle in a Node stage, which peaks
+# around 364 MB during `tsc -b`. That does not fit alongside npm and the Node
+# baseline inside 512 MB, and the build risks an out-of-memory kill on a free
+# instance. This image therefore ships the prebuilt `frontend/dist` committed to
+# the repository and only installs Python dependencies.
+#
+# Regenerate the bundle before deploying:
+#   cd frontend && npm ci && npm run build && git add -A dist ../render.yaml
+FROM python:3.11-slim AS runner
+
+# curl for healthchecks, procps for host stats
+RUN apt-get update && apt-get install -y --no-recommends \
+    curl \
+    procps \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+COPY backend/requirements.txt ./backend/requirements.txt
+RUN pip install --no-cache-dir -r ./backend/requirements.txt
+
+COPY backend/ ./backend/
+COPY frontend/dist ./frontend/dist
+
+WORKDIR /app/backend
+
+ENV PYTHONUNBUFFERED=1 \
+    PORT=8000 \
+    HOST=0.0.0.0
+
+EXPOSE 8000
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:8000/api/health || exit 1
+
+CMD ["python", "-m", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]

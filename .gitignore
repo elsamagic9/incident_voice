@@ -33,7 +33,10 @@ node_modules/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-frontend/dist/
+# frontend/dist is intentionally NOT ignored: Dockerfile.render ships the
+# prebuilt bundle so a 0.1 CPU / 512 MB free host never runs a frontend build.
+# The blanket `dist/` rule above matches at any depth, so negate it explicitly.
+!frontend/dist/
 frontend/node_modules/
 *.tsbuildinfo
 .pnpm-debug.log*

@@ -22,12 +22,11 @@ This is a project checklist, not an official hackathon rubric. The [event page](
 ## Still required before submitting
 
 - [x] Local AssemblyAI key verified by actual Streaming, managed voice, and LLM Gateway requests. Never publish it.
-- [ ] Configure and verify the hosted environment separately.
 - [ ] Complete a live AssemblyAI microphone conversation; record the final transcription and audible reply.
 - [ ] Exercise managed-engine tool calling and approval over an actual provider session.
-- [ ] Verify the selected custom LLM model/key, if demonstrating that engine.
+- [x] Authorization no longer terminates in a bare affirmative: `verify_vocal_authorization` accepts only the per-action code, and `challenge_code` is stripped from the tool result returned to the managed voice agent. Regression test: `test_bare_affirmative_does_not_authorize`.
 - [x] Generate a real LLM Gateway report and confirm `source=assemblyai_llm_gateway`.
-- [ ] Deploy the latest build to a reachable HTTPS URL; test in a clean browser session.
+- [ ] Deploy to Render on the **free** plan and test in a clean browser session. Free-plan limits: 0.1 CPU / 512 MB, sleeps after 15 minutes without inbound traffic, ~1 minute to wake, ephemeral filesystem. Build feasibility under the 512 MB cap is under local verification.
 - [x] Public repository URL exists: [elsamagic9/incident_voice](https://github.com/elsamagic9/incident_voice).
 - [x] Push the reviewed local changes and confirm the public repository shows the current README, deck, and app commit (`e9bd744`).
 - [x] Refresh the public GitHub repository description to match the current AssemblyAI integration.

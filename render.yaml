@@ -2,7 +2,9 @@ services:
   - type: web
     name: incident-voice
     runtime: docker
-    dockerfilePath: ./Dockerfile
+    # Low-memory image: the free plan has 0.1 CPU / 512 MB, which cannot hold a
+    # frontend build (tsc peaks near 364 MB). This ships the prebuilt bundle.
+    dockerfilePath: ./Dockerfile.render
     dockerContext: .
     # Free plan: 0.1 CPU / 512 MB. The service sleeps after 15 minutes without
     # inbound traffic and wakes in about a minute. Its filesystem is ephemeral,
