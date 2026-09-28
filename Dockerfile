@@ -20,7 +20,9 @@ FROM python:3.11-slim AS runner
 COPY --from=docker-cli /usr/local/bin/docker /usr/local/bin/docker
 
 # Install system dependencies (curl for healthchecks, procps for host stats)
-RUN apt-get update && apt-get install -y --no-install-recommends \
+# `--no-install-recommends` is rejected by apt in the current Debian base with
+# "not understood in combination with the other options"; the -o form is equivalent.
+RUN apt-get update && apt-get install -y -o APT::Install-Recommends=false \
     curl \
     procps \
     && rm -rf /var/lib/apt/lists/*

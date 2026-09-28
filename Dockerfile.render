@@ -11,7 +11,7 @@
 FROM python:3.11-slim AS runner
 
 # curl for healthchecks, procps for host stats
-RUN apt-get update && apt-get install -y --no-recommends \
+RUN apt-get update && apt-get install -y -o APT::Install-Recommends=false \
     curl \
     procps \
     && rm -rf /var/lib/apt/lists/*

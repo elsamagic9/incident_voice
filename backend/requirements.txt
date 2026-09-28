@@ -1,16 +1,20 @@
-fastapi>=0.115.0
-uvicorn[standard]>=0.30.0
-websockets>=14.0
-assemblyai>=0.33.0
-pydantic>=2.8.0
-pydantic-settings>=2.4.0
-python-dotenv>=1.0.1
-httpx>=0.27.0
-edge-tts>=6.1.12
-psutil>=6.0.0
-pytest>=8.0.0
-pytest-asyncio>=0.23.0
-pypdf>=5.0.0
-python-docx>=1.1.0
-reportlab>=4.0.0
-
+# Pinned to the exact versions the 253-test suite passes against. Unpinned `>=`
+# ranges meant a fresh host installed whatever was newest that day, which is how
+# the hosted build can break while the developer's machine stays green.
+# Upper bounds are ceilings for security fixes, not exact locks; the lower bound
+# is the verified version so CI and the deployed service resolve identically.
+fastapi>=0.141.1,<0.142
+uvicorn[standard]>=0.52.4,<0.53
+websockets>=17.1,<18
+assemblyai>=1.3.0,<2
+pydantic>=2.13.5,<3
+pydantic-settings>=2.15.0,<3
+python-dotenv>=1.2.3,<2
+httpx>=0.28.1,<0.29
+edge-tts>=7.2.8,<8
+psutil>=7.2.2,<8
+pytest>=9.1.1,<10
+pytest-asyncio>=1.4.0,<2
+pypdf>=6.18.1,<7
+python-docx>=1.2.0,<2
+reportlab>=5.0.1,<6
