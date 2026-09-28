@@ -208,6 +208,10 @@ class AssemblyAIVoiceAgentSession:
                 # The UI receives the complete evidence via on_tool_executed. Keep the
                 # voice context small so the agent briefs the operator, not the JSON.
                 voice_result = result
+                if result.get('status') == 'staged':
+                    # The staged action carries the spoken authorization code. It goes to the
+                    # approval card, never back to the model that requested the change.
+                    voice_result = {k: v for k, v in result.items() if k != 'challenge_code'}
                 if name == 'investigate_incident' and not result.get('error'):
                     voice_result = {key: result.get(key) for key in ('summary', 'analysis_source', 'source', 'warning')}
                     voice_result['leading_hypothesis'] = (result.get('hypotheses') or [None])[0]

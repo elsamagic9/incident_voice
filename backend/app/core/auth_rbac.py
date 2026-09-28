@@ -247,13 +247,14 @@ class EnterpriseSecurityManager:
             return False, 'Cancellation or negation detected.'
         normalized = normalize_speech(text)
         challenge = normalize_speech(self.active_challenge)
-        accepted = {
-            'confirm', 'authorize', 'approve', 'yes confirm', 'confirm action',
-            'authorize action', 'confirm remediation', 'authorize remediation',
-            challenge, f'confirm {challenge}', f'authorize {challenge}'
-        }
+        # Authorization must terminate in a factor the agent cannot produce on its own.
+        # The operator reads the per-action code off the approval card and speaks it back;
+        # the code is never returned to the model that requested the action. A bare
+        # affirmative is the "Are you sure (Y/N)?" pattern and is deliberately rejected:
+        # an agent in a degraded-guardrail state answers its own confirmation prompt.
+        accepted = {challenge, f'confirm {challenge}', f'authorize {challenge}', f'approve {challenge}'}
         verified = normalized in accepted
-        return verified, 'Explicit confirmation verified.' if verified else 'Explicit confirmation required.'
+        return verified, 'Explicit confirmation verified.' if verified else 'Spoken confirmation must include the approval code.'
 
     def clear_challenge(self):
         self.active_challenge = None

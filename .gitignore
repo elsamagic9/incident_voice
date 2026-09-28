@@ -62,3 +62,8 @@ logs/
 *.sqlite3-*
 backend/data/*.pdf
 data/
+
+# Local scratch that must never reach the public submission repository
+ai_os_pipeline/
+gv.html
+docs/PAKISTAN_CONSUMER_DONGLE_LAW.md

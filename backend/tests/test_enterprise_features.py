@@ -19,10 +19,18 @@ def test_observer_cannot_stage_mutations():
     assert agent_orchestrator.staged_action is None
 
 
-@pytest.mark.parametrize('text', ['confirm', 'Yes, confirm', 'authorize', 'approve'])
-def test_explicit_voice_approval(text):
+@pytest.mark.parametrize('text', ['confirm', 'Yes, confirm', 'authorize', 'approve', 'confirm action', 'authorize remediation', 'yes confirm'])
+def test_bare_affirmative_does_not_authorize(text):
+    """A bare yes/no is the defeated pattern: the agent can answer its own prompt."""
     security_manager.generate_phonetic_challenge()
-    assert security_manager.verify_vocal_authorization(text)[0]
+    assert not security_manager.verify_vocal_authorization(text)[0]
+
+
+@pytest.mark.parametrize('prefix', ['', 'confirm ', 'authorize ', 'approve '])
+def test_spoken_approval_code_authorizes(prefix):
+    code = security_manager.generate_phonetic_challenge()
+    spoken = f'{prefix}{code}'.replace('-', ' ')
+    assert security_manager.verify_vocal_authorization(spoken)[0]
 
 
 @pytest.mark.parametrize('text', ['do not confirm', "don’t approve", 'cancel', 'show logs', 'the logs say confirm'])

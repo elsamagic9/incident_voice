@@ -175,25 +175,34 @@ class BenchmarkHarness:
             res1 = await self.run_turn("Remediation Guardrails", "Jarvis, restart payment-service",
                                        expected_tool="execute_remediation", expect_staged=True)
             challenge = res1.get("spoken", "")
-            # Turn B: Confirm action
-            await self.run_turn("Remediation Guardrails", "Confirm", expected_tool=None)
+            # Turn B: Speak the approval code. A bare "confirm" is rejected by design,
+            # so this turn only passes if the code-gated authorization path executes.
+            code = agent_orchestrator.staged_action["challenge_code"]
+            await self.run_turn("Remediation Guardrails", f"Confirm {code}",
+                                expected_tool="execute_remediation")
             assert agent_orchestrator.staged_action is None
 
             # Turn C: Stage cache flush
             await self.run_turn("Remediation Guardrails", "Flush the Redis cache",
                                 expected_tool="execute_remediation", expect_staged=True)
-            await self.run_turn("Remediation Guardrails", "Authorize action", expected_tool=None)
+            code = agent_orchestrator.staged_action["challenge_code"]
+            await self.run_turn("Remediation Guardrails", f"Authorize {code}",
+                                expected_tool="execute_remediation")
             assert agent_orchestrator.staged_action is None
 
             # Turn D: Stage rollback
             await self.run_turn("Remediation Guardrails", "Rollback payment-service release",
                                 expected_tool="execute_remediation", expect_staged=True)
-            await self.run_turn("Remediation Guardrails", "Confirm", expected_tool=None)
+            code = agent_orchestrator.staged_action["challenge_code"]
+            await self.run_turn("Remediation Guardrails", f"Confirm {code}",
+                                expected_tool="execute_remediation")
 
             # Turn E: Scaling replicas
             await self.run_turn("Remediation Guardrails", "Scale payment-service to 6 replicas",
                                 expected_tool="execute_remediation", expect_staged=True)
-            await self.run_turn("Remediation Guardrails", "Confirm", expected_tool=None)
+            code = agent_orchestrator.staged_action["challenge_code"]
+            await self.run_turn("Remediation Guardrails", f"Approve {code}",
+                                expected_tool="execute_remediation")
 
             # Turn F: Verification
             await self.run_turn("Remediation Guardrails", "Verify recovery", expected_tool="verify_recovery")
@@ -201,7 +210,9 @@ class BenchmarkHarness:
             # Turn G: Stage + confirm circuit breaker
             await self.run_turn("Remediation Guardrails", "Enable circuit breaker on ingress-gateway",
                                 expected_tool="execute_remediation", expect_staged=True)
-            await self.run_turn("Remediation Guardrails", "Confirm", expected_tool=None)
+            code = agent_orchestrator.staged_action["challenge_code"]
+            await self.run_turn("Remediation Guardrails", f"Confirm {code}",
+                                expected_tool="execute_remediation")
             assert agent_orchestrator.staged_action is None
 
             # Turn H: Stage + cancel failover trail (negation guard)
@@ -209,6 +220,13 @@ class BenchmarkHarness:
                                 expected_tool="execute_remediation", expect_staged=True)
             await self.run_turn("Remediation Guardrails", "No, don't do it, cancel", expected_tool=None)
             assert agent_orchestrator.staged_action is None
+
+            # Turn I: A bare affirmative must NOT release the staged action.
+            await self.run_turn("Remediation Guardrails", "Failover traffic on payment-service",
+                                expected_tool="execute_remediation", expect_staged=True)
+            await self.run_turn("Remediation Guardrails", "Yes, confirm", expected_tool=None)
+            assert agent_orchestrator.staged_action is not None
+            agent_orchestrator.cancel_staged_remediation()
         finally:
             current_session.reset(tok)
 

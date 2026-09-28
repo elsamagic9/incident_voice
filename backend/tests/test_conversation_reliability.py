@@ -27,7 +27,8 @@ async def test_addressed_commands_execute_the_requested_tool(command, tool):
 @pytest.mark.asyncio
 async def test_addressed_confirmation_keeps_target_binding():
     await agent_orchestrator.process_user_turn('Jarvis, restart payment-service')
-    _, events, _ = await agent_orchestrator.process_user_turn('Jarvis, confirm')
+    code = agent_orchestrator.staged_action['challenge_code']
+    _, events, _ = await agent_orchestrator.process_user_turn(f'Jarvis, confirm {code}')
     assert events[0]['result']['success']
     assert cluster_state.services['payment-service'].status == 'healthy'
     assert cluster_state.services['order-db'].status == 'critical'

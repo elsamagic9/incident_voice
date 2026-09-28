@@ -20,7 +20,8 @@ async def test_voice_confirmation_and_cancellation():
     assert tools == []
     assert agent_orchestrator.staged_action is None
     await agent_orchestrator.process_user_turn('Scale payment-service to 8 replicas')
-    _, tools, _ = await agent_orchestrator.process_user_turn('Confirm')
+    code = agent_orchestrator.staged_action['challenge_code']
+    _, tools, _ = await agent_orchestrator.process_user_turn(f'Confirm {code}')
     assert tools[0]['arguments']['count'] == 8
     assert tools[0]['result']['success']
 

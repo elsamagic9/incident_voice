@@ -29,7 +29,8 @@ async def test_investigation_captures_sources_without_changing_services():
 async def test_brief_baseline_is_immutable_and_becomes_stale_after_action():
     await investigation_service.investigate()
     await agent_orchestrator.process_user_turn('Restart payment-service')
-    _, tools, _ = await agent_orchestrator.process_user_turn('Confirm')
+    code = agent_orchestrator.staged_action['challenge_code']
+    _, tools, _ = await agent_orchestrator.process_user_turn(f'Confirm {code}')
     receipt = tools[0]['result']['verification']
     assert receipt['before']['error_rate_pct'] == 42.6
     assert receipt['after']['error_rate_pct'] == .5
