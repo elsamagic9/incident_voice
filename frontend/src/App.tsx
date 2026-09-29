@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import {
   Activity, ArrowUpRight, FileText, FlaskConical,
   Layers, LockKeyhole, Network, RefreshCw, Settings, ShieldAlert, Sparkles, Wrench, X,
-  CheckCircle2, PanelRightClose, PanelRightOpen
+  CheckCircle2, PanelRightOpen
 } from 'lucide-react';
 import { useVoiceStream } from './hooks/useVoiceStream';
 import { MissionControlHeader } from './components/MissionControlHeader';
@@ -48,30 +48,29 @@ type View = 'brief' | 'services' | 'runbooks' | 'topology' | 'demo';
 function Workspace() {
   const voice = useVoiceStream();
   const [activePage, setActivePage] = useState<ActivePage>('mission_control');
-  const [view, setView] = useState<View>('services');
   const [activityView, setActivityView] = useState<'tools' | 'timeline'>('tools');
   const [reportOpen, setReportOpen] = useState(false);
   const [accessToken, setAccessToken] = useState('');
   const [signingIn, setSigningIn] = useState(false);
   
-  // Default to clean ChatGPT mode. Canvas opens when triggered by user, investigation or runbook.
-  const [canvasOpen, setCanvasOpen] = useState(false);
+  // Diagnostics render as cards inside the conversation. `view` selects which
+  // panel is shown; there is no separate side canvas.
+  const [view, setView] = useState<View>('brief');
 
   const simulation = voice.operator?.infrastructure_mode === 'simulation';
   const disabled = !voice.isConnected || voice.busy;
   const services = Object.values(voice.services);
   const healthy = services.filter(s => s.status === 'healthy').length;
 
-  // Auto-open canvas on relevant SRE events
+  // Surface the relevant panel when an SRE event makes one meaningful.
   useEffect(() => {
-    if (voice.activeRunbook?.status === 'active') { setView('runbooks'); setCanvasOpen(true); }
+    if (voice.activeRunbook?.status === 'active') setView('runbooks');
   }, [voice.activeRunbook?.runbook_id, voice.activeRunbook?.status]);
-  useEffect(() => { if (voice.investigation?.id) { setView('brief'); setCanvasOpen(true); } }, [voice.investigation?.id]);
+  useEffect(() => { if (voice.investigation?.id) setView('brief'); }, [voice.investigation?.id]);
   const latestCheckId = voice.recoveryChecks?.[voice.recoveryChecks.length - 1]?.id;
-  useEffect(() => { if (latestCheckId) { setView('brief'); setCanvasOpen(true); } }, [latestCheckId]);
+  useEffect(() => { if (latestCheckId) setView('brief'); }, [latestCheckId]);
   useEffect(() => { if (voice.postMortem) setReportOpen(true); }, [voice.postMortem]);
   useEffect(() => { if (!simulation && view === 'demo') setView('services'); }, [simulation, view]);
-  useEffect(() => { if (voice.stagedRemediation) setCanvasOpen(true); }, [voice.stagedRemediation]);
 
   const tabs = [
     { id: 'brief' as const, label: 'Brief', icon: Sparkles },
@@ -167,7 +166,6 @@ function Workspace() {
                     size="sm"
                     disabled={disabled || !voice.incident}
                     onClick={() => {
-                      setCanvasOpen(true);
                       setView('brief');
                       voice.sendTextCommand('Investigate the incident');
                     }}
@@ -190,16 +188,15 @@ function Workspace() {
                   </Button>
 
                   <Button
-                    variant={canvasOpen ? "secondary" : "outline"}
+                    variant="outline"
                     size="sm"
-                    onClick={() => setCanvasOpen(o => !o)}
+                    onClick={() => setView(v => (v === 'brief' ? 'services' : 'brief'))}
                     className="h-7 px-2.5 rounded-xl text-xs border-border/60 gap-1.5"
-                    aria-pressed={canvasOpen}
-                    aria-label="Toggle investigation canvas"
-                    title={canvasOpen ? "Hide Diagnostic Canvas" : "Show Diagnostic Canvas"}
+                    aria-label="Toggle diagnostics"
+                    title="Show diagnostics"
                   >
-                    {canvasOpen ? <PanelRightClose size={13} /> : <PanelRightOpen size={13} />}
-                    <span className="hidden md:inline">{canvasOpen ? 'Hide Canvas' : 'SRE Canvas'}</span>
+                    <PanelRightOpen size={13} />
+                    <span className="hidden md:inline">Diagnostics</span>
                   </Button>
 
                   <Button
@@ -277,144 +274,121 @@ function Workspace() {
                 </div>
               )}
 
-              {/* Staged Remediation Guardrail Approval Card */}
-              {voice.stagedRemediation && (
-                <ApprovalCard
-                  action={voice.stagedRemediation}
-                  disabled={disabled}
-                  onApprove={voice.authorizeRemediation}
-                  onCancel={voice.cancelRemediation}
-                />
-              )}
             </div>
 
-            {/* Split / Main Canvas Area */}
-            <div className="flex-1 flex flex-col lg:flex-row min-h-0 w-full max-w-7xl mx-auto px-2 sm:px-4 lg:px-6 py-2 gap-4 items-stretch relative">
+            {/* Single chat surface. Evidence, approval and receipts render as
+                cards at the end of the conversation, inside the transcript. */}
+            <div className="flex-1 flex flex-col min-h-0 w-full">
+              <LiveTranscriptHUD
+                turns={voice.turns}
+                interimTranscript={voice.currentInterimTranscript}
+                agentTranscript={voice.currentAgentTranscript}
+                isRecording={voice.isRecording}
+                audioLevel={voice.audioLevel}
+                agentStatus={voice.isPlaying ? 'speaking' : voice.agentStatus}
+                disabled={disabled}
+                voiceAvailable={!!voice.operator?.assemblyai_configured}
+                isConnected={voice.isConnected}
+                providerState={voice.providerState}
+                providerMessage={voice.providerMessage}
+                onToggleRecording={voice.toggleRecording}
+                onSendText={voice.sendTextCommand}
+                onBargeIn={voice.bargeIn}
+                inlineCards={
+                  <div className="space-y-3 max-w-2xl mx-auto w-full">
+                    {/* Guardrail: an approval is required before anything destructive runs */}
+                    {voice.stagedRemediation && (
+                      <ApprovalCard
+                        action={voice.stagedRemediation}
+                        disabled={disabled}
+                        onApprove={voice.authorizeRemediation}
+                        onCancel={voice.cancelRemediation}
+                      />
+                    )}
 
-              {/* PRIMARY CHATBOT & VOICE AGENT (Centered, expands full width when canvas closed) */}
-              <div className="flex-1 flex flex-col min-h-0 min-w-0 transition-all duration-300">
-                <LiveTranscriptHUD
-                  turns={voice.turns}
-                  interimTranscript={voice.currentInterimTranscript}
-                  agentTranscript={voice.currentAgentTranscript}
-                  isRecording={voice.isRecording}
-                  audioLevel={voice.audioLevel}
-                  agentStatus={voice.isPlaying ? 'speaking' : voice.agentStatus}
-                  disabled={disabled}
-                  voiceAvailable={!!voice.operator?.assemblyai_configured}
-                  isConnected={voice.isConnected}
-                  providerState={voice.providerState}
-                  providerMessage={voice.providerMessage}
-                  onToggleRecording={voice.toggleRecording}
-                  onSendText={voice.sendTextCommand}
-                  onBargeIn={voice.bargeIn}
-                />
-              </div>
+                    {/* Diagnostics */}
+                    <Card className="border border-border/80 shadow-sm overflow-hidden" role="region" aria-label="Investigation tools">
+                      <CardHeader className="border-b border-border/80 p-2.5 px-3 shrink-0">
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <p className="eyebrow">DIAGNOSTICS</p>
+                            <Badge variant="outline" className="font-mono text-[10px] shrink-0">{services.length} services</Badge>
+                            {healthy === services.length && services.length > 0 && (
+                              <CheckCircle2 size={13} className="text-emerald-500 shrink-0" />
+                            )}
+                          </div>
+                        </div>
+                        <nav className="view-tabs mt-2" aria-label="Investigation views">
+                          {tabs.map(({ id, label, icon: Icon }) => (
+                            <button key={id} type="button" aria-pressed={view === id} onClick={() => setView(id)}>
+                              <Icon size={13} />
+                              <span>{label}</span>
+                              {id === 'runbooks' && voice.activeRunbook?.status === 'active' && (
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                              )}
+                            </button>
+                          ))}
+                        </nav>
+                      </CardHeader>
 
-              {/* SRE DIAGNOSTIC CANVAS (Always in DOM for tests; docked or animated drawer) */}
-              <div
-                className={`transition-all duration-300 flex flex-col ${
-                  canvasOpen
-                    ? 'w-full lg:w-[480px] xl:w-[540px] shrink-0 opacity-100'
-                    : 'w-0 h-0 overflow-hidden opacity-0 pointer-events-none absolute right-0'
-                }`}
-              >
-                {/* Diagnostic Panel Header with Close Button */}
-                <Card className="border shadow-lg overflow-hidden flex-1 flex flex-col min-h-0" role="region" aria-label="Investigation tools">
-                  <CardHeader className="border-b border-border/80 p-3 pb-2 shrink-0">
-                    <div className="flex items-center justify-between gap-3 mb-2">
-                      <div>
-                        <p className="eyebrow">DIAGNOSTICS</p>
-                        <h2 className="text-sm font-semibold tracking-tight text-foreground">The bigger picture</h2>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Badge variant="outline" className="font-mono text-[10px]">{services.length} services</Badge>
-                        {healthy === services.length && services.length > 0 && (
-                          <CheckCircle2 size={13} className="text-emerald-500" />
+                      <CardContent className="p-3">
+                        {view === 'brief' && (
+                          <InvestigationPanel brief={voice.investigation ?? null} checks={voice.recoveryChecks ?? []} disabled={disabled} onCommand={voice.sendTextCommand} />
                         )}
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => setCanvasOpen(false)}
-                          className="h-6 w-6 rounded-md hover:bg-secondary/60 text-muted-foreground hover:text-foreground"
-                          title="Close Diagnostic Canvas"
-                          aria-label="Close Diagnostic Canvas"
-                        >
-                          <X size={13} />
-                        </Button>
-                      </div>
-                    </div>
+                        {view === 'services' && (
+                          <ServiceHealthMatrix services={voice.services} infrastructureMode={voice.operator?.infrastructure_mode} onInspect={s => voice.sendTextCommand(`Inspect logs for ${s}`)} disabled={disabled} />
+                        )}
+                        {view === 'topology' && (
+                          <ServiceDependencyGraph topology={voice.topology} onSendAction={disabled ? undefined : voice.sendTextCommand} />
+                        )}
+                        {view === 'runbooks' && (
+                          <RunbookWorkflowHUD activeRunbook={voice.activeRunbook} disabled={disabled || !!voice.stagedRemediation} onStartRunbook={voice.startRunbook} onAdvanceRunbook={voice.advanceRunbook} onAbortRunbook={voice.abortRunbook} />
+                        )}
+                        {view === 'demo' && simulation && (
+                          <LiveTelemetryDrawer onTriggerChaos={voice.simulateScenario} disabled={disabled} />
+                        )}
+                      </CardContent>
+                    </Card>
 
-                    <nav className="view-tabs" aria-label="Investigation views">
-                      {tabs.map(({ id, label, icon: Icon }) => (
-                        <button key={id} type="button" aria-pressed={view === id} onClick={() => setView(id)}>
-                          <Icon size={13} />
-                          <span>{label}</span>
-                          {id === 'runbooks' && voice.activeRunbook?.status === 'active' && (
-                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                          )}
-                        </button>
-                      ))}
-                    </nav>
-                  </CardHeader>
-
-                  <CardContent className="p-3 flex-1 overflow-y-auto min-h-[300px]">
-                    {view === 'brief' && (
-                      <InvestigationPanel brief={voice.investigation ?? null} checks={voice.recoveryChecks ?? []} disabled={disabled} onCommand={voice.sendTextCommand} />
-                    )}
-                    {view === 'services' && (
-                      <ServiceHealthMatrix services={voice.services} infrastructureMode={voice.operator?.infrastructure_mode} onInspect={s => voice.sendTextCommand(`Inspect logs for ${s}`)} disabled={disabled} />
-                    )}
-                    {view === 'topology' && (
-                      <ServiceDependencyGraph topology={voice.topology} onSendAction={disabled ? undefined : voice.sendTextCommand} />
-                    )}
-                    {view === 'runbooks' && (
-                      <RunbookWorkflowHUD activeRunbook={voice.activeRunbook} disabled={disabled || !!voice.stagedRemediation} onStartRunbook={voice.startRunbook} onAdvanceRunbook={voice.advanceRunbook} onAbortRunbook={voice.abortRunbook} />
-                    )}
-                    {view === 'demo' && simulation && (
-                      <LiveTelemetryDrawer onTriggerChaos={voice.simulateScenario} disabled={disabled} />
-                    )}
-                  </CardContent>
-                </Card>
-
-                {/* Session Activity Audit Log */}
-                <Card className="border shadow-sm overflow-hidden mt-3 max-h-[220px] flex flex-col shrink-0" role="region" aria-label="Session activity">
-                  <CardHeader className="border-b border-border/80 p-2.5 px-3 flex flex-row items-center justify-between space-y-0 shrink-0">
-                    <CardTitle className="text-xs font-semibold flex items-center gap-1.5">
-                      <Activity size={14} className="text-primary" />
-                      <span>Session activity</span>
-                    </CardTitle>
-                    <div className="inline-flex items-center p-0.5 rounded-md bg-muted text-[11px]">
-                      <button type="button" aria-pressed={activityView === 'tools'} onClick={() => setActivityView('tools')}
-                        className={`px-2 py-0.5 rounded-sm font-medium transition-all ${activityView === 'tools' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}>
-                        Actions <span className="ml-1 px-1 py-0.2 rounded-full bg-secondary text-[9px]">{voice.executedTools.length}</span>
-                      </button>
-                      <button type="button" aria-pressed={activityView === 'timeline'} onClick={() => setActivityView('timeline')}
-                        className={`px-2 py-0.5 rounded-sm font-medium transition-all ${activityView === 'timeline' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}>
-                        Timeline
-                      </button>
-                    </div>
-                  </CardHeader>
-                  <CardContent className="p-3 overflow-y-auto flex-1">
-                    {activityView === 'timeline' ? (
-                      <IncidentTimeline incident={voice.incident} />
-                    ) : voice.executedTools.length ? (
-                      <div className="space-y-2">
-                        {[...voice.executedTools].reverse().map(tool => (
-                          <ToolExecutionCard key={tool.id} tool={tool} />
-                        ))}
-                      </div>
-                    ) : (
-                      <div className="py-4 text-center flex flex-col items-center justify-center text-muted-foreground text-xs">
-                        <Wrench size={18} className="mb-1 text-muted-foreground/60" />
-                        <p className="font-medium text-foreground">Action audit ledger</p>
-                        <p className="text-[10px] text-muted-foreground">Checks and tool outputs will appear here.</p>
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
-              </div>
-
+                    {/* Session activity / audit ledger */}
+                    <Card className="border border-border/80 shadow-sm overflow-hidden" role="region" aria-label="Session activity">
+                      <CardHeader className="border-b border-border/80 p-2.5 px-3 flex flex-row items-center justify-between space-y-0 shrink-0">
+                        <CardTitle className="text-xs font-semibold flex items-center gap-1.5">
+                          <Activity size={14} className="text-primary" />
+                          <span>Session activity</span>
+                        </CardTitle>
+                        <div className="inline-flex items-center p-0.5 rounded-md bg-muted text-[11px]">
+                          <button type="button" aria-pressed={activityView === 'tools'} onClick={() => setActivityView('tools')}
+                            className={`px-2 py-0.5 rounded-sm font-medium transition-all ${activityView === 'tools' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}>
+                            Actions <span className="ml-1 px-1 py-0.2 rounded-full bg-secondary text-[9px]">{voice.executedTools.length}</span>
+                          </button>
+                          <button type="button" aria-pressed={activityView === 'timeline'} onClick={() => setActivityView('timeline')}
+                            className={`px-2 py-0.5 rounded-sm font-medium transition-all ${activityView === 'timeline' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}>
+                            Timeline
+                          </button>
+                        </div>
+                      </CardHeader>
+                      <CardContent className="p-3 max-h-[220px] overflow-y-auto">
+                        {activityView === 'timeline' ? (
+                          <IncidentTimeline incident={voice.incident} />
+                        ) : voice.executedTools.length ? (
+                          <div className="space-y-2">
+                            {[...voice.executedTools].reverse().map(tool => (
+                              <ToolExecutionCard key={tool.id} tool={tool} />
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="py-4 text-center flex flex-col items-center justify-center text-muted-foreground text-xs">
+                            <Wrench size={18} className="mb-1 text-muted-foreground/60" />
+                            <p className="font-medium text-foreground">Action audit ledger</p>
+                            <p className="text-[10px] text-muted-foreground">Checks and tool outputs will appear here.</p>
+                          </div>
+                        )}
+                      </CardContent>
+                    </Card>
+                  </div>
+                }
+              />
             </div>
 
             {/* Global Minimal Footer */}

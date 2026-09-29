@@ -23,10 +23,15 @@ interface Props {
   isConnected?: boolean;
   providerState?: string;
   providerMessage?: string;
+  // Diagnostic panels rendered as cards at the end of the conversation, so the
+  // evidence and approval surface lives inside the chat instead of beside it.
+  inlineCards?: React.ReactNode;
 }
 
+// Titles match the command they send, so the accessible name and the quick chip
+// below agree. A title/command split made the same control unaddressable by name.
 const welcomePrompts = [
-  { title: 'Inspect Payment Logs', text: 'Inspect payment-service logs' },
+  { title: 'Inspect payment-service logs', text: 'Inspect payment-service logs' },
   { title: 'Run Full Diagnostics', text: 'Jarvis, run full diagnostics' },
   { title: 'Check Backend Host Vitals', text: 'Jarvis, check host vitals' },
   { title: 'Search Web & SRE Docs', text: 'Search web for PostgreSQL connection pool exhaustion' },
@@ -56,6 +61,7 @@ export const LiveTranscriptHUD: React.FC<Props> = ({
   isConnected = false,
   providerState,
   providerMessage,
+  inlineCards,
 }) => {
   const [input, setInput] = useState('');
   const scroll = useRef<HTMLDivElement>(null);
@@ -87,7 +93,7 @@ export const LiveTranscriptHUD: React.FC<Props> = ({
         behavior: window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
       });
     }
-  }, [turns, interimTranscript, agentTranscript, thinking, awaiting]);
+  }, [turns, interimTranscript, agentTranscript, thinking, awaiting, inlineCards]);
 
   const send = (event: React.FormEvent) => {
     event.preventDefault();
@@ -120,8 +126,10 @@ export const LiveTranscriptHUD: React.FC<Props> = ({
         aria-relevant="additions text"
       >
         {!hasMessages ? (
-          /* ChatGPT Voice Hero: Center Orb + Heading + Prompt Grid */
-          <div className="flex flex-col items-center justify-center min-h-[60vh] text-center px-4 py-8">
+          /* ChatGPT Voice Hero: Center Orb + Heading + Prompt Grid.
+             Fixed height rather than min-h, so the diagnostics card appended
+             below it cannot push the welcome prompts out of the viewport. */
+          <div className="flex flex-col items-center justify-center h-[60vh] min-h-[380px] text-center px-4 py-4">
             
             {/* Interactive Voice Orb */}
             <div className="relative mb-6 flex items-center justify-center group cursor-pointer" onClick={onToggleRecording}>
@@ -218,6 +226,9 @@ export const LiveTranscriptHUD: React.FC<Props> = ({
                 </Button>
               ))}
             </div>
+
+            {/* Diagnostics are reachable before the first message too */}
+            {inlineCards}
           </div>
         ) : (
           /* Active Conversational Feed */
@@ -300,6 +311,9 @@ export const LiveTranscriptHUD: React.FC<Props> = ({
                 <span>Evaluating telemetry & reasoning over SRE tools…</span>
               </div>
             )}
+
+            {/* Evidence, approval and receipts as cards inside the conversation */}
+            {inlineCards}
           </div>
         )}
       </div>
